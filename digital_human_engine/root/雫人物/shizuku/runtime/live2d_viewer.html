@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Live2D 数字人驱动</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#1a1a2e;color:#fff;font-family:'PingFang SC','Microsoft YaHei',sans-serif;
+         display:flex;flex-direction:column;align-items:center;min-height:100vh}
+    h1{margin:16px 0 8px;font-size:18px;color:#a0c4ff}
+
+    /* 主区域 */
+    .main{display:flex;gap:16px;padding:0 16px 16px;width:100%;max-width:1200px}
+
+    /* Live2D 画布 */
+    #canvas-wrap{position:relative;width:600px;height:500px;flex-shrink:0;
+                 background:#0d1b2a;border-radius:12px;overflow:hidden;
+                 border:1px solid rgba(160,196,255,.2)}
+    #live2d{width:100%;height:100%;display:block}
+    #model-status{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+                  font-size:12px;background:rgba(0,0,0,.6);padding:4px 10px;
+                  border-radius:20px;white-space:nowrap;color:#a0c4ff}
+
+    /* 右栏 */
+    .side{flex:1;display:flex;flex-direction:column;gap:12px;min-width:260px}
+
+    /* 卡片 */
+    .card{background:#0f2a4a;border-radius:10px;padding:14px;border:1px solid rgba(160,196,255,.15)}
+    .card h3{font-size:13px;color:#a0c4ff;margin-bottom:10px;letter-spacing:.05em;text-transform:uppercase}
+
+    /* 连接状态 */
+    .ws-status{padding:7px 12px;border-radius:6px;font-size:12px;text-align:center;
+               background:#3d1a1a;color:#ff8080;transition:.3s}
+    .ws-status.ok{background:#1a3d2b;color:#60d394}
+
+    /* 按钮 */
+    .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    button{padding:7px 16px;border:none;border-radius:6px;cursor:pointer;
+           font-size:12px;font-family:inherit;transition:.15s}
+    .btn-primary{background:#2563eb;color:#fff}
+    .btn-primary:hover{background:#1d4ed8}
+    .btn-danger{background:#9f1239;color:#fff}
+    .btn-danger:hover{background:#be123c}
+    .btn-outline{background:transparent;border:1px solid rgba(160,196,255,.3);color:#a0c4ff}
+    .btn-outline:hover{border-color:#a0c4ff}
+
+    /* 参数显示 */
+    .param-grid{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
+    .param-row{display:flex;align-items:center;gap:6px;font-size:11px}
+    .param-name{width:130px;color:#8b9cb5;flex-shrink:0;overflow:hidden;
+                text-overflow:ellipsis;white-space:nowrap}
+    .param-bar-track{flex:1;height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden}
+    .param-bar-fill{height:100%;background:#2563eb;border-radius:3px;transition:width .1s}
+    .param-val{width:42px;text-align:right;color:#60d394;font-family:monospace}
+
+    /* 文件输入 */
+    .file-row{display:flex;gap:6px;align-items:center;margin-top:6px}
+    .file-row input[type=text]{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(160,196,255,.2);
+                                border-radius:6px;color:#fff;padding:6px 8px;font-size:12px;
+                                font-family:inherit;outline:none}
+    .file-row input:focus{border-color:#a0c4ff}
+
+    /* 日志 */
+    .log{background:rgba(0,0,0,.4);border-radius:6px;padding:8px;font-size:11px;
+         font-family:monospace;height:100px;overflow-y:auto;color:#8b9cb5;line-height:1.6}
+    .log .ok{color:#60d394}
+    .log .err{color:#ff8080}
+    .log .info{color:#a0c4ff}
+  </style>
+</head>
+<body>
+<h1>Live2D 数字人实时驱动</h1>
+
+<div class="main">
+  <!-- Live2D 画布 -->
+  <div id="canvas-wrap">
+    <canvas id="live2d"></canvas>
+    <div id="model-status">等待加载模型…</div>
+  </div>
+
+  <!-- 右侧控制栏 -->
+  <div class="side">
+
+    <!-- 模型加载 -->
+    <div class="card">
+      <h3>模型加载</h3>
+      <div class="file-row">
+        <input type="text" id="model-path" value="runtime/shizuku.model3.json" placeholder="model3.json 路径"/>
+      </div>
+      <div class="btns">
+        <button class="btn-primary" onclick="loadModel()">加载模型</button>
+        <button class="btn-outline" onclick="loadModelFile()">选择文件</button>
+        <input type="file" id="model-file-input" accept=".json,.model3.json" style="display:none"
+               onchange="handleModelFile(this)"/>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:#8b9cb5">
+        ⚠ 需要先在 Live2D Cubism Editor 导出 Web SDK 格式<br>
+        导出路径：文件 → 导出文件 → 嵌入式Web端用(.model3.json)
+      </div>
+    </div>
+
+    <!-- WebSocket 连接 -->
+    <div class="card">
+      <h3>WebSocket 驱动</h3>
+      <div class="ws-status" id="ws-status">未连接</div>
+      <div style="font-size:11px;color:#8b9cb5;margin:6px 0">
+        先运行：<code style="color:#a0c4ff">python realtime_driver.py --model best_model_final.pth</code>
+      </div>
+      <div class="file-row">
+        <input type="text" id="ws-url" value="ws://localhost:8765" style="flex:1"/>
+      </div>
+      <div class="btns">
+        <button class="btn-primary" onclick="wsConnect()">连接</button>
+        <button class="btn-danger" onclick="wsDisconnect()">断开</button>
+      </div>
+    </div>
+
+    <!-- 手动控制（调试用） -->
+    <div class="card">
+      <h3>参数监控</h3>
+      <div class="param-grid" id="param-grid"></div>
+    </div>
+
+    <!-- 日志 -->
+    <div class="card" style="flex:1">
+      <h3>日志</h3>
+      <div class="log" id="log"></div>
+    </div>
+
+  </div>
+</div>
+
+<!--
+  Live2D Cubism Web SDK
+  需要下载官方SDK: https://www.live2d.com/download/cubism-sdk/download-web/
+  解压后把 Core/ 和 Framework/ 放到同目录下
+  或使用 CDN（非官方镜像，仅测试用）
+-->
+<script>
+// ── 尝试加载 Live2D Core ──────────────────────────────────────────
+// 如果有本地SDK，改为相对路径如 './Core/live2dcubismcore.min.js'
+const CUBISM_CORE_URLS = [
+  './Core/live2dcubismcore.min.js',
+  'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js',
+];
+
+let cubismLoaded = false;
+let app = null;  // PIXI Application（若用pixi）
+let live2dModel = null;
+let ws = null;
+
+// ── 日志 ────────────────────────────────────────────────────────
+function log(msg, cls='info'){
+  const el = document.getElementById('log');
+  const d = document.createElement('div');
+  d.className = cls;
+  d.textContent = '['+new Date().toLocaleTimeString()+'] '+msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── 参数名映射（inference_local.py 输出 → Live2D参数ID）────────
+// 你的模型用日文参数名，Live2D SDK用英文ID，需要对齐
+const PARAM_MAP = {
+  // realtime_driver.py 输出的英文参数名
+  'ParamAngleX':    'ParamAngleX',
+  'ParamAngleY':    'ParamAngleY',
+  'ParamAngleZ':    'ParamAngleZ',
+  'ParamEyeLOpen':  'ParamEyeLOpen',
+  'ParamEyeROpen':  'ParamEyeROpen',
+  'ParamEyeBallX':  'ParamEyeBallX',
+  'ParamEyeBallY':  'ParamEyeBallY',
+  'ParamBrowLY':    'ParamBrowLY',
+  'ParamBrowRY':    'ParamBrowRY',
+  'ParamMouthOpenY':'ParamMouthOpenY',
+  'ParamMouthForm': 'ParamMouthForm',
+  'ParamBodyAngleX':'ParamBodyAngleX',
+  'ParamBreath':    'ParamBreath',
+  // inference_local.py 输出的日文参数名（需要你确认模型里的实际ID）
+  '角度X':   'ParamAngleX',
+  '角度Y':   'ParamAngleY',
+  '角度Z':   'ParamAngleZ',
+  '左眼 開閉': 'ParamEyeLOpen',
+  '右眼 開閉': 'ParamEyeROpen',
+  '口 開閉':  'ParamMouthOpenY',
+  '口 变形':  'ParamMouthForm',
+};
+
+// 当前参数值（用于参数监控显示）
+const currentParams = {};
+const PARAM_RANGES = {
+  'ParamAngleX':    [-30,30],
+  'ParamAngleY':    [-30,30],
+  'ParamAngleZ':    [-30,30],
+  'ParamEyeLOpen':  [0,1],
+  'ParamEyeROpen':  [0,1],
+  'ParamEyeBallX':  [-1,1],
+  'ParamEyeBallY':  [-1,1],
+  'ParamBrowLY':    [-1,1],
+  'ParamBrowRY':    [-1,1],
+  'ParamMouthOpenY':[0,1],
+  'ParamMouthForm': [-1,1],
+  'ParamBodyAngleX':[-10,10],
+  'ParamBreath':    [0,1],
+};
+
+// ── 初始化参数监控 UI ─────────────────────────────────────────
+function initParamUI(){
+  const grid = document.getElementById('param-grid');
+  grid.innerHTML = '';
+  for(const [name, range] of Object.entries(PARAM_RANGES)){
+    currentParams[name] = 0;
+    const row = document.createElement('div');
+    row.className = 'param-row';
+    const pct = toPercent(0, range);
+    row.innerHTML = `
+      <span class="param-name" title="${name}">${name}</span>
+      <div class="param-bar-track">
+        <div class="param-bar-fill" id="bar-${name}" style="width:${pct}%"></div>
+      </div>
+      <span class="param-val" id="val-${name}">0.00</span>`;
+    grid.appendChild(row);
+  }
+}
+
+function toPercent(v, range){
+  return Math.round((v - range[0]) / (range[1] - range[0]) * 100);
+}
+
+function updateParamUI(name, value){
+  const range = PARAM_RANGES[name];
+  if(!range) return;
+  const bar = document.getElementById('bar-'+name);
+  const val = document.getElementById('val-'+name);
+  if(bar) bar.style.width = toPercent(value, range)+'%';
+  if(val) val.textContent = value.toFixed(2);
+}
+
+// ── Live2D 模型驱动 ───────────────────────────────────────────
+function applyParams(data){
+  // 更新监控UI
+  for(const [rawName, value] of Object.entries(data)){
+    const paramId = PARAM_MAP[rawName] || rawName;
+    currentParams[paramId] = value;
+    updateParamUI(paramId, value);
+  }
+
+  // 如果模型已加载，驱动Live2D参数
+  if(live2dModel && live2dModel._coreModel){
+    try{
+      const core = live2dModel._coreModel;
+      for(const [rawName, value] of Object.entries(data)){
+        const paramId = PARAM_MAP[rawName] || rawName;
+        // PIXI-Live2D-Display 写法
+        live2dModel.internalModel.coreModel.setParameterValueById(paramId, value);
+      }
+    }catch(e){
+      // 忽略参数不存在的错误
+    }
+  }
+}
+
+// ── WebSocket 连接 ────────────────────────────────────────────
+function wsConnect(){
+  const url = document.getElementById('ws-url').value.trim();
+  if(ws){ ws.close(); }
+
+  ws = new WebSocket(url);
+  ws.onopen = ()=>{
+    document.getElementById('ws-status').textContent = '已连接: '+url;
+    document.getElementById('ws-status').className = 'ws-status ok';
+    log('WebSocket 连接成功: '+url, 'ok');
+  };
+  ws.onmessage = (e)=>{
+    try{
+      const data = JSON.parse(e.data);
+      applyParams(data);
+    }catch(err){ log('参数解析失败: '+err.message, 'err'); }
+  };
+  ws.onclose = ()=>{
+    document.getElementById('ws-status').textContent = '已断开';
+    document.getElementById('ws-status').className = 'ws-status';
+    log('WebSocket 断开', 'info');
+  };
+  ws.onerror = ()=>{
+    log('WebSocket 连接失败，确认 realtime_driver.py 已启动', 'err');
+  };
+}
+
+function wsDisconnect(){
+  if(ws){ ws.close(); ws = null; }
+}
+
+// ── 模型加载（使用 pixi-live2d-display）──────────────────────
+// pixi-live2d-display 是最方便的 Live2D Web 渲染库
+// 支持 .model3.json 格式，无需手动处理 SDK
+async function initPixi(){
+  // 动态加载 PIXI + pixi-live2d-display
+  await loadScript('https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js');
+  log('渲染引擎加载完成', 'ok');
+
+  const canvas = document.getElementById('live2d');
+  const wrap = document.getElementById('canvas-wrap');
+  app = new PIXI.Application({
+    view: canvas,
+    width: wrap.clientWidth,
+    height: wrap.clientHeight,
+    backgroundAlpha: 0,
+    antialias: true,
+  });
+
+  log('PIXI 初始化完成，可以加载模型', 'ok');
+  document.getElementById('model-status').textContent = '渲染引擎就绪，请加载模型';
+}
+
+function loadScript(src){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function loadModel(){
+  if(!app){
+    log('正在初始化渲染引擎…', 'info');
+    try{ await initPixi(); }
+    catch(e){ log('渲染引擎加载失败: '+e.message, 'err'); return; }
+  }
+
+  const path = document.getElementById('model-path').value.trim();
+  if(!path){ log('请输入 model3.json 路径', 'err'); return; }
+
+  try{
+    log('加载模型: '+path, 'info');
+    document.getElementById('model-status').textContent = '加载中…';
+
+    if(live2dModel){ app.stage.removeChild(live2dModel); live2dModel.destroy(); }
+
+    live2dModel = await PIXI.live2d.Live2DModel.from(path);
+
+    // 自适应缩放
+    const wrap = document.getElementById('canvas-wrap');
+    const scaleX = wrap.clientWidth  / live2dModel.width;
+    const scaleY = wrap.clientHeight / live2dModel.height;
+    const scale  = Math.min(scaleX, scaleY) * 0.9;
+    live2dModel.scale.set(scale);
+    live2dModel.x = (wrap.clientWidth  - live2dModel.width  * scale) / 2;
+    live2dModel.y = (wrap.clientHeight - live2dModel.height * scale) / 2;
+
+    app.stage.addChild(live2dModel);
+    document.getElementById('model-status').textContent = '模型已加载: '+path.split('/').pop();
+    log('模型加载成功！', 'ok');
+  }catch(e){
+    document.getElementById('model-status').textContent = '加载失败';
+    log('模型加载失败: '+e.message, 'err');
+    log('请确认：1)路径正确 2)已从Cubism Editor导出Web SDK格式', 'info');
+  }
+}
+
+function loadModelFile(){
+  document.getElementById('model-file-input').click();
+}
+
+function handleModelFile(input){
+  const file = input.files[0];
+  if(!file) return;
+  // 用 URL.createObjectURL 加载本地文件
+  const url = URL.createObjectURL(file);
+  document.getElementById('model-path').value = url;
+  log('已选择文件: '+file.name, 'info');
+  loadModel();
+}
+
+// ── 初始化 ────────────────────────────────────────────────────
+initParamUI();
+log('页面加载完成', 'ok');
+log('使用步骤:', 'info');
+log('1. 从 Live2D Cubism Editor 导出 Web SDK 格式 (.model3.json)', 'info');
+log('2. 点击「加载模型」或「选择文件」', 'info');
+log('3. 运行 python realtime_driver.py --model best_model_final.pth', 'info');
+log('4. 点击「连接」接收实时驱动参数', 'info');
+</script>
+</body>
+</html>

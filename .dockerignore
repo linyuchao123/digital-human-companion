@@ -1,0 +1,72 @@
+# =============================================
+# .dockerignore - Docker 构建忽略规则
+# =============================================
+# 减少镜像体积，加快构建速度
+
+# ── 版本控制 ────────
+.git
+.gitignore
+
+# ── IDE / 工具 ────────
+.qoder/
+.claude/
+.promptx/
+*.code-workspace
+.vscode/
+.idea/
+
+# ── Python 缓存 ────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── 虚拟环境 ────────
+.venv/
+venv/
+env/
+.conda/
+
+# ── 敏感配置 ────────
+.env
+*.env.local
+
+# ── 大文件/模型（使用 volume 挂载代替打包）────────
+数字人测试/
+digital_human_engine/checkpoints_v2/
+checkpoints_v2/
+models/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+# ── 测试/验证数据集 ────────
+数字人面部行为驱动模型验证集/
+data/raw/
+data/processed/
+data/eval/
+*.mp4
+*.wav
+*.mp3
+
+# ── 前端 Node.js（独立部署，非 Python 服务部分）────────
+ai-human-showfrontend/node_modules/
+ai-human-showfrontend/dist/
+ai-human-showfrontend/*.zip
+
+# ── 日志与临时文件 ────────
+*.log
+*.tmp
+*.bak
+logs/
+tmp/
+
+# ── 文档（不影响运行）────────
+*.pdf
+数字人项目流程.pdf

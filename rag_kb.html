@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>🧠 心理知识库 · RAG管理系统</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#f0f4ff;color:#1a1f36;
+  font-family:'PingFang SC','Microsoft YaHei','Segoe UI',sans-serif;font-size:14px}
+
+/* ── 顶栏 ── */
+#topbar{
+  height:56px;background:#fff;display:flex;align-items:center;gap:12px;
+  padding:0 32px;border-bottom:1px solid #e4e8f0;
+  box-shadow:0 1px 8px rgba(0,0,0,.06);position:sticky;top:0;z-index:100;
+}
+#topbar .logo{font-size:18px;font-weight:700;color:#3b5bdb;display:flex;align-items:center;gap:8px}
+#topbar .logo .icon{font-size:22px}
+.spacer{flex:1}
+.tb-link{height:34px;padding:0 14px;border-radius:8px;border:1px solid #d0d7e8;
+  background:transparent;color:#555;cursor:pointer;font-size:12px;
+  font-family:inherit;transition:all .2s;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+.tb-link:hover{background:#f0f4ff;border-color:#3b5bdb;color:#3b5bdb}
+#kb-status{font-size:11px;color:#8a96b0;display:flex;align-items:center;gap:5px}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#ccc}
+.status-dot.ok{background:#40c057;box-shadow:0 0 6px #40c057}
+.status-dot.err{background:#fa5252}
+
+/* ── 主体 ── */
+#main{max-width:960px;margin:32px auto;padding:0 20px 60px}
+
+/* ── 页头 ── */
+#page-header{text-align:center;margin-bottom:32px}
+#page-header .big-icon{font-size:48px;display:block;margin-bottom:10px}
+#page-header h1{font-size:28px;font-weight:800;color:#1a1f36}
+#page-header p{color:#8a96b0;margin-top:6px;font-size:14px}
+
+/* ── 统计卡片 ── */
+#stat-cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:28px}
+.stat-card{background:#fff;border-radius:12px;padding:18px 20px;
+  border:1px solid #e4e8f0;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.stat-card .sc-label{font-size:11px;color:#8a96b0;margin-bottom:6px}
+.stat-card .sc-val{font-size:18px;font-weight:700;color:#3b5bdb;word-break:break-all}
+.stat-card .sc-sub{font-size:11px;color:#aab0c0;margin-top:3px}
+
+/* ── 标签页 ── */
+#tabs-wrap{background:#fff;border-radius:14px;border:1px solid #e4e8f0;
+  box-shadow:0 2px 12px rgba(0,0,0,.05);overflow:hidden}
+.tabs-header{display:flex;border-bottom:1px solid #e4e8f0;padding:0 4px}
+.tab-btn{flex:1;height:46px;border:none;background:transparent;cursor:pointer;
+  font-size:13px;font-weight:600;color:#8a96b0;display:flex;align-items:center;
+  justify-content:center;gap:6px;font-family:inherit;border-bottom:2px solid transparent;
+  transition:all .2s;margin-bottom:-1px}
+.tab-btn:hover{color:#3b5bdb}
+.tab-btn.active{color:#3b5bdb;border-bottom-color:#3b5bdb;background:rgba(59,91,219,.04)}
+.tab-panel{display:none;padding:24px}
+.tab-panel.show{display:block}
+
+/* ── 表单 ── */
+.form-label{font-size:12px;font-weight:600;color:#4a5568;margin-bottom:6px;display:block}
+.form-input{width:100%;height:38px;border:1px solid #d0d7e8;border-radius:8px;
+  padding:0 12px;font-size:13px;color:#1a1f36;font-family:inherit;outline:none;
+  transition:border-color .2s;background:#fafbff}
+.form-input:focus{border-color:#3b5bdb;box-shadow:0 0 0 3px rgba(59,91,219,.1)}
+textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.6}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.form-group{margin-bottom:14px}
+
+/* ── 按钮 ── */
+.btn{height:38px;padding:0 20px;border-radius:8px;border:none;cursor:pointer;
+  font-size:13px;font-weight:600;font-family:inherit;display:inline-flex;align-items:center;
+  gap:6px;transition:all .2s}
+.btn-primary{background:#3b5bdb;color:#fff}
+.btn-primary:hover{background:#3451c7}
+.btn-primary:disabled{background:#9dafed;cursor:not-allowed}
+.btn-full{width:100%;justify-content:center;height:44px;font-size:14px}
+.btn-outline{background:#fff;color:#3b5bdb;border:1px solid #3b5bdb}
+.btn-outline:hover{background:#f0f4ff}
+.btn-danger{background:#fff;color:#fa5252;border:1px solid #fa5252;height:28px;padding:0 10px;font-size:11px}
+.btn-danger:hover{background:#fff5f5}
+
+/* ── 分类选择 ── */
+.cat-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.cat-chip{padding:4px 12px;border-radius:20px;border:1px solid #d0d7e8;font-size:12px;
+  color:#555;cursor:pointer;transition:all .2s;background:#fff}
+.cat-chip:hover{border-color:#3b5bdb;color:#3b5bdb}
+.cat-chip.active{background:#3b5bdb;color:#fff;border-color:#3b5bdb}
+
+/* ── 提示条 ── */
+.notice{padding:10px 14px;border-radius:8px;font-size:12px;
+  display:flex;align-items:center;gap:8px;margin-top:12px}
+.notice.info{background:#e8f4fd;color:#1971c2;border:1px solid #bee3f8}
+.notice.success{background:#ebfbee;color:#2f9e44;border:1px solid #b2f2bb}
+.notice.error{background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9}
+.notice.loading{background:#f8f9fa;color:#555;border:1px solid #e4e8f0}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #ccc;
+  border-top-color:#3b5bdb;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── 知识浏览列表 ── */
+#doc-list{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.doc-card{background:#fafbff;border:1px solid #e4e8f0;border-radius:10px;
+  padding:14px 16px;position:relative;transition:border-color .15s}
+.doc-card:hover{border-color:#a5b4fc}
+.doc-card .dc-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.dc-category{padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;
+  background:rgba(59,91,219,.1);color:#3b5bdb}
+.dc-source{font-size:10px;color:#8a96b0}
+.dc-id{font-size:9px;color:#aab0c0;font-family:monospace;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis}
+.doc-card .dc-content{font-size:12px;color:#4a5568;line-height:1.6;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.doc-card .dc-content.expanded{-webkit-line-clamp:unset}
+.doc-card .dc-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+.expand-btn{font-size:11px;color:#3b5bdb;cursor:pointer;border:none;background:none;
+  padding:0;font-family:inherit}
+
+/* ── 检索结果 ── */
+#search-results{margin-top:20px}
+.result-card{background:#fff;border:1px solid #e4e8f0;border-radius:10px;
+  padding:14px 16px;margin-bottom:10px}
+.result-card .rc-score{font-size:11px;color:#fff;background:#3b5bdb;
+  padding:2px 8px;border-radius:6px;font-weight:700}
+.result-score-bar{height:4px;background:#e4e8f0;border-radius:2px;margin:8px 0 6px}
+.result-score-fill{height:100%;background:linear-gradient(90deg,#3b5bdb,#7c3aed);border-radius:2px;transition:width .4s}
+.result-card .rc-content{font-size:12px;color:#4a5568;line-height:1.65}
+.rc-meta{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+
+/* ── 搜索框 ── */
+.search-row{display:flex;gap:8px}
+.search-row .form-input{flex:1}
+#top-k-sel{width:80px;height:38px;border:1px solid #d0d7e8;border-radius:8px;
+  padding:0 8px;font-size:12px;color:#1a1f36;outline:none;background:#fafbff;cursor:pointer}
+
+/* ── 空状态 ── */
+.empty-state{text-align:center;padding:40px 20px;color:#8a96b0}
+.empty-state .es-icon{font-size:40px;display:block;margin-bottom:10px;opacity:.5}
+.empty-state p{font-size:13px}
+
+/* ── 分页 ── */
+#pagination{display:flex;justify-content:center;gap:8px;margin-top:16px}
+.page-info{font-size:12px;color:#8a96b0;align-self:center}
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<div id="topbar">
+  <div class="logo"><span class="icon">🧠</span>心理知识库</div>
+  <span style="color:#d0d7e8">|</span>
+  <span style="font-size:12px;color:#8a96b0">RAG 向量知识库管理</span>
+  <div class="spacer"></div>
+  <div id="kb-status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-txt">检测中...</span>
+  </div>
+  <a class="tb-link" href="/" title="返回主界面">← 主界面</a>
+</div>
+
+<!-- 主体 -->
+<div id="main">
+
+  <!-- 页头 -->
+  <div id="page-header">
+    <span class="big-icon">🧠</span>
+    <h1>心理知识库</h1>
+    <p>基于 RAG 的向量知识库管理系统，为数字人小安提供专业心理学知识支持</p>
+  </div>
+
+  <!-- 统计卡片 -->
+  <div id="stat-cards">
+    <div class="stat-card">
+      <div class="sc-label">📁 索引存储路径</div>
+      <div class="sc-val" id="sc-path" style="font-size:12px;word-break:break-all">加载中...</div>
+      <div class="sc-sub">ChromaDB 本地持久化</div>
+    </div>
+    <div class="stat-card" style="text-align:center">
+      <div class="sc-label">📊 当前知识条数</div>
+      <div class="sc-val" id="sc-count" style="font-size:32px">—</div>
+      <div class="sc-sub" id="sc-status">初始化中...</div>
+    </div>
+    <div class="stat-card" style="text-align:right">
+      <div class="sc-label">🔢 向量化模型</div>
+      <div class="sc-val" id="sc-model" style="font-size:13px">加载中...</div>
+      <div class="sc-sub">Embedding 模型</div>
+    </div>
+  </div>
+
+  <!-- 标签页 -->
+  <div id="tabs-wrap">
+    <div class="tabs-header">
+      <button class="tab-btn active" onclick="switchTab('add')">✏️ 文本录入</button>
+      <button class="tab-btn" onclick="switchTab('browse')">📚 知识浏览</button>
+      <button class="tab-btn" onclick="switchTab('search')">🔍 检索测试</button>
+    </div>
+
+    <!-- ── 文本录入 ── -->
+    <div class="tab-panel show" id="panel-add">
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">来源标识（可选）</label>
+          <input type="text" class="form-input" id="add-source" placeholder="如：CBT手册、临床经验、用户添加"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">知识分类</label>
+          <input type="text" class="form-input" id="add-category" placeholder="anxiety / sleep / CBT / custom"/>
+        </div>
+      </div>
+      <div class="form-group" style="margin:0 0 6px">
+        <label class="form-label">快捷分类</label>
+        <div class="cat-chips">
+          <span class="cat-chip" onclick="selectCat(this,'CBT')">🧠 CBT</span>
+          <span class="cat-chip" onclick="selectCat(this,'anxiety')">😰 焦虑</span>
+          <span class="cat-chip" onclick="selectCat(this,'depression')">😔 抑郁</span>
+          <span class="cat-chip" onclick="selectCat(this,'sleep')">😴 睡眠</span>
+          <span class="cat-chip" onclick="selectCat(this,'empathy')">❤️ 共情</span>
+          <span class="cat-chip" onclick="selectCat(this,'crisis')">🚨 危机干预</span>
+          <span class="cat-chip" onclick="selectCat(this,'self_acceptance')">🌱 自我接纳</span>
+          <span class="cat-chip" onclick="selectCat(this,'interpersonal')">🤝 人际关系</span>
+          <span class="cat-chip" onclick="selectCat(this,'custom')">📝 自定义</span>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">知识内容 <span style="color:#8a96b0;font-weight:400">（支持多段话，系统将自动向量化）</span></label>
+        <textarea class="form-input" id="add-content" rows="6"
+          placeholder="在此输入心理学知识、治疗技巧、共情话术等内容...
+
+例如：
+认知行为疗法中的思维日记技术：每天记录触发负面情绪的事件、当时的想法和认知扭曲类型，有助于识别情绪模式，建立更健康的思维方式。建议睡前花10分钟完成。"></textarea>
+      </div>
+      <div id="add-notice" style="display:none"></div>
+      <button class="btn btn-primary btn-full" id="add-btn" onclick="addKnowledge()">
+        ✨ 写入知识库
+      </button>
+    </div>
+
+    <!-- ── 知识浏览 ── -->
+    <div class="tab-panel" id="panel-browse">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <span style="font-size:13px;font-weight:600;color:#1a1f36">全部知识条目</span>
+        <span class="sc-val" id="browse-count" style="font-size:13px">0 条</span>
+        <div class="spacer"></div>
+        <button class="btn btn-outline" onclick="loadDocList()">🔄 刷新</button>
+      </div>
+      <div id="doc-list">
+        <div class="empty-state">
+          <span class="es-icon">📭</span>
+          <p>点击「刷新」加载知识条目</p>
+        </div>
+      </div>
+      <div id="pagination"></div>
+    </div>
+
+    <!-- ── 检索测试 ── -->
+    <div class="tab-panel" id="panel-search">
+      <div style="margin-bottom:16px">
+        <label class="form-label">输入检索问题，测试 RAG 召回效果</label>
+        <div class="search-row">
+          <input type="text" class="form-input" id="search-query"
+            placeholder="如：我总是焦虑睡不着怎么办？"
+            onkeydown="if(event.key==='Enter') doSearch()"/>
+          <select id="top-k-sel" title="返回条数">
+            <option value="3">Top 3</option>
+            <option value="5">Top 5</option>
+            <option value="8">Top 8</option>
+          </select>
+          <button class="btn btn-primary" onclick="doSearch()">🔍 检索</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px" id="quick-queries">
+          <span style="font-size:11px;color:#8a96b0;align-self:center">快捷问题：</span>
+        </div>
+      </div>
+      <div id="search-notice" style="display:none"></div>
+      <div id="search-results">
+        <div class="empty-state">
+          <span class="es-icon">🔍</span>
+          <p>输入问题后点击检索，查看知识库召回结果</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+const API = 'http://localhost:8800';
+
+// ── 标签页 ────────────────────────────────────────
+const TABS = ['add','browse','search'];
+function switchTab(id){
+  TABS.forEach(t=>{
+    document.getElementById('panel-'+t).classList.toggle('show', t===id);
+  });
+  document.querySelectorAll('.tab-btn').forEach((btn,i)=>{
+    btn.classList.toggle('active', TABS[i]===id);
+  });
+  if(id==='browse') loadDocList();
+}
+
+// ── 快捷问题 ──────────────────────────────────────
+const QUICK_Q = [
+  '总是焦虑怎么办', '失眠睡不着', '感觉很悲伤难过', '不知道如何与人交往',
+  '自我否定觉得很差', '压力太大了', '如何接受自己',
+];
+window.addEventListener('load', ()=>{
+  const wrap = document.getElementById('quick-queries');
+  QUICK_Q.forEach(q=>{
+    const chip = document.createElement('span');
+    chip.className = 'cat-chip';
+    chip.textContent = q;
+    chip.onclick = ()=>{ document.getElementById('search-query').value = q; doSearch(); };
+    wrap.appendChild(chip);
+  });
+  loadStats();
+});
+
+// ── 加载统计 ──────────────────────────────────────
+async function loadStats(){
+  try{
+    const r = await fetch(API+'/api/rag/stats');
+    const d = await r.json();
+    const dot = document.getElementById('status-dot');
+    if(d.status === 'ready'){
+      dot.className = 'status-dot ok';
+      document.getElementById('status-txt').textContent = 'RAG 已就绪';
+    } else {
+      dot.className = 'status-dot err';
+      document.getElementById('status-txt').textContent = 'RAG 初始化中...';
+      setTimeout(loadStats, 3000);
+    }
+    document.getElementById('sc-path').textContent = d.db_path || '—';
+    document.getElementById('sc-count').textContent = d.count !== undefined ? d.count : '—';
+    document.getElementById('sc-status').textContent = d.status === 'ready' ? '✅ 就绪' : '⏳ 初始化中';
+    document.getElementById('sc-model').textContent = d.embedding_model || 'TF-IDF 本地';
+    document.getElementById('browse-count').textContent = (d.count || 0) + ' 条';
+  }catch(e){
+    document.getElementById('status-txt').textContent = '后端未启动';
+    document.getElementById('status-dot').className = 'status-dot err';
+    setTimeout(loadStats, 5000);
+  }
+}
+
+// ── 快捷分类 ──────────────────────────────────────
+function selectCat(el, cat){
+  document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('add-category').value = cat;
+}
+
+// ── 录入知识 ──────────────────────────────────────
+async function addKnowledge(){
+  const content  = document.getElementById('add-content').value.trim();
+  const category = document.getElementById('add-category').value.trim() || 'custom';
+  const source   = document.getElementById('add-source').value.trim()   || '手动录入';
+  const notice   = document.getElementById('add-notice');
+  const btn      = document.getElementById('add-btn');
+
+  if(!content){ showNotice(notice,'error','⚠️ 请先填写知识内容'); return; }
+
+  btn.disabled = true; btn.textContent = '⏳ 写入中...';
+  showNotice(notice,'loading','<div class="spin"></div> 正在向量化并写入知识库...');
+
+  try{
+    const r = await fetch(API+'/api/rag/add',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({content, category, source})
+    });
+    const d = await r.json();
+    if(d.success){
+      showNotice(notice,'success','✅ 写入成功！当前知识库共 '+d.total+' 条');
+      document.getElementById('add-content').value = '';
+      document.getElementById('add-source').value = '';
+      loadStats();
+    } else {
+      showNotice(notice,'error','❌ 写入失败: '+d.message);
+    }
+  }catch(e){
+    showNotice(notice,'error','❌ 请求失败: '+e.message);
+  } finally{
+    btn.disabled = false; btn.textContent = '✨ 写入知识库';
+  }
+}
+
+// ── 加载文档列表 ──────────────────────────────────
+async function loadDocList(){
+  const list = document.getElementById('doc-list');
+  list.innerHTML = '<div class="empty-state"><div class="spin" style="margin:0 auto 10px"></div><p>加载中...</p></div>';
+  try{
+    const r = await fetch(API+'/api/rag/list?limit=100');
+    const d = await r.json();
+    document.getElementById('browse-count').textContent = d.total + ' 条';
+    if(!d.documents || d.documents.length === 0){
+      list.innerHTML = '<div class="empty-state"><span class="es-icon">📭</span><p>知识库为空</p></div>';
+      return;
+    }
+    list.innerHTML = '';
+    d.documents.forEach(doc => list.appendChild(buildDocCard(doc)));
+  }catch(e){
+    list.innerHTML = '<div class="empty-state"><span class="es-icon">⚠️</span><p>加载失败: '+e.message+'</p></div>';
+  }
+}
+
+function buildDocCard(doc){
+  const div = document.createElement('div');
+  div.className = 'doc-card';
+  div.id = 'doc-'+doc.id;
+  const cat = (doc.metadata && doc.metadata.category) || 'unknown';
+  const src = (doc.metadata && (doc.metadata.source || doc.metadata.type)) || '—';
+  const shortId = doc.id.substring(0,8)+'...';
+  const content = doc.content || '';
+  const needExpand = content.length > 120;
+  div.innerHTML = `
+    <div class="dc-head">
+      <span class="dc-category">${catLabel(cat)}</span>
+      <span class="dc-source">来源: ${src}</span>
+      <span class="dc-id" title="${doc.id}">ID: ${shortId}</span>
+    </div>
+    <div class="dc-content" id="content-${doc.id}">${escHtml(content)}</div>
+    <div class="dc-actions">
+      ${needExpand?`<button class="expand-btn" id="expbtn-${doc.id}" onclick="toggleExpand('${doc.id}')">展开全文 ▼</button>`:''}
+      <button class="btn btn-danger" onclick="deleteDoc('${doc.id}')">🗑 删除</button>
+    </div>`;
+  return div;
+}
+
+function catLabel(cat){
+  const map = {'CBT':'🧠 CBT','anxiety':'😰 焦虑','depression':'😔 抑郁',
+    'sleep':'😴 睡眠','empathy':'❤️ 共情','crisis':'🚨 危机','mindfulness':'🧘 正念',
+    'self_acceptance':'🌱 自我接纳','interpersonal':'🤝 人际','stress':'💪 压力',
+    'custom':'📝 自定义'};
+  return map[cat] || ('📌 '+cat);
+}
+
+function toggleExpand(id){
+  const c = document.getElementById('content-'+id);
+  const b = document.getElementById('expbtn-'+id);
+  const expanded = c.classList.toggle('expanded');
+  if(b) b.textContent = expanded ? '收起 ▲' : '展开全文 ▼';
+}
+
+async function deleteDoc(id){
+  if(!confirm('确定删除这条知识？删除后无法恢复。')) return;
+  try{
+    const r = await fetch(API+'/api/rag/delete/'+encodeURIComponent(id),{method:'DELETE'});
+    const d = await r.json();
+    if(d.success){
+      document.getElementById('doc-'+id)?.remove();
+      loadStats();
+    } else { alert('删除失败: '+d.message); }
+  }catch(e){ alert('请求失败: '+e.message); }
+}
+
+// ── 检索测试 ──────────────────────────────────────
+async function doSearch(){
+  const query   = document.getElementById('search-query').value.trim();
+  const top_k   = parseInt(document.getElementById('top-k-sel').value);
+  const notice  = document.getElementById('search-notice');
+  const results = document.getElementById('search-results');
+  if(!query){ showNotice(notice,'error','⚠️ 请输入检索问题'); return; }
+
+  showNotice(notice,'loading','<div class="spin"></div> 正在检索相关知识...');
+  results.innerHTML = '';
+
+  try{
+    const r = await fetch(API+'/api/rag/search',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({query, top_k})
+    });
+    const d = await r.json();
+    notice.style.display = 'none';
+    if(!d.results || d.results.length === 0){
+      results.innerHTML = '<div class="empty-state"><span class="es-icon">🔍</span><p>未找到相关知识，请尝试其他关键词</p></div>';
+      return;
+    }
+    results.innerHTML = `<div style="font-size:12px;color:#8a96b0;margin-bottom:10px">
+      共找到 <strong>${d.results.length}</strong> 条相关知识（查询：「${escHtml(query)}」）</div>`;
+    d.results.forEach((res, i) => results.appendChild(buildResultCard(res, i)));
+  }catch(e){
+    showNotice(notice,'error','❌ 检索失败: '+e.message);
+  }
+}
+
+function buildResultCard(res, idx){
+  const div = document.createElement('div');
+  div.className = 'result-card';
+  const sim = typeof res.similarity === 'number' ? res.similarity : 0;
+  const pct = Math.round(Math.max(0, Math.min(1, sim)) * 100);
+  const cat = (res.metadata && res.metadata.category) || '—';
+  div.innerHTML = `
+    <div class="rc-meta">
+      <span class="result-card rc-score">#${idx+1}</span>
+      <span class="dc-category">${catLabel(cat)}</span>
+      <span style="font-size:11px;color:#8a96b0;margin-left:auto">相似度: <strong style="color:#3b5bdb">${(sim*100).toFixed(1)}%</strong></span>
+    </div>
+    <div class="result-score-bar"><div class="result-score-fill" style="width:${pct}%"></div></div>
+    <div class="rc-content">${escHtml(res.document || '')}</div>`;
+  return div;
+}
+
+// ── 工具函数 ──────────────────────────────────────
+function showNotice(el, type, html){
+  el.style.display = 'flex';
+  el.className = 'notice ' + type;
+  el.innerHTML = html;
+}
+
+function escHtml(str){
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>

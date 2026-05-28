@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>视觉模块实时监控 · AI数字人情感陪护</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#070b10;--bg2:#0d1117;--bg3:#161b22;--bg4:#21262d;
+  --border:#21262d;--border2:#30363d;
+  --text1:#e6edf3;--text2:#8b949e;--text3:#484f58;
+  --green:#3fb950;--yellow:#d29922;--red:#f85149;--blue:#58a6ff;
+  --purple:#bc8cff;--orange:#ffa657;--cyan:#39d353;--pink:#ff7eb6;
+  --glow-green:rgba(63,185,80,.18);--glow-blue:rgba(88,166,255,.18);
+}
+html,body{height:100%;background:var(--bg);color:var(--text1);
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;overflow:hidden}
+
+/* ══ 顶栏 ══ */
+.topbar{
+  height:48px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px;
+  background:linear-gradient(90deg,#0d1117 0%,#111827 100%);
+  border-bottom:1px solid var(--border2);flex-shrink:0;
+  box-shadow:0 1px 12px rgba(0,0,0,.5);
+}
+.tl{display:flex;align-items:center;gap:10px}
+.logo-dot{width:10px;height:10px;border-radius:50%;background:var(--blue);
+  box-shadow:0 0 10px var(--blue);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.title{font-size:15px;font-weight:700;
+  background:linear-gradient(90deg,#58a6ff,#bc8cff);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{font-size:11px;color:var(--text3);background:var(--bg4);
+  padding:2px 8px;border-radius:10px;border:1px solid var(--border2)}
+.tr{display:flex;align-items:center;gap:12px}
+.conn-badge{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--red);transition:.3s;flex-shrink:0}
+.sdot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+#stxt{font-size:11px;color:var(--text2)}
+#btn-cam{
+  padding:6px 16px;border-radius:20px;border:1px solid var(--border2);
+  background:var(--bg3);color:var(--text1);cursor:pointer;font-size:12px;
+  transition:all .2s;letter-spacing:.3px;
+}
+#btn-cam:hover{background:var(--bg4);border-color:var(--blue);color:var(--blue)}
+#btn-cam.active{background:rgba(63,185,80,.12);border-color:var(--green);color:var(--green);
+  box-shadow:0 0 12px rgba(63,185,80,.2)}
+
+/* ══ 三栏主区域 ══ */
+.main{
+  display:grid;
+  grid-template-columns:260px 1fr 330px;
+  height:calc(100vh - 48px);
+  overflow:hidden;gap:0;
+}
+
+/* 公共滚动列 */
+.col{overflow-y:auto;overflow-x:hidden;padding:10px 8px;display:flex;flex-direction:column;gap:8px;
+  background:var(--bg)}
+.col::-webkit-scrollbar{width:3px}
+.col::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* 中栏 */
+.col-mid{
+  display:flex;flex-direction:column;
+  border-left:1px solid var(--border2);border-right:1px solid var(--border2);
+  overflow:hidden;background:var(--bg);
+}
+.mid-top{flex:0 0 62%;padding:10px 10px 6px;display:flex;flex-direction:column;gap:8px}
+.mid-bot{flex:1;overflow-y:auto;padding:6px 10px 10px;display:flex;flex-direction:column;gap:8px}
+.mid-bot::-webkit-scrollbar{width:3px}
+.mid-bot::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ══ 卡片 ══ */
+.card{
+  background:var(--bg2);
+  border:1px solid var(--border2);border-radius:10px;overflow:hidden;flex-shrink:0;
+  box-shadow:0 2px 8px rgba(0,0,0,.3);
+}
+.ch{
+  padding:8px 12px;border-bottom:1px solid var(--border);
+  font-size:11px;font-weight:700;letter-spacing:.5px;
+  display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(90deg,var(--bg3),var(--bg2));color:var(--text1);
+}
+.ch-icon{font-size:13px;margin-right:5px}
+.badge{font-size:10px;padding:1px 8px;border-radius:8px;
+  background:var(--bg);border:1px solid var(--border2);
+  color:var(--text2);font-weight:400}
+.badge.live{background:rgba(63,185,80,.12);border-color:rgba(63,185,80,.3);color:var(--green)}
+.cb{padding:10px 12px}
+
+/* ══ 摄像头 ══ */
+.cam-outer{flex:1;min-height:0;display:flex;flex-direction:column}
+.cam-wrap{
+  position:relative;background:#000;border-radius:9px;overflow:hidden;
+  width:100%;flex:1;min-height:0;
+  box-shadow:0 0 0 1px var(--border2), 0 4px 20px rgba(0,0,0,.6);
+}
+#cam-video{width:100%;height:100%;object-fit:cover;display:block}
+#cam-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#no-face-warn{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.5);
+  border-radius:8px;padding:8px 18px;font-size:12px;color:var(--red);display:none;
+  backdrop-filter:blur(4px);
+}
+.cam-badges{
+  position:absolute;bottom:10px;left:10px;right:10px;
+  display:flex;gap:6px;flex-wrap:wrap;
+}
+.cpill{
+  background:rgba(7,11,16,.85);backdrop-filter:blur(6px);
+  border:1px solid rgba(255,255,255,.1);border-radius:14px;
+  padding:3px 10px;font-size:11px;color:var(--text2);
+}
+.cpill b{color:var(--text1)}
+.fps-tag{
+  position:absolute;top:8px;right:8px;
+  background:rgba(0,0,0,.75);border:1px solid rgba(57,211,83,.3);
+  border-radius:5px;padding:2px 7px;font-size:10px;color:var(--cyan);
+  font-family:'Courier New',monospace;letter-spacing:.5px;
+}
+.track-tag{
+  position:absolute;top:8px;left:8px;
+  background:rgba(0,0,0,.75);border:1px solid var(--border2);
+  border-radius:5px;padding:2px 9px;font-size:10px;color:var(--text2);
+}
+.track-tag.ok{color:var(--green);border-color:rgba(63,185,80,.4);
+  text-shadow:0 0 8px rgba(63,185,80,.5)}
+
+/* ══ 芯片行 ══ */
+.chip-row{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.wchip{
+  background:var(--bg3);border:1px solid var(--border2);border-radius:5px;
+  padding:3px 9px;font-size:10px;color:var(--text3);
+  display:flex;align-items:center;gap:5px;transition:all .3s;
+}
+.wchip .dot{width:5px;height:5px;border-radius:50%;background:var(--border2);flex-shrink:0;transition:.3s}
+.wchip.active .dot{background:var(--green);box-shadow:0 0 5px var(--green)}
+.wchip.active{color:var(--text2);border-color:rgba(63,185,80,.2)}
+
+/* ══ 左栏：AU 进度条 ══ */
+.au-section{display:flex;flex-direction:column;height:100%;padding:10px 10px;}
+.au-header{display:flex;justify-content:space-between;align-items:center;
+  padding:9px 12px;margin-bottom:6px;
+  background:linear-gradient(135deg,#0d1117,#161b22);
+  border:1px solid var(--border2);border-radius:10px;flex-shrink:0;}
+.au-title{font-size:12px;font-weight:700;color:var(--text1);letter-spacing:.5px}
+.au-badge{font-size:10px;padding:2px 8px;border-radius:8px;
+  background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.3);color:var(--blue)}
+.au-list{display:flex;flex-direction:column;gap:0;flex:1}
+.au-item{
+  display:flex;flex-direction:column;gap:3px;
+  padding:6px 0;border-bottom:1px solid rgba(33,38,45,.8);
+}
+.au-item:last-child{border-bottom:none}
+.au-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.au-name{font-size:10.5px;color:var(--text2);letter-spacing:.2px}
+.au-val{
+  font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;
+  color:var(--text1);min-width:32px;text-align:right;
+  font-family:'Courier New',monospace;
+}
+.au-track{
+  height:6px;background:rgba(13,17,23,.8);
+  border-radius:3px;overflow:hidden;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.5);
+}
+.au-fill{
+  height:100%;border-radius:3px;
+  transition:width .08s ease;
+  box-shadow:0 0 6px currentColor;
+}
+
+/* ══ 25维特征格子 ══ */
+.feat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.fc{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:6px;padding:5px 3px;text-align:center;
+  transition:border-color .2s;
+}
+.fc:hover{border-color:var(--border2)}
+.fi{font-size:8.5px;color:var(--text3);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fv{font-size:11px;font-weight:700;margin-top:2px;
+  font-family:'Courier New',monospace;font-variant-numeric:tabular-nums;transition:color .15s}
+
+/* ══ 日志 ══ */
+.log-scroll{height:90px;overflow-y:auto;font-size:10px;line-height:1.75;
+  font-family:'Courier New',monospace;background:var(--bg);border-radius:5px;padding:4px 6px}
+.log-scroll::-webkit-scrollbar{width:3px}
+.log-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.ll{color:var(--text3)}
+.ll.ok{color:var(--green)}
+.ll.err{color:var(--red)}
+.ll.info{color:var(--blue)}
+
+/* ══ 右栏：关键指标仪表盘 ══ */
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.kpi{
+  background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  padding:10px;text-align:center;transition:border-color .3s;
+}
+.kpi:hover{border-color:var(--border2)}
+.kpi-lbl{font-size:9.5px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px}
+.kpi-val{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;
+  font-family:'Courier New',monospace;line-height:1;transition:color .2s}
+.kpi-sub{font-size:9px;color:var(--text3);margin-top:3px}
+.kpi-bar{height:3px;background:var(--bg);border-radius:2px;margin-top:7px;overflow:hidden}
+.kpi-bar-fill{height:100%;border-radius:2px;transition:width .1s}
+
+/* ══ 右栏：表情饼图 ══ */
+.expr-wrap{display:flex;gap:10px;align-items:flex-start}
+.expr-donut{position:relative;flex-shrink:0}
+#expr-canvas{border-radius:50%;filter:drop-shadow(0 0 8px rgba(88,166,255,.2))}
+.expr-center{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;
+}
+.ec-name{font-size:13px;font-weight:700}
+.ec-pct{font-size:10px;color:var(--text2)}
+.expr-bars{flex:1;display:flex;flex-direction:column;gap:4px}
+.ebrow{display:flex;align-items:center;gap:5px}
+.eblbl{font-size:10px;color:var(--text2);width:28px;flex-shrink:0}
+.ebtrack{flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.ebfill{height:100%;border-radius:2px;transition:width .15s}
+.ebval{font-size:9px;color:var(--text3);width:26px;text-align:right;flex-shrink:0}
+
+/* ══ 右栏：VA ══ */
+.va-wrap{display:flex;gap:10px;align-items:center}
+.va-nums{flex:1;display:flex;flex-direction:column;gap:6px}
+.vacard{
+  background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 11px;
+}
+.valbl{font-size:9.5px;color:var(--text3);margin-bottom:3px;letter-spacing:.3px}
+.vabig{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;
+  font-family:'Courier New',monospace;transition:color .2s}
+.vabig.pos{color:var(--green);text-shadow:0 0 12px rgba(63,185,80,.3)}
+.vabig.neg{color:var(--red);text-shadow:0 0 12px rgba(248,81,73,.3)}
+.vabig.neu{color:var(--text2)}
+
+/* ══ 右栏：头部姿态 ══ */
+.pose-wrap{display:flex;gap:4px;justify-content:space-between}
+.pdial{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
+.plbl{font-size:10px;color:var(--text2)}
+.pval{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;
+  font-family:'Courier New',monospace;color:var(--text1)}
+
+/* ══ 右栏：系统状态 ══ */
+.sys-grid{display:flex;flex-direction:column;gap:5px}
+.sys-row{display:flex;align-items:center;justify-content:space-between;
+  padding:5px 8px;background:var(--bg3);border-radius:6px;border:1px solid var(--border)}
+.sys-key{font-size:10px;color:var(--text2)}
+.sys-val{font-size:10px;font-weight:600;color:var(--text1);
+  font-family:'Courier New',monospace}
+.sys-val.ok{color:var(--green)}
+.sys-val.err{color:var(--red)}
+.sys-val.warn{color:var(--yellow)}
+
+/* ══ 右栏：特征热力图 ══ */
+.hmap-wrap{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.hm-cell{
+  height:32px;border-radius:4px;display:flex;align-items:center;
+  justify-content:center;font-size:8.5px;color:rgba(255,255,255,.6);
+  transition:background .15s;border:1px solid transparent;cursor:default;
+  flex-direction:column;gap:1px;
+}
+.hm-lbl{font-size:8px;opacity:.7}
+.hm-val{font-size:9px;font-weight:700;font-family:'Courier New',monospace}
+
+/* ══ 分割线 ══ */
+.divider{height:1px;background:linear-gradient(90deg,transparent,var(--border2),transparent);margin:2px 0}
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<div class="topbar">
+  <div class="tl">
+    <div class="logo-dot"></div>
+    <span class="title">视觉模块实时监控</span>
+    <span class="sub">AI数字人情感陪护</span>
+  </div>
+  <div class="tr">
+    <div class="conn-badge">
+      <div class="sdot" id="sdot"></div>
+      <span id="stxt">未连接</span>
+    </div>
+    <button id="btn-cam" onclick="toggleCam()">📷 开启摄像头</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ══ 左栏：AU 15维（撑满全高）══ -->
+  <div class="au-section">
+    <div class="au-header">
+      <span class="au-title">⬡ AU 面部动作单元</span>
+      <span class="au-badge">15 维</span>
+    </div>
+    <div class="au-list" id="au-list"></div>
+  </div>
+
+  <!-- ══ 中栏 ══ -->
+  <div class="col-mid">
+
+    <!-- 上半：芯片 + 摄像头 -->
+    <div class="mid-top">
+      <div class="chip-row">
+        <div class="wchip" id="chip-ws"><div class="dot"></div>WebSocket</div>
+        <div class="wchip" id="chip-cam"><div class="dot"></div>摄像头</div>
+        <div class="wchip" id="chip-mp"><div class="dot"></div>MediaPipe</div>
+        <div class="wchip" id="chip-asr"><div class="dot"></div>ASR</div>
+        <div class="wchip" style="margin-left:auto;background:rgba(57,211,83,.06);border-color:rgba(57,211,83,.2)">
+          <div class="dot" style="background:var(--cyan)"></div>
+          <span id="fps-txt" style="color:var(--cyan);font-weight:600">0 FPS</span>
+        </div>
+      </div>
+
+      <div class="cam-outer">
+        <div class="cam-wrap">
+          <video id="cam-video" autoplay muted playsinline></video>
+          <canvas id="cam-canvas"></canvas>
+          <div id="no-face-warn">⚠ 未检测到人脸</div>
+          <div class="fps-tag" id="fps-tag">0 FPS</div>
+          <div class="track-tag" id="track-tag">未追踪</div>
+          <div class="cam-badges">
+            <div class="cpill">眼 <b id="pil-eye">-</b></div>
+            <div class="cpill">嘴 <b id="pil-mouth">-</b></div>
+            <div class="cpill">笑容 <b id="pil-smile">-</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 下半：25维 + 日志 -->
+    <div class="mid-bot">
+      <div class="card">
+        <div class="ch"><span><span class="ch-icon">◈</span>25 维特征向量</span>
+          <span class="badge live">FaceBehaviorModel 输入</span></div>
+        <div class="cb" style="padding:8px 10px">
+          <div class="feat-grid" id="feat-grid"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ch"><span><span class="ch-icon">▶</span>实时日志</span></div>
+        <div class="cb" style="padding:6px 8px">
+          <div class="log-scroll" id="log-wrap"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ 右栏 ══ -->
+  <div class="col">
+
+    <!-- 关键指标仪表盘 -->
+    <div class="card">
+      <div class="ch"><span><span class="ch-icon">◉</span>关键指标</span>
+        <span class="badge live">实时</span></div>
+      <div class="cb" style="padding:8px 10px">
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-lbl">眼部开合</div>
+            <div class="kpi-val" id="kpi-eye" style="color:var(--cyan)">-</div>
+            <div class="kpi-sub">Eye Openness</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" id="kbar-eye" style="background:var(--cyan);width:0%"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">嘴部开合</div>
+            <div class="kpi-val" id="kpi-mouth" style="color:var(--orange)">-</div>
+            <div class="kpi-sub">Mouth Open</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" id="kbar-mouth" style="background:var(--orange);width:0%"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">微笑强度</div>
+            <div class="kpi-val" id="kpi-smile" style="color:var(--green)">-</div>
+            <div class="kpi-sub">Smile Score</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" id="kbar-smile" style="background:var(--green);width:0%"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-lbl">皱眉强度</div>
+            <div class="kpi-val" id="kpi-brow" style="color:var(--yellow)">-</div>
+            <div class="kpi-sub">Brow Frown</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" id="kbar-brow" style="background:var(--yellow);width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 表情分类 -->
+    <div class="card">
+      <div class="ch"><span><span class="ch-icon">◑</span>表情分类</span>
+        <span class="badge" id="expr-badge">-</span></div>
+      <div class="cb">
+        <div class="expr-wrap">
+          <div class="expr-donut">
+            <canvas id="expr-canvas" width="108" height="108"></canvas>
+            <div class="expr-center">
+              <div class="ec-name" id="expr-name">-</div>
+              <div class="ec-pct" id="expr-pct">-</div>
+            </div>
+          </div>
+          <div class="expr-bars" id="expr-bars"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VA 情感维度 -->
+    <div class="card">
+      <div class="ch"><span><span class="ch-icon">◎</span>情感维度 VA</span>
+        <span class="badge">效价 · 唤醒</span></div>
+      <div class="cb">
+        <div class="va-wrap">
+          <canvas id="va-canvas" width="110" height="110" style="flex-shrink:0;border-radius:50%"></canvas>
+          <div class="va-nums">
+            <div class="vacard">
+              <div class="valbl">VALENCE 效价（正负情绪）</div>
+              <div class="vabig neu" id="va-val">0.00</div>
+            </div>
+            <div class="vacard">
+              <div class="valbl">AROUSAL 唤醒度（情绪强度）</div>
+              <div class="vabig neu" id="va-aro">0.00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 头部姿态 -->
+    <div class="card">
+      <div class="ch"><span><span class="ch-icon">⊕</span>头部姿态</span>
+        <span class="badge">Pitch · Yaw · Roll</span></div>
+      <div class="cb">
+        <div class="pose-wrap">
+          <div class="pdial">
+            <div class="plbl">俯仰 Pitch</div>
+            <canvas id="dial-pitch" width="80" height="80"></canvas>
+            <div class="pval" id="v-pitch">0.0°</div>
+          </div>
+          <div class="pdial">
+            <div class="plbl">偏航 Yaw</div>
+            <canvas id="dial-yaw" width="80" height="80"></canvas>
+            <div class="pval" id="v-yaw">0.0°</div>
+          </div>
+          <div class="pdial">
+            <div class="plbl">滚转 Roll</div>
+            <canvas id="dial-roll" width="80" height="80"></canvas>
+            <div class="pval" id="v-roll">0.0°</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 系统状态 -->
+    <div class="card">
+      <div class="ch"><span><span class="ch-icon">⊞</span>系统状态</span></div>
+      <div class="cb" style="padding:8px 10px">
+        <div class="sys-grid">
+          <div class="sys-row">
+            <span class="sys-key">后端服务</span>
+            <span class="sys-val" id="sys-ws">未连接</span>
+          </div>
+          <div class="sys-row">
+            <span class="sys-key">MediaPipe</span>
+            <span class="sys-val" id="sys-mp">等待</span>
+          </div>
+          <div class="sys-row">
+            <span class="sys-key">ASR 语音</span>
+            <span class="sys-val" id="sys-asr">-</span>
+          </div>
+          <div class="sys-row">
+            <span class="sys-key">处理帧率</span>
+            <span class="sys-val ok" id="sys-fps">0 FPS</span>
+          </div>
+          <div class="sys-row">
+            <span class="sys-key">人脸追踪</span>
+            <span class="sys-val" id="sys-face">未检测</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 本地 MediaPipe WASM 文件损坏，暂时禁用，使用后端处理模式 -->
+<!-- <script src="/static/mediapipe/face_mesh.js"></script> -->
+<script>
+/* ── 内置 Camera 工具类（替代 camera_utils.js，串行驱动避免堆积）── */
+class Camera {
+  constructor(videoEl, options){
+    this._video = videoEl;
+    this._onFrame = options.onFrame || (async()=>{});
+    this._running = false;
+    this._timer = null;
+    this._busy = false;
+  }
+  async start(){
+    this._running = true;
+    // 用 setInterval 15fps 驱动，串行执行，避免 MediaPipe 并发堆积
+    this._timer = setInterval(async () => {
+      if(!this._running || this._busy) return;
+      if(this._video.readyState < 2) return;
+      this._busy = true;
+      try {
+        await this._onFrame();
+      } catch(e) {
+        console.warn('[Camera] onFrame error:', e);
+      } finally {
+        this._busy = false;
+      }
+    }, 1000 / 15);
+  }
+  stop(){
+    this._running = false;
+    this._busy = false;
+    if(this._timer){ clearInterval(this._timer); this._timer = null; }
+  }
+}
+</script>
+<script>
+const WS_URL = 'ws://localhost:8800/ws/main';
+
+const AU_DEFS = [
+  {key:'AU1',  name:'AU1  内眉上扬', color:'#bc8cff'},
+  {key:'AU2',  name:'AU2  外眉上扬', color:'#bc8cff'},
+  {key:'AU4',  name:'AU4  皱眉',     color:'#d29922'},
+  {key:'AU6',  name:'AU6  脸颊上扬', color:'#3fb950'},
+  {key:'AU7',  name:'AU7  眼睑收紧', color:'#39d353'},
+  {key:'AU9',  name:'AU9  鼻皱',     color:'#f0883e'},
+  {key:'AU10', name:'AU10 上唇上扬', color:'#ffa657'},
+  {key:'AU12', name:'AU12 唇角上扬', color:'#3fb950'},
+  {key:'AU14', name:'AU14 酒窝',     color:'#3fb950'},
+  {key:'AU15', name:'AU15 唇角下压', color:'#f85149'},
+  {key:'AU17', name:'AU17 下巴上扬', color:'#ffa657'},
+  {key:'AU23', name:'AU23 嘴唇收紧', color:'#d29922'},
+  {key:'AU24', name:'AU24 嘴唇压紧', color:'#d29922'},
+  {key:'AU25', name:'AU25 嘴唇分开', color:'#58a6ff'},
+  {key:'AU26', name:'AU26 下颌下压', color:'#58a6ff'},
+];
+const FEAT_LABELS=['左眼','右眼','左眉','右眉','微笑','眼X左','眼Y左','眼X右','眼Y右','眉内L','眉内R','眉外L','眉外R','嘴开','嘴型','Pitch','Yaw','Roll','身X','身Y','身Z','呼吸','嘴宽','下巴','预留'];
+const EXPR_COLORS={'Neutral':'#8b949e','Happy':'#3fb950','Sad':'#58a6ff','Surprise':'#ffa657','Fear':'#bc8cff','Disgust':'#f0883e','Anger':'#f85149','Contempt':'#d29922'};
+const EXPR_ZH={'Neutral':'平静','Happy':'快乐','Sad':'悲伤','Surprise':'惊喜','Fear':'恐惧','Disgust':'厌恶','Anger':'愤怒','Contempt':'蔑视'};
+
+let ws=null,stream=null,camRunning=false;
+let frameTimer=null,fpsCount=0,fpsLast=performance.now(),fpsCurrent=0;
+let hasFace=false,lastPose={pitch:0,yaw:0,roll:0};
+let _mpCamera=null,_mpFaceMesh=null,_mpReady=false;
+
+/* ── 初始化 AU 列表（撑满整列高度）── */
+;(()=>{
+  const el=document.getElementById('au-list');
+  let h='';
+  AU_DEFS.forEach(d=>{
+    h+=`<div class="au-item">
+      <div class="au-row">
+        <span class="au-name">${d.name}</span>
+        <span class="au-val" id="auv-${d.key}">0.00</span>
+      </div>
+      <div class="au-track"><div class="au-fill" id="aub-${d.key}" style="width:0%;background:${d.color}"></div></div>
+    </div>`;
+  });
+  el.innerHTML=h;
+})();
+
+/* ── 初始化 25维格子 ── */
+;(()=>{
+  const g=document.getElementById('feat-grid');
+  let h='';
+  for(let i=0;i<25;i++) h+=`<div class="fc"><div class="fi">${FEAT_LABELS[i]}</div><div class="fv" id="fv${i}">0.00</div></div>`;
+  g.innerHTML=h;
+})();
+
+/* ── 工具 ── */
+function log(msg,cls=''){
+  const w=document.getElementById('log-wrap');
+  const t=new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  w.innerHTML+=`<div class="ll ${cls}">[${t}] ${msg}</div>`;
+  w.scrollTop=w.scrollHeight;
+  if(w.children.length>300) w.removeChild(w.firstChild);
+}
+function chip(id,on){document.getElementById(id)?.classList.toggle('active',on)}
+function setAU(key,val){
+  const v=Math.max(0,Math.min(1,val));
+  const ve=document.getElementById('auv-'+key);
+  const be=document.getElementById('aub-'+key);
+  if(ve) ve.textContent=v.toFixed(2);
+  if(be) be.style.width=(v*100)+'%';
+}
+function setKpi(id,barId,val,max){
+  const pct=Math.min(100,Math.max(0,val*100));
+  const el=document.getElementById(id);
+  const bar=document.getElementById(barId);
+  if(el) el.textContent=pct.toFixed(0)+'%';
+  if(bar) bar.style.width=pct+'%';
+}
+function setSys(id,val,cls){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.textContent=val;
+  el.className='sys-val'+(cls?' '+cls:'');
+}
+
+/* ── 浏览器端 MediaPipe 本地特征提取 ── */
+function _lmDist(lm,a,b){
+  return Math.sqrt((lm[a].x-lm[b].x)**2+(lm[a].y-lm[b].y)**2);
+}
+function _eyeAspect(lm,upperIds,lowerIds,cl,cr){
+  let v=0;
+  for(let i=0;i<upperIds.length;i++) v+=_lmDist(lm,upperIds[i],lowerIds[i]);
+  v/=upperIds.length;
+  const h=_lmDist(lm,cl,cr)+1e-6;
+  return Math.min(Math.max(v/h*2.5,0),1);
+}
+function _clamp(v,lo,hi){return Math.min(Math.max(v,lo),hi);}
+function _extractLocalFeatures(lm){
+  const f=new Float32Array(25);
+  f[0]=_eyeAspect(lm,[159,160,161],[145,144,153],33,133);
+  f[1]=_eyeAspect(lm,[386,385,384],[374,373,380],362,263);
+  f[2]=_clamp((lm[105].y-lm[70].y)*12+0.5,0,1);
+  f[3]=_clamp((lm[334].y-lm[300].y)*12+0.5,0,1);
+  const cL=_lmDist(lm,291,308),cR=_lmDist(lm,61,78);
+  const mw=_lmDist(lm,61,291)+1e-6;
+  f[4]=_clamp((Math.max(cL,cR)-Math.min(_lmDist(lm,61,291)*0.3,cL,cR))/(mw*0.4),0,1);
+  f[5]=lm.length>468?_clamp((lm[468].x-lm[33].x)/(_lmDist(lm,33,133)+1e-6)*2-1,-1,1):0;
+  f[6]=lm.length>468?_clamp((lm[468].y-lm[159].y)/(_lmDist(lm,159,145)+1e-6)*2-1,-1,1):0;
+  f[7]=lm.length>473?_clamp((lm[473].x-lm[362].x)/(_lmDist(lm,362,263)+1e-6)*2-1,-1,1):0;
+  f[8]=lm.length>473?_clamp((lm[473].y-lm[386].y)/(_lmDist(lm,386,374)+1e-6)*2-1,-1,1):0;
+  f[9] =_clamp((lm[70].y-lm[107].y)*15,-1,1);
+  f[10]=_clamp((lm[300].y-lm[336].y)*15,-1,1);
+  f[11]=_clamp((lm[46].y-lm[70].y)*15,-1,1);
+  f[12]=_clamp((lm[276].y-lm[300].y)*15,-1,1);
+  const mh=_lmDist(lm,13,14);
+  f[13]=_clamp(mh/(mw*0.4),0,1);
+  f[14]=_clamp(f[4]*2-0.5,-1,1);
+  f[15]=_clamp((lm[10].y-lm[152].y)*3-0.5,-1,1);
+  f[16]=_clamp((lm[454].x-lm[234].x)*3-0.5,-1,1);
+  f[17]=_clamp((lm[234].y-lm[454].y)*5,-1,1);
+  f[18]=f[16]*0.3;f[19]=f[15]*0.3;f[20]=f[17]*0.2;
+  f[21]=0;
+  f[22]=_clamp(_lmDist(lm,61,291)*5,0,1);
+  f[23]=_clamp((lm[17].y-lm[0].y)*8,-1,1);
+  f[24]=0;
+  return f;
+}
+function _featuresToAU(f){
+  const browInner=Math.max(0,(f[9]+f[10])/2);
+  const browOuter=Math.max(0,(f[11]+f[12])/2);
+  const eyeOpen=(f[0]+f[1])/2;
+  return {
+    AU1:Math.round(Math.max(0,browOuter*0.8)*1000)/1000,
+    AU2:Math.round(Math.max(0,browOuter*0.6)*1000)/1000,
+    AU4:Math.round(Math.max(0,browInner)*1000)/1000,
+    AU6:Math.round(f[4]*1000)/1000,
+    AU7:Math.round((1-eyeOpen)*1000)/1000,
+    AU9:Math.round(Math.max(0,browInner*0.3)*1000)/1000,
+    AU10:Math.round(Math.max(0,f[14]*0.5+0.1>0?f[14]*0.5+0.1:0)*1000)/1000,
+    AU12:Math.round(f[4]*1000)/1000,
+    AU14:Math.round(f[4]*0.4*1000)/1000,
+    AU15:Math.round(Math.max(0,f[14]<0?-f[14]*0.5:0)*1000)/1000,
+    AU17:Math.round(Math.max(0,f[23]*0.5)*1000)/1000,
+    AU23:Math.round(Math.max(0,(0.3-f[13])*0.5)*1000)/1000,
+    AU24:Math.round(Math.max(0,(0.2-f[13])*0.3)*1000)/1000,
+    AU25:Math.round(f[13]*1000)/1000,
+    AU26:Math.round(Math.max(0,f[13]*0.6)*1000)/1000,
+  };
+}
+function _featuresToExpr(au){
+  const s=au.AU12,m=au.AU25,e=1-(au.AU7||0);
+  const raw={Neutral:Math.max(0,1-s*1.5-m*0.5),Happy:Math.min(1,s*2),
+    Sad:Math.max(0,(0.5-e)*0.8),Surprise:Math.max(0,m*1.5-0.2),
+    Fear:0.02,Disgust:0.02,Anger:0.02,Contempt:0.01};
+  const total=Object.values(raw).reduce((a,b)=>a+b,0)||1;
+  return Object.fromEntries(Object.entries(raw).map(([k,v])=>[k,Math.round(v/total*1000)/1000]));
+}
+function _featuresToVA(au){
+  const e=1-(au.AU7||0);
+  return {valence:Math.round((au.AU12-Math.max(0,(0.5-e)*0.8))*1000)/1000,
+          arousal:Math.round((au.AU25+au.AU12*0.5-0.2)*1000)/1000};
+}
+function _initLocalMediPipe(videoEl){
+  if(_mpReady||typeof FaceMesh==='undefined') return;
+  log('正在初始化本地 MediaPipe…','info');
+  setSys('sys-mp','加载中…','warn');
+  // 使用本地静态文件（后端 /static/mediapipe/ 挂载），彻底避免 CDN 网络问题
+  _mpFaceMesh=new FaceMesh({locateFile:f=>`/static/mediapipe/${f}`});
+  _mpFaceMesh.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
+  _mpFaceMesh.onResults(results=>{
+    // FPS 计数
+    fpsCount++;
+    const now=performance.now();
+    if(now-fpsLast>=1000){
+      fpsCurrent=fpsCount;
+      const fps=fpsCount+' FPS';
+      document.getElementById('fps-tag').textContent=fps;
+      document.getElementById('fps-txt').textContent=fps;
+      setSys('sys-fps',fps,'ok');
+      fpsCount=0;fpsLast=now;
+    }
+    if(!results.multiFaceLandmarks||results.multiFaceLandmarks.length===0){
+      hasFace=false;
+      document.getElementById('no-face-warn').style.display='block';
+      const tt=document.getElementById('track-tag');
+      tt.textContent='未追踪';tt.className='track-tag';
+      setSys('sys-face','未检测','err');
+      return;
+    }
+    hasFace=true;
+    const lm=results.multiFaceLandmarks[0];
+    const f=_extractLocalFeatures(lm);
+    // 25维特征格子
+    for(let i=0;i<25;i++){
+      const el=document.getElementById('fv'+i);
+      if(el){const v=f[i];el.textContent=v.toFixed(2);el.style.color=v>0.5?'var(--green)':v<-0.3?'var(--red)':'var(--text1)';}
+    }
+    // 热力图颜色
+    updateHeatmap(f);
+    // 头部姿态
+    lastPose={pitch:f[15]*45,yaw:f[16]*45,roll:f[17]*45};
+    drawDialAll();
+    // AU更新
+    const au=_featuresToAU(f);
+    AU_DEFS.forEach(d=>setAU(d.key,au[d.key]||0));
+    const eyePct=(1-(au.AU7||0));
+    const mouthPct=au.AU25||0;
+    const smilePct=au.AU12||0;
+    const browPct=au.AU4||0;
+    document.getElementById('pil-eye').textContent=(eyePct*100).toFixed(0)+'%';
+    document.getElementById('pil-mouth').textContent=(mouthPct*100).toFixed(0)+'%';
+    document.getElementById('pil-smile').textContent=(smilePct*100).toFixed(0)+'%';
+    // KPI
+    setKpi('kpi-eye','kbar-eye',eyePct,1);
+    setKpi('kpi-mouth','kbar-mouth',mouthPct,1);
+    setKpi('kpi-smile','kbar-smile',smilePct,1);
+    setKpi('kpi-brow','kbar-brow',browPct,1);
+    // 表情&VA
+    renderExpr(_featuresToExpr(au));
+    renderVA(_featuresToVA(au));
+    // 追踪
+    document.getElementById('no-face-warn').style.display='none';
+    const tt=document.getElementById('track-tag');
+    tt.textContent='✓ 已追踪';tt.className='track-tag ok';
+    chip('chip-mp',true);
+    setSys('sys-face','✓ 追踪中','ok');
+    setSys('sys-mp','✓ 运行中','ok');
+  });
+  _mpCamera=new Camera(videoEl,{
+    onFrame:async()=>{if(camRunning&&_mpFaceMesh) await _mpFaceMesh.send({image:videoEl});},
+    width:640,height:480
+  });
+  // 必须先 initialize() 等待 WASM 加载完毕，再启动 Camera
+  log('正在加载 MediaPipe WASM 模型…','info');
+  _mpFaceMesh.initialize().then(()=>{
+    _mpReady=true;
+    log('本地 MediaPipe 已就绪，启动帧处理','ok');
+    chip('chip-mp',true);
+    setSys('sys-mp','✓ 运行中','ok');
+    return _mpCamera.start();
+  }).catch(e=>{log('MediaPipe 初始化失败: '+e,'err');setSys('sys-mp','初始化失败','err');});
+}
+
+/* ── 热力图更新 ── */
+function updateHeatmap(f){
+  // 利用feat-grid的格子背景来做热力可视化
+  for(let i=0;i<25;i++){
+    const fc=document.getElementById('fv'+i)?.parentElement;
+    if(!fc) continue;
+    const v=Math.abs(f[i]);
+    const intensity=Math.min(v,1);
+    if(f[i]>0.5){
+      fc.style.background=`rgba(63,185,80,${intensity*0.2+0.05})`;
+      fc.style.borderColor=`rgba(63,185,80,${intensity*0.4})`;
+    } else if(f[i]<-0.3){
+      fc.style.background=`rgba(248,81,73,${Math.abs(f[i])*0.2+0.05})`;
+      fc.style.borderColor=`rgba(248,81,73,${Math.abs(f[i])*0.4})`;
+    } else {
+      fc.style.background='var(--bg3)';
+      fc.style.borderColor='var(--border)';
+    }
+  }
+}
+
+/* ── WebSocket ── */
+function connectWS(){
+  if(ws&&ws.readyState<2) return;
+  ws=new WebSocket(WS_URL);
+  ws.onopen=()=>{
+    document.getElementById('sdot').classList.add('on');
+    document.getElementById('stxt').textContent='已连接 8800';
+    chip('chip-ws',true);
+    setSys('sys-ws','✓ 已连接','ok');
+    log('WebSocket 连接成功','ok');
+  };
+  ws.onclose=()=>{
+    document.getElementById('sdot').classList.remove('on');
+    document.getElementById('stxt').textContent='连接断开';
+    chip('chip-ws',false);
+    setSys('sys-ws','断开','err');
+    log('连接断开，5秒后重连','err');
+    setTimeout(connectWS,5000);
+  };
+  ws.onerror=()=>log('WebSocket 错误','err');
+  ws.onmessage=e=>handleMsg(JSON.parse(e.data));
+}
+
+function handleMsg(msg){
+  const t=msg.type;
+  if(t==='status'){
+    const m=msg.modules||{};
+    chip('chip-asr',m.asr);
+    setSys('sys-asr',m.asr?'✓ 就绪':'未就绪',m.asr?'ok':'warn');
+    log(`模块 视觉:${m.vision?'✓':'✗'} ASR:${m.asr?'✓':'✗'} 驱动:${m.driver?'✓':'✗'} LLM:${m.llm?'✓':'✗'}`,'info');
+  } else if(t==='au_features'){
+    const au=msg.aus||{};
+    const mapped={
+      AU1:au.AU1||0,AU2:au.AU2||0,AU4:au.AU4||0,
+      AU6:au.AU6||0,AU7:au.AU7||(au.eye_l||0),AU9:au.AU9||0,
+      AU10:au.AU10||0,AU12:au.AU12||(au.smile||0),AU14:au.AU14||0,
+      AU15:au.AU15||0,AU17:au.AU17||0,AU23:au.AU23||0,
+      AU24:au.AU24||0,AU25:au.AU25||(au.mouth||0),AU26:au.AU26||0,
+    };
+    AU_DEFS.forEach(d=>setAU(d.key,mapped[d.key]||0));
+    const ep=(1-mapped.AU7);
+    document.getElementById('pil-eye').textContent=(ep*100).toFixed(0)+'%';
+    document.getElementById('pil-mouth').textContent=((mapped.AU25)*100).toFixed(0)+'%';
+    document.getElementById('pil-smile').textContent=((mapped.AU12)*100).toFixed(0)+'%';
+    setKpi('kpi-eye','kbar-eye',ep,1);
+    setKpi('kpi-mouth','kbar-mouth',mapped.AU25,1);
+    setKpi('kpi-smile','kbar-smile',mapped.AU12,1);
+    setKpi('kpi-brow','kbar-brow',mapped.AU4,1);
+    // 更新 FPS、人脸追踪状态、表情、VA
+    fpsCount++;
+    const nowT=performance.now();
+    if(nowT-fpsLast>=1000){
+      fpsCurrent=fpsCount;
+      const fps=fpsCount+' FPS';
+      document.getElementById('fps-tag').textContent=fps;
+      document.getElementById('fps-txt').textContent=fps;
+      setSys('sys-fps',fps,'ok');
+      fpsCount=0;fpsLast=nowT;
+    }
+    hasFace=true;
+    document.getElementById('no-face-warn').style.display='none';
+    const tt=document.getElementById('track-tag');
+    tt.textContent='✓ 已追踪';tt.className='track-tag ok';
+    setSys('sys-face','✓ 追踪中','ok');
+    setSys('sys-mp','✓ 运行中','ok');
+    chip('chip-mp',true);
+    // 表情与VA估算
+    renderExpr(_featuresToExpr(mapped));
+    renderVA(_featuresToVA(mapped));
+  } else if(t==='drive'){
+    const f=msg.features||[];
+    if(f.length>=25){
+      for(let i=0;i<25;i++){
+        const el=document.getElementById('fv'+i);
+        if(el){const v=f[i]||0;el.textContent=v.toFixed(2);el.style.color=v>0.5?'var(--green)':v<-0.3?'var(--red)':'var(--text1)';}
+      }
+      lastPose={pitch:(f[15]||0)*45,yaw:(f[16]||0)*45,roll:(f[17]||0)*45};
+      drawDialAll();
+    }
+    if(msg.expression) renderExpr(msg.expression);
+    if(msg.va) renderVA(msg.va);
+    hasFace=!!msg.face_detected;
+    document.getElementById('no-face-warn').style.display=hasFace?'none':'block';
+    const tt=document.getElementById('track-tag');
+    tt.textContent=hasFace?'✓ 已追踪':'未追踪';
+    tt.className='track-tag'+(hasFace?' ok':'');
+    setSys('sys-face',hasFace?'✓ 追踪中':'未检测',hasFace?'ok':'warn');
+  } else if(t==='llm_reply'){
+    log('LLM: '+(msg.text||'').slice(0,60),'info');
+  } else if(t==='asr'){
+    log('ASR: '+(msg.text||''));
+  }
+}
+
+/* ── 表情饼图 ── */
+function renderExpr(expr){
+  const entries=Object.entries(expr).sort((a,b)=>b[1]-a[1]);
+  const top=entries[0];if(!top)return;
+  document.getElementById('expr-name').textContent=EXPR_ZH[top[0]]||top[0];
+  document.getElementById('expr-pct').textContent=(top[1]*100).toFixed(1)+'%';
+  document.getElementById('expr-badge').textContent=EXPR_ZH[top[0]]||top[0];
+  const cv=document.getElementById('expr-canvas');
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,108,108);
+  let start=-Math.PI/2,total=entries.reduce((s,[,v])=>s+v,0)||1;
+  entries.forEach(([name,val])=>{
+    const sw=(val/total)*Math.PI*2;
+    ctx.beginPath();ctx.moveTo(54,54);ctx.arc(54,54,50,start,start+sw);ctx.closePath();
+    ctx.fillStyle=EXPR_COLORS[name]||'#8b949e';ctx.fill();
+    start+=sw;
+  });
+  ctx.beginPath();ctx.arc(54,54,30,0,Math.PI*2);
+  ctx.fillStyle='#0d1117';ctx.fill();
+  let bars='';
+  entries.slice(0,8).forEach(([name,val])=>{
+    bars+=`<div class="ebrow">
+      <div class="eblbl">${EXPR_ZH[name]||name}</div>
+      <div class="ebtrack"><div class="ebfill" style="width:${(val*100).toFixed(1)}%;background:${EXPR_COLORS[name]||'#8b949e'}"></div></div>
+      <div class="ebval">${(val*100).toFixed(0)}%</div>
+    </div>`;
+  });
+  document.getElementById('expr-bars').innerHTML=bars;
+}
+
+/* ── VA 散点图 ── */
+function renderVA(va){
+  const v=va.valence||0,a=va.arousal||0;
+  const vEl=document.getElementById('va-val'),aEl=document.getElementById('va-aro');
+  vEl.textContent=v.toFixed(2);
+  vEl.className='vabig '+(v>0.1?'pos':v<-0.1?'neg':'neu');
+  aEl.textContent=a.toFixed(2);
+  aEl.className='vabig '+(a>0.1?'pos':a<-0.1?'neg':'neu');
+  const cv=document.getElementById('va-canvas');
+  const ctx=cv.getContext('2d'),sz=110,cx=55,cy=55;
+  ctx.clearRect(0,0,sz,sz);
+  // 背景渐变
+  const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,50);
+  gr.addColorStop(0,'rgba(88,166,255,.04)');
+  gr.addColorStop(1,'transparent');
+  ctx.fillStyle=gr;ctx.fillRect(0,0,sz,sz);
+  ctx.strokeStyle='rgba(48,54,61,.8)';ctx.lineWidth=1;
+  [[cx,4,cx,sz-4],[4,cy,sz-4,cy]].forEach(([x1,y1,x2,y2])=>{
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()});
+  [40,20].forEach(r=>{ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke()});
+  ctx.fillStyle='rgba(72,79,88,.9)';ctx.font='7px sans-serif';ctx.textAlign='center';
+  ctx.fillText('积极',cx,10);ctx.fillText('消极',cx,sz-3);
+  ctx.textAlign='left';ctx.fillText('激动',sz-22,cy+3);
+  ctx.textAlign='right';ctx.fillText('平静',22,cy+3);
+  const px=cx+v*40,py=cy-a*40;
+  ctx.beginPath();ctx.arc(px,py,10,0,Math.PI*2);
+  const dotColor=v>0?'#3fb950':'#f85149';
+  ctx.fillStyle=dotColor;ctx.fill();
+  ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);
+  ctx.strokeStyle=v>0?'rgba(63,185,80,.3)':'rgba(248,81,73,.3)';ctx.lineWidth=3;ctx.stroke();
+}
+
+/* ── 表盘 ── */
+function drawDial(id,val,min,max,color){
+  const cv=document.getElementById(id);if(!cv)return;
+  const ctx=cv.getContext('2d'),sz=80,cx=40,cy=40,r=32;
+  ctx.clearRect(0,0,sz,sz);
+  // 背景圆
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.strokeStyle='rgba(33,38,45,.9)';ctx.lineWidth=4;ctx.stroke();
+  // 刻度弧
+  const norm=(val-min)/(max-min);
+  const s=-Math.PI*0.75,sw=norm*Math.PI*1.5;
+  // 背景弧
+  ctx.beginPath();ctx.arc(cx,cy,r,s,s+Math.PI*1.5);
+  ctx.strokeStyle='rgba(33,38,45,.9)';ctx.lineWidth=5;ctx.lineCap='round';ctx.stroke();
+  // 值弧
+  if(Math.abs(sw)>0.01){
+    const gr=ctx.createLinearGradient(cx-r,cy,cx+r,cy);
+    gr.addColorStop(0,color+'80');gr.addColorStop(1,color);
+    ctx.beginPath();ctx.arc(cx,cy,r,s,s+sw);
+    ctx.strokeStyle=gr;ctx.lineWidth=5;ctx.lineCap='round';ctx.stroke();
+  }
+  // 指针
+  const a=s+sw;
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(a)*20,cy+Math.sin(a)*20);
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);
+  ctx.fillStyle=color;ctx.fill();
+  // 中心发光点
+  ctx.beginPath();ctx.arc(cx,cy,2,0,Math.PI*2);
+  ctx.fillStyle='#fff';ctx.fill();
+}
+function drawDialAll(){
+  drawDial('dial-pitch',lastPose.pitch,-45,45,'#58a6ff');
+  drawDial('dial-yaw',  lastPose.yaw,  -45,45,'#bc8cff');
+  drawDial('dial-roll', lastPose.roll, -45,45,'#ffa657');
+  document.getElementById('v-pitch').textContent=lastPose.pitch.toFixed(1)+'°';
+  document.getElementById('v-yaw').textContent  =lastPose.yaw.toFixed(1)+'°';
+  document.getElementById('v-roll').textContent =lastPose.roll.toFixed(1)+'°';
+}
+
+/* ── 摄像头 ── */
+async function toggleCam(){
+  if(camRunning){stopCam();return;}
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:15}}
+    });
+    const v=document.getElementById('cam-video');
+    v.srcObject=stream;camRunning=true;
+    chip('chip-cam',true);
+    document.getElementById('btn-cam').textContent='🔴 关闭摄像头';
+    document.getElementById('btn-cam').classList.add('active');
+    log('摄像头已开启','ok');
+    v.onloadedmetadata=()=>{
+      // 优先使用后端处理模式（稳定可靠）
+      log('使用后端处理模式，实时发帧','info');
+      startFrameLoop();
+      // 同时尝试初始化本地 MediaPipe（可选增强，失败不影响主流程）
+      if(typeof FaceMesh!=='undefined'){
+        _initLocalMediPipe(v);
+      }
+    };
+  }catch(e){log('摄像头失败: '+e.message,'err');}
+}
+function stopCam(){
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  clearInterval(frameTimer);camRunning=false;
+  if(_mpCamera){try{_mpCamera.stop();}catch(e){}_mpCamera=null;}
+  _mpReady=false;_mpFaceMesh=null;
+  chip('chip-cam',false);chip('chip-mp',false);
+  setSys('sys-mp','已停止','warn');setSys('sys-face','未检测','');
+  document.getElementById('btn-cam').textContent='📷 开启摄像头';
+  document.getElementById('btn-cam').classList.remove('active');
+  log('摄像头已关闭');
+}
+function startFrameLoop(){
+  const v=document.getElementById('cam-video');
+  const cc=document.getElementById('cam-canvas');
+  clearInterval(frameTimer);
+  frameTimer=setInterval(()=>{
+    if(!camRunning||!ws||ws.readyState!==1)return;
+    cc.width=v.videoWidth||640;cc.height=v.videoHeight||480;
+    const ctx=cc.getContext('2d');
+    ctx.drawImage(v,0,0,cc.width,cc.height);
+    if(hasFace){
+      const pw=cc.width,ph=cc.height;
+      ctx.strokeStyle='rgba(63,185,80,.65)';ctx.lineWidth=2;
+      ctx.strokeRect(pw*0.2,ph*0.06,pw*0.6,ph*0.88);
+      const len=22,col='rgba(63,185,80,.9)';
+      ctx.strokeStyle=col;ctx.lineWidth=3;
+      [[pw*0.2,ph*0.06],[pw*0.8,ph*0.06],[pw*0.2,ph*0.94],[pw*0.8,ph*0.94]].forEach(([x,y],i)=>{
+        ctx.beginPath();
+        ctx.moveTo(x+(i%2===0?len:-len),y);ctx.lineTo(x,y);ctx.lineTo(x,y+(i<2?len:-len));
+        ctx.stroke();
+      });
+    }
+    const b64=cc.toDataURL('image/jpeg',0.7).split(',')[1];
+    ws.send(JSON.stringify({type:'frame',image:b64}));
+  },1000/15);
+}
+
+/* ── 初始化 ── */
+;(()=>{
+  renderExpr({'Neutral':0.6,'Happy':0.15,'Sad':0.07,'Surprise':0.07,'Fear':0.04,'Disgust':0.03,'Anger':0.02,'Contempt':0.02});
+  renderVA({valence:0,arousal:0});
+  drawDialAll();
+  connectWS();
+  log('正在连接 ws://localhost:8800/ws/main…','info');
+})();
+</script>
+</body>
+</html>

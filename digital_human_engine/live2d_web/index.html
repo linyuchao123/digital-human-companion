@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雫人物 Live2D 实时驱动</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            background: linear-gradient(45deg, #e94560, #ff6b6b, #f4d03f);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .main-container {
+            display: flex;
+            gap: 25px;
+            max-width: 1400px;
+            width: 100%;
+        }
+        
+        .viewer-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        #canvas-container {
+            position: relative;
+            width: 800px;
+            height: 700px;
+            background: radial-gradient(circle at center, #1e3a5f 0%, #0d1b2a 100%);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(233, 69, 96, 0.3);
+        }
+        
+        #live2d-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .overlay-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.85em;
+        }
+        
+        .overlay-info.model-status {
+            left: 10px;
+            right: auto;
+        }
+        
+        .controls-section {
+            width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 720px;
+            overflow-y: auto;
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .panel-title {
+            font-size: 1em;
+            margin-bottom: 12px;
+            color: #e94560;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        #status {
+            padding: 10px 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #e94560, #c73e54);
+            font-size: 0.9em;
+        }
+        
+        #status.connected { background: linear-gradient(135deg, #16c79a, #0ea5e9); }
+        #status.connecting { background: linear-gradient(135deg, #f4d03f, #e67e22); }
+        
+        #model-status {
+            padding: 10px 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #666, #444);
+            font-size: 0.9em;
+            margin-top: 8px;
+        }
+        
+        #model-status.loaded { background: linear-gradient(135deg, #16c79a, #0ea5e9); }
+        #model-status.loading { background: linear-gradient(135deg, #f4d03f, #e67e22); }
+        #model-status.error { background: linear-gradient(135deg, #e94560, #c73e54); }
+        
+        .button-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all 0.3s;
+            flex: 1;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(233, 69, 96, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+        
+        .stat-label { font-size: 0.7em; color: #a0a0a0; margin-bottom: 3px; }
+        .stat-value { font-size: 1.1em; font-weight: bold; color: #16c79a; }
+        
+        .params-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .param-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        
+        .param-label {
+            font-size: 0.75em;
+            color: #a0a0a0;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .param-value {
+            font-family: 'Consolas', monospace;
+            font-size: 0.9em;
+            color: #f4d03f;
+        }
+        
+        .param-bar {
+            height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        
+        .param-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e94560, #f4d03f);
+            transition: width 0.08s linear;
+        }
+        
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(233, 69, 96, 0.4); border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🎭 雫人物 Live2D 实时驱动</h1>
+    
+    <div class="main-container">
+        <div class="viewer-section">
+            <div id="canvas-container">
+                <canvas id="live2d-canvas"></canvas>
+                <div class="overlay-info">FPS: <span id="fps">0</span></div>
+                <div class="overlay-info model-status" id="model-overlay">模型未加载</div>
+            </div>
+        </div>
+        
+        <div class="controls-section">
+            <div class="panel">
+                <div class="panel-title">🔗 连接控制</div>
+                <div id="model-status">模型未加载</div>
+                <div id="status" style="margin-top: 8px;">WebSocket 未连接</div>
+                <div class="button-group">
+                    <button class="btn-primary" onclick="connectWebSocket()" id="btn-connect">连接WS</button>
+                    <button class="btn-secondary" onclick="disconnectWebSocket()" id="btn-disconnect" disabled>断开</button>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-title">📊 实时统计</div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">接收帧数</div>
+                        <div class="stat-value" id="frame-count">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">数据延迟</div>
+                        <div class="stat-value" id="latency">--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">头部角度</div>
+                        <div class="stat-value" id="head-angle">--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">表情强度</div>
+                        <div class="stat-value" id="expression-intensity">--</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-title">🎚️ 参数监控 (24个)</div>
+                <div class="params-grid" id="params-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live2D SDK -->
+    <script src="js/live2dcubismcore.min.js"></script>
+    <script src="js/pixi.min.js"></script>
+    <script src="js/cubism4.min.js"></script>
+    
+    <script>
+        // ============================================================
+        // WebSocket CamelCase → Live2D PARAM_UPPER_CASE 参数映射
+        // ============================================================
+        const PARAM_MAP = {
+            'ParamAngleX': 'PARAM_ANGLE_X',
+            'ParamAngleY': 'PARAM_ANGLE_Y',
+            'ParamAngleZ': 'PARAM_ANGLE_Z',
+            'ParamEyeLOpen': 'PARAM_EYE_L_OPEN',
+            'ParamEyeROpen': 'PARAM_EYE_R_OPEN',
+            'ParamEyeBallX': 'PARAM_EYE_BALL_X',
+            'ParamEyeBallY': 'PARAM_EYE_BALL_Y',
+            'ParamEyeBallForm': 'PARAM_EYE_BALL_FORM',
+            'ParamBrowLY': 'PARAM_BROW_L_Y',
+            'ParamBrowRY': 'PARAM_BROW_R_Y',
+            'ParamBrowLX': 'PARAM_BROW_L_X',
+            'ParamBrowRX': 'PARAM_BROW_R_X',
+            'ParamBrowLAngle': 'PARAM_BROW_L_ANGLE',
+            'ParamBrowRAngle': 'PARAM_BROW_R_ANGLE',
+            'ParamBrowLForm': 'PARAM_BROW_L_FORM',
+            'ParamBrowRForm': 'PARAM_BROW_R_FORM',
+            'ParamMouthOpenY': 'PARAM_MOUTH_OPEN_Y',
+            'ParamMouthForm': 'PARAM_MOUTH_FORM',
+            'ParamMouthSize': 'PARAM_MOUTH_SIZE',
+            'ParamTere': 'PARAM_TERE',
+            'ParamBodyX': 'PARAM_BODY_X',
+            'ParamBodyY': 'PARAM_BODY_Y',
+            'ParamBodyZ': 'PARAM_BODY_Z',
+            'ParamBreath': 'PARAM_BREATH',
+        };
+
+        // 参数配置 (用于UI显示)
+        const PARAMS_CONFIG = {
+            'ParamAngleX': { min: -30, max: 30, default: 0, label: '头部X' },
+            'ParamAngleY': { min: -30, max: 30, default: 0, label: '头部Y' },
+            'ParamAngleZ': { min: -30, max: 30, default: 0, label: '头部Z' },
+            'ParamEyeLOpen': { min: 0, max: 1, default: 1, label: '左眼开' },
+            'ParamEyeROpen': { min: 0, max: 1, default: 1, label: '右眼开' },
+            'ParamEyeBallX': { min: -1, max: 1, default: 0, label: '眼球X' },
+            'ParamEyeBallY': { min: -1, max: 1, default: 0, label: '眼球Y' },
+            'ParamEyeBallForm': { min: -1, max: 1, default: 0, label: '眼形' },
+            'ParamBrowLY': { min: -1, max: 1, default: 0, label: '左眉Y' },
+            'ParamBrowRY': { min: -1, max: 1, default: 0, label: '右眉Y' },
+            'ParamBrowLX': { min: -1, max: 1, default: 0, label: '左眉X' },
+            'ParamBrowRX': { min: -1, max: 1, default: 0, label: '右眉X' },
+            'ParamBrowLAngle': { min: -1, max: 1, default: 0, label: '左眉角' },
+            'ParamBrowRAngle': { min: -1, max: 1, default: 0, label: '右眉角' },
+            'ParamBrowLForm': { min: 0, max: 1, default: 0, label: '左眉形' },
+            'ParamBrowRForm': { min: 0, max: 1, default: 0, label: '右眉形' },
+            'ParamMouthOpenY': { min: 0, max: 1, default: 0, label: '嘴开合' },
+            'ParamMouthForm': { min: -1, max: 1, default: 0, label: '嘴形' },
+            'ParamMouthSize': { min: -1, max: 1, default: 0, label: '嘴大小' },
+            'ParamTere': { min: 0, max: 1, default: 0, label: '害羞' },
+            'ParamBodyX': { min: -10, max: 10, default: 0, label: '身体X' },
+            'ParamBodyY': { min: -10, max: 10, default: 0, label: '身体Y' },
+            'ParamBodyZ': { min: -10, max: 10, default: 0, label: '身体Z' },
+            'ParamBreath': { min: 0, max: 1, default: 0, label: '呼吸' },
+        };
+
+        // ============================================================
+        // 全局状态
+        // ============================================================
+        let ws = null;
+        let currentParams = {};
+        let frameCount = 0;
+        let fpsCounter = 0;
+        let lastFpsTime = 0;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT = 3;
+        
+        let app = null;      // PIXI Application
+        let live2dModel = null;  // Live2D Model
+        let wsParamsBuffer = {}; // 参数缓冲 (用于平滑应用)
+
+        // ============================================================
+        // 初始化 PIXI 应用 + 加载 Live2D 模型
+        // ============================================================
+        async function initLive2D() {
+            const canvas = document.getElementById('live2d-canvas');
+            const container = document.getElementById('canvas-container');
+            
+            // 创建 PIXI 应用
+            app = new PIXI.Application({
+                view: canvas,
+                width: container.clientWidth,
+                height: container.clientHeight,
+                backgroundColor: 0x0d1b2a,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true,
+            });
+            
+            updateModelStatus('loading', '正在加载雫人物模型...');
+            
+            try {
+                // 加载 Live2D 模型
+                live2dModel = await PIXI.live2d.Live2DModel.from('shizuku/model3.json', {
+                    autoInteract: false,  // 禁用自动交互 (由WebSocket控制)
+                    autoUpdate: true,
+                });
+                
+                // 调整模型大小和位置
+                const scaleX = container.clientWidth / live2dModel.width;
+                const scaleY = container.clientHeight / live2dModel.height;
+                const scale = Math.min(scaleX, scaleY) * 0.85;
+                
+                live2dModel.scale.set(scale);
+                live2dModel.x = container.clientWidth / 2;
+                live2dModel.y = container.clientHeight / 2;
+                live2dModel.anchor.set(0.5, 0.5);
+                
+                app.stage.addChild(live2dModel);
+                
+                // 禁用内置的自动眨眼和呼吸 (由我们的WebSocket参数控制)
+                const internalModel = live2dModel.internalModel;
+                if (internalModel.eyeBlink) {
+                    internalModel.eyeBlink = null;
+                }
+                if (internalModel.breath) {
+                    internalModel.breath = null;
+                }
+                
+                // 禁用 Idle 自动动作播放 (防止手臂晃动)
+                if (internalModel.motionManager) {
+                    internalModel.motionManager.groups.idle = '';
+                    internalModel.motionManager.stopAllMotions();
+                }
+                
+                // 切换手臂部件: 隐藏举手(02) → 显示叠手(01)
+                // pose3.json 默认显示 ARM_02 (举手/捂嘴), 我们需要切换到 ARM_01 (叠放)
+                const coreModel = internalModel.coreModel;
+                
+                // 禁用 pose 系统 (否则它会每帧覆盖部件可见性)
+                if (internalModel.pose) {
+                    internalModel.pose = null;
+                }
+                
+                // 部件可见性切换: 显示叠手, 隐藏举手
+                const partsToShow = ['PARTS_01_ARM_R_01', 'PARTS_01_ARM_L_01'];  // 叠手
+                const partsToHide = ['PARTS_01_ARM_R_02', 'PARTS_01_ARM_L_02'];  // 举手/捂嘴
+                
+                partsToShow.forEach(partId => {
+                    const idx = coreModel.getPartIndex(partId);
+                    if (idx >= 0) coreModel.setPartOpacityByIndex(idx, 1);
+                });
+                partsToHide.forEach(partId => {
+                    const idx = coreModel.getPartIndex(partId);
+                    if (idx >= 0) coreModel.setPartOpacityByIndex(idx, 0);
+                });
+                
+                // 每帧强制锁定部件可见性 + 手臂参数归零
+                const armParams = [
+                    'PARAM_ARM_L', 'PARAM_ARM_L_02', 'PARAM_HAND_L',
+                    'PARAM_ARM_R', 'PARAM_ARM_R_02', 'PARAM_HAND_R',
+                    'PARAM_ARM_02_L_01', 'PARAM_ARM_02_L_02', 'PARAM_HAND_02_L',
+                    'PARAM_ARM_02_R_01', 'PARAM_ARM_02_R_02', 'PARAM_HAND_02_R',
+                ];
+                app.ticker.add(() => {
+                    if (!live2dModel || !live2dModel.internalModel) return;
+                    const cm = live2dModel.internalModel.coreModel;
+                    // 锁定部件可见性
+                    partsToShow.forEach(partId => {
+                        const idx = cm.getPartIndex(partId);
+                        if (idx >= 0) cm.setPartOpacityByIndex(idx, 1);
+                    });
+                    partsToHide.forEach(partId => {
+                        const idx = cm.getPartIndex(partId);
+                        if (idx >= 0) cm.setPartOpacityByIndex(idx, 0);
+                    });
+                    // 手臂参数归零
+                    armParams.forEach(paramId => {
+                        const idx = cm.getParameterIndex(paramId);
+                        if (idx >= 0) cm.setParameterValueByIndex(idx, 0);
+                    });
+                });
+                
+                // 设置默认微笑表情 (仅嘴部, 不影响眼睛眨眼)
+                const smileInit = { 'PARAM_MOUTH_FORM': 0.7 };
+                for (const [paramId, value] of Object.entries(smileInit)) {
+                    const idx = coreModel.getParameterIndex(paramId);
+                    if (idx >= 0) coreModel.setParameterValueByIndex(idx, value);
+                }
+                
+                console.log('已设置: 微笑待机表情, 叠手姿势');
+                
+                updateModelStatus('loaded', '✅ 雫人物模型已加载');
+                document.getElementById('model-overlay').textContent = '模型已就绪';
+                
+                console.log('Live2D 模型加载成功');
+                console.log('模型尺寸:', live2dModel.width, 'x', live2dModel.height);
+                
+                // 注册每帧更新回调
+                app.ticker.add(() => {
+                    applyParamsToModel();
+                    updateFPS();
+                });
+                
+            } catch (error) {
+                console.error('Live2D 模型加载失败:', error);
+                updateModelStatus('error', '❌ 模型加载失败: ' + error.message);
+                document.getElementById('model-overlay').textContent = '加载失败';
+            }
+        }
+        
+        function updateModelStatus(state, text) {
+            const el = document.getElementById('model-status');
+            el.textContent = text;
+            el.className = state;
+        }
+        
+        // ============================================================
+        // 播放动作
+        // ============================================================
+        let isPlayingMotion = false;
+        
+        async function playMotion(motionName) {
+            if (!live2dModel || !live2dModel.internalModel) return;
+            if (isPlayingMotion) return; // 避免动作重叠
+            
+            const motionManager = live2dModel.internalModel.motionManager;
+            if (!motionManager) {
+                console.warn('MotionManager 不可用');
+                return;
+            }
+            
+            console.log(`[动作播放] ${motionName}`);
+            isPlayingMotion = true;
+            
+            // 暂时停用手臂锁定 (让动作控制手臂)
+            const wasTickerLocked = true;
+            
+            try {
+                // 播放动作
+                await live2dModel.motion(motionName);
+                
+                // 显示动作提示
+                showMotionToast(motionName);
+                
+            } catch (err) {
+                console.error('动作播放失败:', err);
+            } finally {
+                // 动作结束后重新锁定手臂回叠手姿势
+                setTimeout(() => {
+                    isPlayingMotion = false;
+                    // 重置手臂部件到叠手姿态
+                    const coreModel = live2dModel.internalModel.coreModel;
+                    const partsToShow = ['PARTS_01_ARM_R_01', 'PARTS_01_ARM_L_01'];
+                    const partsToHide = ['PARTS_01_ARM_R_02', 'PARTS_01_ARM_L_02'];
+                    partsToShow.forEach(partId => {
+                        const idx = coreModel.getPartIndex(partId);
+                        if (idx >= 0) coreModel.setPartOpacityByIndex(idx, 1);
+                    });
+                    partsToHide.forEach(partId => {
+                        const idx = coreModel.getPartIndex(partId);
+                        if (idx >= 0) coreModel.setPartOpacityByIndex(idx, 0);
+                    });
+                    console.log('[u52a8作结束] 回到叠手姿势');
+                }, 1500); // 1.5秒后重置
+            }
+        }
+        
+        function showMotionToast(motionName) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #e94560, #ff6b6b);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 25px;
+                font-weight: bold;
+                z-index: 1000;
+                animation: fadeInOut 2s ease;
+            `;
+            const desc = {
+                'FlickUp': '😢 哭泣/感动',
+                'Tap': '😳 惊讶/害羞',
+                'Flick3': '🚫 否认/不认同'
+            };
+            toast.textContent = desc[motionName] || motionName;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }
+        
+        // 添加动画样式
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInOut {
+                0% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+                20% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                80% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // ============================================================
+        // 将 WebSocket 参数应用到 Live2D 模型
+        // ============================================================
+        function applyParamsToModel() {
+            if (!live2dModel || !live2dModel.internalModel) return;
+            
+            const coreModel = live2dModel.internalModel.coreModel;
+            if (!coreModel) return;
+            
+            for (const [camelName, value] of Object.entries(wsParamsBuffer)) {
+                const paramId = PARAM_MAP[camelName];
+                if (paramId) {
+                    try {
+                        const index = coreModel.getParameterIndex(paramId);
+                        if (index >= 0) {
+                            // PARAM_MOUTH_FORM 叠加微笑偏移, 其他参数直接赋值
+                            const smileBias = (paramId === 'PARAM_MOUTH_FORM') ? 0.7 : 0;
+                            coreModel.setParameterValueByIndex(index, value + smileBias);
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+
+        // ============================================================
+        // FPS 计算
+        // ============================================================
+        function updateFPS() {
+            fpsCounter++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                document.getElementById('fps').textContent = fpsCounter;
+                fpsCounter = 0;
+                lastFpsTime = now;
+            }
+        }
+
+        // ============================================================
+        // 参数 UI 初始化
+        // ============================================================
+        function initParams() {
+            const container = document.getElementById('params-container');
+            for (const [name, config] of Object.entries(PARAMS_CONFIG)) {
+                currentParams[name] = config.default;
+                
+                const item = document.createElement('div');
+                item.className = 'param-item';
+                item.id = `param-${name}`;
+                item.innerHTML = `
+                    <div class="param-label">
+                        <span>${config.label}</span>
+                        <span class="param-value" id="value-${name}">${config.default.toFixed(2)}</span>
+                    </div>
+                    <div class="param-bar">
+                        <div class="param-bar-fill" id="bar-${name}" style="width: 50%"></div>
+                    </div>
+                `;
+                container.appendChild(item);
+            }
+        }
+
+        function updateParamDisplay(name, value) {
+            currentParams[name] = value;
+            wsParamsBuffer[name] = value;  // 写入缓冲供模型更新
+            
+            const config = PARAMS_CONFIG[name];
+            if (!config) return;
+            
+            const valueEl = document.getElementById(`value-${name}`);
+            if (valueEl) valueEl.textContent = value.toFixed(2);
+            
+            const barEl = document.getElementById(`bar-${name}`);
+            if (barEl) {
+                const percent = ((value - config.min) / (config.max - config.min)) * 100;
+                barEl.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+            }
+        }
+
+        // ============================================================
+        // WebSocket 连接
+        // ============================================================
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = '正在连接...';
+            statusEl.className = 'connecting';
+            document.getElementById('btn-connect').disabled = true;
+            
+            ws = new WebSocket('ws://localhost:8767');
+            
+            ws.onopen = () => {
+                statusEl.textContent = '✅ WebSocket 已连接';
+                statusEl.className = 'connected';
+                document.getElementById('btn-connect').disabled = true;
+                document.getElementById('btn-disconnect').disabled = false;
+                reconnectAttempts = 0;
+                frameCount = 0;
+            };
+            
+            ws.onmessage = (event) => {
+                const startTime = performance.now();
+                const msg = JSON.parse(event.data);
+                
+                // 处理不同类型的消息
+                if (msg.type === 'info') {
+                    console.log('服务器信息:', msg);
+                    return;
+                }
+                
+                if (msg.type === 'params') {
+                    const data = msg.data;
+                    
+                    // 更新参数显示
+                    for (const [name, value] of Object.entries(data)) {
+                        updateParamDisplay(name, value);
+                    }
+                    
+                    // 处理动作触发
+                    if (msg.motion && live2dModel) {
+                        playMotion(msg.motion);
+                    }
+                    
+                    frameCount++;
+                    document.getElementById('frame-count').textContent = frameCount;
+                    
+                    const latency = Math.round(performance.now() - startTime);
+                    document.getElementById('latency').textContent = latency + 'ms';
+                    
+                    const headAngle = Math.sqrt(
+                        (currentParams['ParamAngleX'] || 0) ** 2 +
+                        (currentParams['ParamAngleY'] || 0) ** 2
+                    ).toFixed(1);
+                    document.getElementById('head-angle').textContent = headAngle + '°';
+                    
+                    const ei = Math.abs(currentParams['ParamMouthForm'] || 0) +
+                        Math.abs(currentParams['ParamBrowLY'] || 0) +
+                        Math.abs(currentParams['ParamEyeBallForm'] || 0);
+                    document.getElementById('expression-intensity').textContent = (ei / 3).toFixed(2);
+                }
+            };
+            
+            ws.onclose = () => {
+                statusEl.textContent = '❌ WebSocket 已断开';
+                statusEl.className = '';
+                document.getElementById('btn-connect').disabled = false;
+                document.getElementById('btn-disconnect').disabled = true;
+                
+                if (reconnectAttempts < MAX_RECONNECT) {
+                    reconnectAttempts++;
+                    statusEl.textContent = `断开，3秒后重试 (${reconnectAttempts}/${MAX_RECONNECT})...`;
+                    setTimeout(connectWebSocket, 3000);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                statusEl.textContent = '❌ 连接错误';
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function disconnectWebSocket() {
+            reconnectAttempts = MAX_RECONNECT;
+            if (ws) { ws.close(); ws = null; }
+        }
+
+        // ============================================================
+        // 启动
+        // ============================================================
+        initParams();
+        initLive2D();
+        
+        // 1秒后自动连接 WebSocket
+        setTimeout(() => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                connectWebSocket();
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

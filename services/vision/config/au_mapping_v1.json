@@ -1,0 +1,64 @@
+{
+  "AU1": {
+    "browInnerUp": 0.8,
+    "browOuterUpLeft": 0.3,
+    "browOuterUpRight": 0.3
+  },
+  "AU2": {
+    "browOuterUpLeft": 0.7,
+    "browOuterUpRight": 0.7
+  },
+  "AU4": {
+    "browDownLeft": 0.8,
+    "browDownRight": 0.8,
+    "browInnerUp": -0.2
+  },
+  "AU6": {
+    "cheekSquintLeft": 0.9,
+    "cheekSquintRight": 0.9,
+    "eyeSquintLeft": 0.5,
+    "eyeSquintRight": 0.5
+  },
+  "AU7": {
+    "eyeSquintLeft": 0.9,
+    "eyeSquintRight": 0.9
+  },
+  "AU9": {
+    "noseSneerLeft": 0.8,
+    "noseSneerRight": 0.8
+  },
+  "AU10": {
+    "mouthUpperUpLeft": 0.7,
+    "mouthUpperUpRight": 0.7
+  },
+  "AU12": {
+    "mouthSmileLeft": 0.9,
+    "mouthSmileRight": 0.9
+  },
+  "AU14": {
+    "mouthDimpleLeft": 0.8,
+    "mouthDimpleRight": 0.8
+  },
+  "AU15": {
+    "mouthFrownLeft": 0.8,
+    "mouthFrownRight": 0.8
+  },
+  "AU17": {
+    "mouthShrugLower": 0.8
+  },
+  "AU23": {
+    "mouthPressLeft": 0.7,
+    "mouthPressRight": 0.7
+  },
+  "AU24": {
+    "mouthPucker": 0.6,
+    "mouthPressLeft": 0.3,
+    "mouthPressRight": 0.3
+  },
+  "AU25": {
+    "jawOpen": 0.5
+  },
+  "AU26": {
+    "jawOpen": 0.8
+  }
+}

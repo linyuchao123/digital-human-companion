@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>灵伴 · AI数字人情感陪护</title>
+<style>
+:root{
+  --sky0:#c8e6f5;--sky1:#ddeeff;--sky2:#eef6ff;
+  --glass:rgba(255,255,255,0.22);--glass-border:rgba(255,255,255,0.45);
+  --glass-dark:rgba(10,20,50,0.6);--glass-dark-border:rgba(120,160,255,0.22);
+  --accent:#4f8ef7;--accent2:#7c5cbf;--accent3:#34c87a;
+  --warn:#f5a623;--danger:#e74c3c;--danger-dim:rgba(231,76,60,.25);
+  --text:#1a2340;--text2:rgba(26,35,64,.6);
+  --r:10px;--r-lg:16px;--r-xl:22px;
+  --shadow:0 8px 32px rgba(0,0,0,.18);--shadow-sm:0 2px 12px rgba(0,0,0,.1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;
+  font-family:'PingFang SC','Microsoft YaHei','Segoe UI',sans-serif;
+  font-size:13px;user-select:none}
+
+/* ══ 背景 ══ */
+#bg{position:fixed;inset:0;z-index:0;
+  background:linear-gradient(180deg,#b8d8f0 0%,#cce6f8 25%,#dff0ff 55%,#eef7ff 75%,#f5f5e8 100%);}
+#bg::after{content:'';position:absolute;bottom:0;left:0;right:0;height:38%;
+  background:
+    linear-gradient(to bottom,transparent 0%,rgba(180,210,170,.12) 100%),
+    repeating-linear-gradient(90deg,rgba(120,180,120,.06) 0px,rgba(120,180,120,.06) 1px,transparent 1px,transparent 80px),
+    repeating-linear-gradient(0deg,rgba(120,180,120,.06) 0px,rgba(120,180,120,.06) 1px,transparent 1px,transparent 80px);
+  mask-image:linear-gradient(to bottom,transparent 0%,black 60%);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 60%);pointer-events:none;}
+.orb{position:absolute;border-radius:50%;filter:blur(80px);pointer-events:none;animation:orb-d 8s ease-in-out infinite alternate}
+.orb1{width:500px;height:300px;background:radial-gradient(ellipse,rgba(100,180,255,.20),transparent 70%);top:10%;left:-5%}
+.orb2{width:400px;height:250px;background:radial-gradient(ellipse,rgba(180,140,255,.14),transparent 70%);top:20%;right:-3%;animation-delay:-4s}
+@keyframes orb-d{to{transform:translate(20px,-15px) scale(1.05)}}
+#particles{position:fixed;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+.particle{position:absolute;border-radius:50%;background:rgba(255,255,255,0.6);animation:ptl linear infinite}
+@keyframes ptl{0%{transform:translateY(100vh) scale(0);opacity:0}10%{opacity:.5}90%{opacity:.2}100%{transform:translateY(-20vh) scale(1);opacity:0}}
+
+/* ══ 顶栏 ══ */
+#topbar{position:fixed;top:0;left:0;right:0;z-index:100;height:44px;display:flex;align-items:center;
+  padding:0 20px;gap:12px;background:rgba(255,255,255,0.25);backdrop-filter:blur(20px) saturate(1.8);
+  -webkit-backdrop-filter:blur(20px) saturate(1.8);border-bottom:1px solid rgba(255,255,255,0.5);
+  box-shadow:0 1px 20px rgba(150,190,255,.12)}
+.logo{font-size:15px;font-weight:700;background:linear-gradient(135deg,#4070c8,#7c4fbf);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:.04em;white-space:nowrap}
+.spacer{flex:1}
+#status-capsule{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.5);
+  border:1px solid rgba(255,255,255,.7);border-radius:20px;padding:3px 10px 3px 8px;box-shadow:var(--shadow-sm)}
+#status-dot{width:7px;height:7px;border-radius:50%;background:#ccc;transition:.3s;flex-shrink:0}
+#status-dot.ok{background:var(--accent3);box-shadow:0 0 6px var(--accent3)}
+#status-dot.warn{background:var(--warn);box-shadow:0 0 5px var(--warn)}
+#status-txt{font-size:10px;color:var(--text2);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.tb-chip{height:28px;padding:0 12px;border-radius:14px;border:1px solid rgba(255,255,255,.6);
+  background:rgba(255,255,255,.45);backdrop-filter:blur(8px);color:var(--text2);cursor:pointer;
+  font-size:11px;font-family:inherit;transition:all .2s;display:inline-flex;align-items:center;gap:4px;box-shadow:var(--shadow-sm)}
+.tb-chip:hover{background:rgba(255,255,255,.7);color:var(--text)}
+.tb-chip.on{background:rgba(52,200,122,.15);border-color:rgba(52,200,122,.5);color:#1a9955;font-weight:600}
+
+/* ══ Live2D 全屏场景 ══ */
+#scene{position:fixed;inset:0;z-index:10}
+#live2d-wrap{position:absolute;inset:0}
+#live2d-canvas{width:100%;height:100%;display:block;pointer-events:none}
+
+/* ══ 连接屏 ══ */
+#connect-screen{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:20px;transition:opacity .25s;
+  background:linear-gradient(180deg,#b8d8f0 0%,#cce6f8 25%,#dff0ff 55%,#eef7ff 75%,#f5f5e8 100%)}
+#connect-screen.hidden{display:none}
+.cs-title{font-size:22px;font-weight:700;
+  background:linear-gradient(135deg,#4070c8,#7c4fbf);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.cs-sub{font-size:13px;color:var(--text2);max-width:340px;text-align:center;line-height:1.6}
+#connect-btn{
+  width:180px;height:52px;border-radius:26px;border:none;
+  background:linear-gradient(135deg,#4f8ef7,#7c5cbf);
+  color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;
+  box-shadow:0 8px 30px rgba(79,142,247,.45);transition:all .25s;
+  display:flex;align-items:center;justify-content:center;gap:8px}
+#connect-btn:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 12px 36px rgba(79,142,247,.55)}
+#connect-btn:active{transform:scale(.97)}
+#connect-btn.loading{opacity:.7;pointer-events:none}
+.cs-status{font-size:11px;color:var(--text2);min-height:18px;text-align:center}
+/* 驱动WS地址输入 */
+.cs-ws-row{display:flex;align-items:center;gap:8px}
+.cs-ws-row label{font-size:11px;color:var(--text2)}
+#drive-ws-input{width:200px;height:30px;border-radius:15px;border:1px solid rgba(200,220,255,.7);
+  background:rgba(255,255,255,.6);padding:0 12px;font-size:11px;color:var(--text);
+  font-family:inherit;outline:none;text-align:center}
+#drive-ws-input:focus{border-color:rgba(79,142,247,.6);background:rgba(255,255,255,.85)}
+
+/* 断开按钮 —— 集成在顶栏，连接后才显示 */
+#disconnect-btn{
+  height:28px;padding:0 12px;border-radius:14px;border:1px solid rgba(231,76,60,.4);
+  background:rgba(231,76,60,.1);backdrop-filter:blur(10px);
+  color:var(--danger);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;
+  display:none;align-items:center;gap:4px;box-shadow:var(--shadow-sm);transition:all .2s}
+#disconnect-btn:hover{background:rgba(231,76,60,.2)}
+#disconnect-btn.show{display:inline-flex}
+
+/* ══ 中央指示器 ══ */
+#speaking-indicator{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);
+  z-index:50;display:none;align-items:center;gap:5px;
+  background:rgba(52,200,122,.15);border:1px solid rgba(52,200,122,.35);backdrop-filter:blur(12px);
+  border-radius:16px;padding:5px 14px;font-size:11px;color:#1a9955;box-shadow:var(--shadow-sm)}
+#speaking-indicator.show{display:flex}
+.sdot{width:4px;height:4px;border-radius:50%;background:var(--accent3);animation:sdot-p .6s ease-in-out infinite alternate}
+.sdot:nth-child(2){animation-delay:.15s}.sdot:nth-child(3){animation-delay:.3s}
+@keyframes sdot-p{to{opacity:.15;transform:scale(.6)}}
+#thinking-bar{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);
+  z-index:50;display:none;align-items:center;gap:6px;
+  background:rgba(124,92,191,.12);border:1px solid rgba(124,92,191,.3);backdrop-filter:blur(12px);
+  border-radius:16px;padding:5px 16px;font-size:11px;color:var(--accent2);box-shadow:var(--shadow-sm)}
+#thinking-bar.show{display:flex}
+.tdot{width:5px;height:5px;border-radius:50%;background:var(--accent2);animation:tdot-p 1s ease-in-out infinite}
+.tdot:nth-child(2){animation-delay:.25s}.tdot:nth-child(3){animation-delay:.5s}
+@keyframes tdot-p{0%,100%{opacity:.2;transform:scale(.6)}50%{opacity:1;transform:scale(1)}}
+
+/* ══ 底部控制栏 ══ */
+#bottom-bar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:200;
+  display:none;align-items:center;gap:10px;
+  background:rgba(255,255,255,0.3);backdrop-filter:blur(24px) saturate(2);
+  -webkit-backdrop-filter:blur(24px) saturate(2);
+  border:1px solid rgba(255,255,255,.65);border-radius:36px;padding:8px 16px;
+  box-shadow:0 8px 40px rgba(100,150,220,.20),0 2px 8px rgba(0,0,0,.08);
+  min-width:420px;max-width:680px;width:56vw}
+#bottom-bar.show{display:flex}
+#text-input{flex:1;height:38px;background:rgba(255,255,255,.6);border:1px solid rgba(200,220,255,.7);
+  border-radius:19px;padding:0 16px;color:var(--text);font-size:13px;font-family:inherit;outline:none;
+  transition:all .2s;box-shadow:inset 0 1px 4px rgba(100,150,220,.1)}
+#text-input::placeholder{color:rgba(100,120,160,.5)}
+#text-input:focus{border-color:rgba(79,142,247,.6);background:rgba(255,255,255,.85);
+  box-shadow:0 0 0 3px rgba(79,142,247,.1),inset 0 1px 4px rgba(100,150,220,.1)}
+.ctrl-btn{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.6);
+  background:rgba(255,255,255,.5);backdrop-filter:blur(8px);color:var(--text2);cursor:pointer;
+  font-size:17px;display:flex;align-items:center;justify-content:center;transition:all .2s;
+  box-shadow:var(--shadow-sm);flex-shrink:0}
+.ctrl-btn:hover{background:rgba(255,255,255,.85);color:var(--text);transform:scale(1.05)}
+.ctrl-btn.mic-on{border-color:rgba(231,76,60,.5);color:var(--danger);background:var(--danger-dim);animation:mic-glow 1.5s ease infinite}
+@keyframes mic-glow{50%{box-shadow:0 0 16px var(--danger-dim)}}
+#send-btn{width:40px;height:40px;border-radius:50%;border:none;
+  background:linear-gradient(135deg,#4f8ef7,#7c5cbf);color:#fff;cursor:pointer;
+  font-size:16px;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;box-shadow:0 4px 16px rgba(79,142,247,.4);flex-shrink:0}
+#send-btn:hover{transform:scale(1.08)}
+
+/* ══ 右侧聊天面板 ══ */
+#chat-panel{position:fixed;top:56px;right:16px;bottom:72px;z-index:150;width:300px;
+  display:none;flex-direction:column;
+  background:rgba(255,255,255,0.22);backdrop-filter:blur(28px) saturate(1.8);
+  -webkit-backdrop-filter:blur(28px) saturate(1.8);border:1px solid rgba(255,255,255,.55);
+  border-radius:var(--r-xl);box-shadow:0 12px 48px rgba(80,120,220,.18),0 2px 12px rgba(0,0,0,.08);
+  overflow:hidden;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s}
+#chat-panel.show{display:flex}
+.cp-head{flex-shrink:0;padding:12px 16px 10px;border-bottom:1px solid rgba(255,255,255,.4);
+  display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.1)}
+.cp-title{font-size:13px;font-weight:700;color:var(--text);flex:1}
+.cp-mode-btn{height:24px;padding:0 10px;border-radius:12px;border:1px solid rgba(255,255,255,.5);
+  background:transparent;color:var(--text2);cursor:pointer;font-size:10px;font-family:inherit;transition:all .2s}
+.cp-mode-btn:hover{background:rgba(255,255,255,.5);color:var(--text)}
+.cp-mode-btn.active{background:linear-gradient(135deg,rgba(79,142,247,.2),rgba(124,92,191,.2));
+  border-color:rgba(79,142,247,.5);color:var(--accent);font-weight:600}
+#welcome-card{margin:12px;padding:14px;
+  background:linear-gradient(135deg,rgba(79,142,247,.08),rgba(124,92,191,.08));
+  border:1px solid rgba(79,142,247,.15);border-radius:var(--r-lg);text-align:center}
+#welcome-card .wc-avatar{font-size:28px;margin-bottom:6px}
+#welcome-card .wc-name{font-size:13px;font-weight:700;
+  background:linear-gradient(135deg,#4070c8,#7c4fbf);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+#welcome-card .wc-hint{font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5}
+#chat-area{flex:1;overflow-y:auto;padding:6px 12px;display:flex;flex-direction:column;gap:8px}
+#chat-area::-webkit-scrollbar{width:3px}
+#chat-area::-webkit-scrollbar-thumb{background:rgba(79,142,247,.25);border-radius:2px}
+.bubble-row{display:flex;flex-direction:column;animation:fade-in .3s ease}
+.bubble-row.ai{align-items:flex-start}.bubble-row.user{align-items:flex-end}
+.bubble-meta{font-size:9px;color:var(--text2);margin-bottom:3px;padding:0 4px}
+.bubble{max-width:88%;padding:9px 13px;border-radius:14px;font-size:12px;line-height:1.6;word-break:break-all}
+.bubble.user{background:linear-gradient(135deg,rgba(79,142,247,.75),rgba(60,110,230,.7));
+  color:#fff;border-radius:14px 14px 4px 14px;box-shadow:0 3px 12px rgba(79,142,247,.3)}
+.bubble.ai{background:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.8);
+  color:var(--text);border-radius:4px 14px 14px 14px;box-shadow:0 3px 12px rgba(0,0,0,.06);backdrop-filter:blur(8px)}
+.bubble.ai .emo-tag{display:inline-block;font-size:9px;margin-top:4px;padding:1px 7px;border-radius:8px;
+  background:rgba(124,92,191,.1);border:1px solid rgba(124,92,191,.2);color:var(--accent2)}
+#read-panel{display:none;flex:1;overflow-y:auto;padding:12px;flex-direction:column;gap:10px}
+#read-panel.show{display:flex}
+#read-panel textarea{flex:1;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);
+  border-radius:12px;padding:10px 12px;color:var(--text);font-size:12px;font-family:inherit;
+  resize:none;outline:none;min-height:120px}
+.read-btn{height:36px;border-radius:18px;border:none;
+  background:linear-gradient(135deg,#4f8ef7,#7c5cbf);color:#fff;font-size:12px;
+  font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 4px 16px rgba(79,142,247,.35);transition:all .2s}
+#chat-panel-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#chat-panel-wrap.hide{display:none}
+@keyframes fade-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ══ 驱动状态面板 ══ */
+#drive-info{position:fixed;top:56px;right:16px;z-index:150;
+  display:none;flex-direction:column;gap:4px;
+  background:rgba(255,255,255,0.22);backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.5);border-radius:var(--r-lg);
+  padding:10px 14px;box-shadow:var(--shadow-sm);min-width:160px}
+#drive-info.show{display:flex}
+.di-title{font-size:10px;font-weight:700;color:var(--accent);margin-bottom:4px}
+.di-row{display:flex;justify-content:space-between;font-size:10px}
+.di-label{color:var(--text2)}.di-val{color:var(--accent3);font-weight:600;font-family:monospace}
+
+/* ══ 情感主题 ══ */
+body.emo-happy #bg{background:linear-gradient(180deg,#c8f0e0 0%,#d8f5ea 30%,#eefff6 65%,#f5f5e8 100%)}
+body.emo-sad #bg{background:linear-gradient(180deg,#b8c8e0 0%,#ccd5e8 30%,#dde3f0 65%,#eceef5 100%)}
+body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e5e2f5 65%,#f0eff8 100%)}
+
+@media(max-width:900px){#chat-panel{width:260px}#bottom-bar{width:90vw;min-width:300px}}
+@media(max-width:600px){#chat-panel{width:calc(100vw - 32px)}#bottom-bar{width:calc(100vw - 32px)}}
+
+/* ══ 左侧历史对话栏 ══ */
+#sidebar{position:fixed;left:0;top:0;width:240px;height:100%;z-index:30;
+  background:rgba(255,255,255,0.30);backdrop-filter:blur(20px) saturate(1.6);
+  -webkit-backdrop-filter:blur(20px) saturate(1.6);
+  border-right:1px solid rgba(255,255,255,0.5);
+  display:flex;flex-direction:column;transform:translateX(-100%);
+  transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:4px 0 24px rgba(79,142,247,.08);
+  min-width:180px;max-width:400px}
+#sidebar.open{transform:translateX(0)}
+/* 拖动把手 */
+#sb-resize{position:absolute;right:0;top:0;width:5px;height:100%;cursor:col-resize;
+  background:transparent;z-index:10;transition:background .15s}
+#sb-resize:hover{background:rgba(79,142,247,.25)}
+/* 历史对话标题行 */
+#sb-head-title{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 14px 10px;border-bottom:1px solid rgba(255,255,255,.5)}
+#sb-title-label{font-size:14px;font-weight:700;
+  background:linear-gradient(135deg,#4070c8,#7c4fbf);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+#sb-new-btn{width:28px;height:28px;border-radius:50%;border:1px solid rgba(79,142,247,.4);
+  background:rgba(79,142,247,.1);color:var(--accent);cursor:pointer;font-size:18px;line-height:28px;text-align:center;
+  transition:all .2s;flex-shrink:0}
+#sb-new-btn:hover{background:rgba(79,142,247,.2);transform:scale(1.08)}
+#sb-sessions{flex:1;overflow-y:auto;padding:8px 0}
+#sb-sessions::-webkit-scrollbar{width:3px}
+#sb-sessions::-webkit-scrollbar-thumb{background:rgba(79,142,247,.3);border-radius:2px}
+.sb-group-label{font-size:10px;color:var(--text2);padding:8px 14px 3px;letter-spacing:.06em;opacity:.7}
+.sb-session{display:flex;align-items:center;padding:8px 12px;cursor:pointer;border-radius:8px;margin:1px 6px;
+  transition:background .15s;position:relative}
+.sb-session:hover{background:rgba(79,142,247,.12)}
+.sb-session.active{background:rgba(79,142,247,.18);border-left:2px solid var(--accent)}
+.sb-session-title{font-size:12px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-session.active .sb-session-title{color:var(--accent);font-weight:600}
+.sb-del-btn{opacity:0;width:20px;height:20px;border:none;background:none;color:var(--text2);cursor:pointer;
+  font-size:14px;flex-shrink:0;border-radius:4px;transition:all .15s;line-height:20px;text-align:center}
+.sb-session:hover .sb-del-btn{opacity:1}
+.sb-del-btn:hover{color:var(--danger);background:var(--danger-dim)}
+/* 豆包风格底部用户区 */
+#sb-bottom{padding:10px 12px 14px;border-top:1px solid rgba(255,255,255,.5)}
+#sb-user-row{display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:10px;
+  cursor:default;transition:background .15s}
+#sb-user-row:hover{background:rgba(79,142,247,.08)}
+#sb-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7c5cbf);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;flex-shrink:0}
+#sb-name{flex:1;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sb-logout-btn{height:26px;padding:0 10px;border:1px solid rgba(231,76,60,.35);border-radius:6px;
+  background:rgba(231,76,60,.08);color:var(--danger);cursor:pointer;font-size:11px;transition:all .2s;white-space:nowrap}
+#sb-logout-btn:hover{background:var(--danger-dim)}
+/* 侧边栏切换按钮 */
+#sidebar-toggle{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:35;
+  width:18px;height:50px;background:rgba(79,142,247,.18);border:1px solid rgba(79,142,247,.3);
+  border-left:none;border-radius:0 8px 8px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:var(--accent);transition:all .2s;backdrop-filter:blur(8px)}
+#sidebar-toggle:hover{background:rgba(79,142,247,.3);width:22px}
+#sidebar.open ~ #sidebar-toggle{left:var(--sb-width,240px)}
+
+/* ══ 登录弹窗 ══ */
+#auth-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+  background:rgba(10,20,50,0.55);backdrop-filter:blur(8px)}
+#auth-modal.hidden{display:none}
+#auth-box{width:340px;background:rgba(255,255,255,.92);border-radius:var(--r-xl);
+  box-shadow:var(--shadow),0 0 0 1px rgba(79,142,247,.15);padding:32px 28px;position:relative}
+#auth-tabs{display:flex;gap:0;margin-bottom:24px;border-radius:10px;overflow:hidden;
+  border:1px solid rgba(79,142,247,.2)}
+.auth-tab{flex:1;height:36px;border:none;background:none;cursor:pointer;font-size:13px;
+  color:var(--text2);transition:all .2s}
+.auth-tab.active{background:var(--accent);color:#fff;font-weight:600}
+#auth-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;text-align:center}
+#auth-sub{font-size:12px;color:var(--text2);text-align:center;margin-bottom:20px}
+.auth-field{margin-bottom:14px}
+.auth-field label{display:block;font-size:11px;color:var(--text2);margin-bottom:5px;font-weight:500}
+.auth-field input{width:100%;height:38px;border:1px solid rgba(79,142,247,.3);border-radius:8px;
+  padding:0 12px;font-size:13px;background:rgba(255,255,255,.8);color:var(--text);outline:none;transition:border .2s}
+.auth-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,142,247,.12)}
+#auth-submit{width:100%;height:40px;border:none;border-radius:10px;margin-top:6px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:14px;
+  font-weight:600;cursor:pointer;transition:opacity .2s;letter-spacing:.04em}
+#auth-submit:hover{opacity:.88}
+#auth-submit:disabled{opacity:.5;cursor:not-allowed}
+#auth-err{font-size:11px;color:var(--danger);text-align:center;min-height:16px;margin-top:8px}
+</style>
+</head>
+<body>
+
+<!-- ══ 背景 ══ -->
+<div id="bg"><div class="orb orb1"></div><div class="orb orb2"></div></div>
+<div id="particles"></div>
+
+<!-- ══ 登录弹窗 ══ -->
+<div id="auth-modal">
+  <div id="auth-box">
+    <div id="auth-title">灵伴 · AI情感陪护</div>
+    <div id="auth-sub">登录后可保存对话记录，随时回顾</div>
+    <div id="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">登 录</button>
+      <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">注 册</button>
+    </div>
+    <div class="auth-field">
+      <label>用户名</label>
+      <input type="text" id="auth-username" placeholder="请输入用户名" maxlength="20"
+        onkeydown="if(event.key==='Enter')document.getElementById('auth-password').focus()"/>
+    </div>
+    <div class="auth-field">
+      <label>密码</label>
+      <input type="password" id="auth-password" placeholder="请输入密码（至少4位）" maxlength="32"
+        onkeydown="if(event.key==='Enter')doAuth()"/>
+    </div>
+    <button id="auth-submit" onclick="doAuth()">进 入</button>
+    <div id="auth-err"></div>
+  </div>
+</div>
+
+<!-- ══ 左侧历史对话栏 ══ -->
+<div id="sidebar">
+  <div id="sb-resize"></div>
+  <div id="sb-head-title">
+    <span id="sb-title-label">历史对话</span>
+    <button id="sb-new-btn" onclick="newSession()" title="新对话">＋</button>
+  </div>
+  <div id="sb-sessions">
+    <div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>
+  </div>
+  <div id="sb-bottom">
+    <div id="sb-user-row">
+      <div id="sb-avatar">?</div>
+      <span id="sb-name">未登录</span>
+      <button id="sb-logout-btn" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+</div>
+<div id="sidebar-toggle" onclick="toggleSidebar()">&#8250;</div>
+
+<!-- ══ 顶栏 ══ -->
+<div id="topbar">
+  <span class="logo">灵伴 · AI情感陪护</span>
+  <div class="spacer"></div>
+  <div id="status-capsule">
+    <div id="status-dot"></div>
+    <span id="status-txt">未连接</span>
+  </div>
+  <button id="disconnect-btn" onclick="disconnectAll()">🔌 断开连接</button>
+  <div class="spacer"></div>
+  <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
+<button class="tb-chip" onclick="window.open('http://localhost:8800/vision','_blank')" title="打开视觉人脸检测监控页面">👁 人脸检测</button>
+<button class="tb-chip" onclick="window.open('/rag','_blank')" title="打开心理学知识库管理页面">📚 知识库</button>
+</div>
+
+<!-- ══ Live2D 场景 ══ -->
+<div id="scene"><div id="live2d-wrap"><canvas id="live2d-canvas"></canvas></div></div>
+
+<!-- ══ 连接屏 ══ -->
+<div id="connect-screen">
+  <div class="cs-title">🌸 灵伴 · AI情感陪护数字人</div>
+  <div class="cs-sub">基于深度学习模型驱动的情感陪护数字人系统<br>24维面部参数实时驱动 + 心理对话引擎</div>
+  <div class="cs-ws-row">
+    <label>驱动服务：</label>
+    <input type="text" id="drive-ws-input" value="ws://localhost:8800/ws/drive" />
+  </div>
+  <button id="connect-btn" onclick="connectAll()">
+    <span>🔗</span><span>连接数字人</span>
+  </button>
+  <div class="cs-status" id="cs-status"></div>
+</div>
+
+<!-- ══ 驱动状态面板 ══ -->
+<div id="drive-info">
+  <div class="di-title">📊 驱动状态</div>
+  <div class="di-row"><span class="di-label">接收帧数</span><span class="di-val" id="di-frames">0</span></div>
+  <div class="di-row"><span class="di-label">驱动延迟</span><span class="di-val" id="di-latency">--</span></div>
+  <div class="di-row"><span class="di-label">表情强度</span><span class="di-val" id="di-expr">--</span></div>
+</div>
+
+<!-- ══ 指示器 ══ -->
+<div id="speaking-indicator">
+  <div class="sdot"></div><div class="sdot"></div><div class="sdot"></div>
+  <span style="margin-left:4px">小安正在说话</span>
+</div>
+<div id="thinking-bar">
+  <div class="tdot"></div><div class="tdot"></div><div class="tdot"></div>
+  <span style="margin-left:4px">思考中...</span>
+</div>
+
+<!-- ══ 右侧聊天面板 ══ -->
+<div id="chat-panel">
+  <div class="cp-head">
+    <div><div class="cp-title">💬 与小安对话</div></div>
+    <div style="display:flex;gap:4px;flex-shrink:0">
+      <button class="cp-mode-btn active" id="tab-chat" onclick="switchTab('chat')">对话</button>
+      <button class="cp-mode-btn" id="tab-read" onclick="switchTab('read')">朗读</button>
+    </div>
+  </div>
+  <div id="chat-panel-wrap">
+    <div id="welcome-card">
+      <div class="wc-avatar">🌸</div>
+      <div class="wc-name">你好，我是小安</div>
+      <div class="wc-hint">我是你的AI情感陪护伙伴<br>有什么想聊的，随时告诉我</div>
+    </div>
+    <div id="chat-area"></div>
+  </div>
+  <div id="read-panel">
+    <p style="font-size:11px;color:var(--text2);text-align:center;padding:4px 0">输入文字，小安将为你朗读</p>
+    <textarea id="read-text" placeholder="在此输入需要朗读的文字..."></textarea>
+    <button class="read-btn" onclick="speakText(document.getElementById('read-text').value)">开始朗读 ▶</button>
+  </div>
+</div>
+
+<!-- ══ 底部控制栏 ══ -->
+<div id="bottom-bar">
+  <button class="ctrl-btn" id="mic-btn" onclick="toggleMic()" title="语音输入">🎤</button>
+  <input type="text" id="text-input" placeholder="和小安说点什么..."
+    onkeydown="if(event.key==='Enter'){event.preventDefault();sendText()}"/>
+  <button id="send-btn" onclick="sendText()" title="发送">➤</button>
+</div>
+
+<!-- ══ Live2D SDK（本地加载）══ -->
+<script src="/live2d-js/live2dcubismcore.min.js"></script>
+<script src="/live2d-js/pixi.min.js"></script>
+<script src="/live2d-js/cubism4.min.js"></script>
+
+<script>
+/* ═══════════ 配置 ═══════════ */
+const CHAT_WS_URL  = 'ws://localhost:8800/ws/main';
+const API_URL      = 'http://localhost:8800';
+const MODEL_PATH   = '/shizuku/shizuku.model3.json';
+const AUDIO_SLICE_MS = 2000;
+
+/* 24参数映射（与 digital_human_engine 一致）*/
+const PARAM_MAP = {
+  'ParamAngleX':'PARAM_ANGLE_X','ParamAngleY':'PARAM_ANGLE_Y','ParamAngleZ':'PARAM_ANGLE_Z',
+  'ParamEyeLOpen':'PARAM_EYE_L_OPEN','ParamEyeROpen':'PARAM_EYE_R_OPEN',
+  'ParamEyeBallX':'PARAM_EYE_BALL_X','ParamEyeBallY':'PARAM_EYE_BALL_Y','ParamEyeBallForm':'PARAM_EYE_BALL_FORM',
+  'ParamBrowLY':'PARAM_BROW_L_Y','ParamBrowRY':'PARAM_BROW_R_Y',
+  'ParamBrowLX':'PARAM_BROW_L_X','ParamBrowRX':'PARAM_BROW_R_X',
+  'ParamBrowLAngle':'PARAM_BROW_L_ANGLE','ParamBrowRAngle':'PARAM_BROW_R_ANGLE',
+  'ParamBrowLForm':'PARAM_BROW_L_FORM','ParamBrowRForm':'PARAM_BROW_R_FORM',
+  'ParamMouthOpenY':'PARAM_MOUTH_OPEN_Y','ParamMouthForm':'PARAM_MOUTH_FORM','ParamMouthSize':'PARAM_MOUTH_SIZE',
+  'ParamTere':'PARAM_TERE',
+  'ParamBodyX':'PARAM_BODY_X','ParamBodyY':'PARAM_BODY_Y','ParamBodyZ':'PARAM_BODY_Z',
+  'ParamBreath':'PARAM_BREATH',
+};
+const MOTION_GROUP_MAP = {'FlickUp':'FlickUp','Tap':'Tap','Flick3':'Flick3','Idle':'Idle'};
+const MOTION_COOLDOWN_MS = 3000;
+let lastMotionTime = 0;
+
+/* ═══════════ 状态 ═══════════ */
+let chatWs=null, driveWs=null, chatWsReady=false, driveWsReady=false;
+let ttsEnabled=true, ttsSpeaking=false;
+let micOnly=false, micStream=null, micRecorder=null, micChunks=[];
+let pixiApp=null, live2dModel=null;
+let wsParamsBuffer = {};
+let driveFrameCount=0, connected=false;
+let isPlayingMotion=false;
+
+/* ═══════════ 粒子 ═══════════ */
+(function(){
+  const c=document.getElementById('particles');
+  for(let i=0;i<15;i++){
+    const p=document.createElement('div');p.className='particle';
+    const sz=2+Math.random()*3;
+    p.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;animation-duration:${12+Math.random()*18}s;animation-delay:-${Math.random()*20}s;opacity:${.2+Math.random()*.3}`;
+    c.appendChild(p);
+  }
+})();
+
+/* ═══════════ 面板控制 ═══════════ */
+function switchTab(tab){
+  document.getElementById('tab-chat').classList.toggle('active',tab==='chat');
+  document.getElementById('tab-read').classList.toggle('active',tab==='read');
+  document.getElementById('chat-panel-wrap').classList.toggle('hide',tab!=='chat');
+  document.getElementById('read-panel').classList.toggle('show',tab==='read');
+}
+
+/* ═══════════ 连接总控 ═══════════ */
+async function connectAll(){
+  const btn=document.getElementById('connect-btn');
+  const st=document.getElementById('cs-status');
+  btn.classList.add('loading');
+  btn.innerHTML='<span>⏳</span><span>正在连接...</span>';
+  st.textContent='加载数字人模型...';
+
+  try{
+    await initPixiAndModel();
+    st.textContent='连接驱动服务...';
+    const driveUrl=document.getElementById('drive-ws-input').value.trim()||'ws://localhost:8800/ws/drive';
+    connectDriveWS(driveUrl);
+    st.textContent='连接对话服务...';
+    connectChatWS();
+
+    // ───────────────────────────────────────────────────
+    // 卡点设计：字幕屏素淡出的瞬间小安刺好从 FlickUp 闭眼状态睛开眼睛
+    // FlickUp 动作总时长 ≈2.5s，前半段是低头闭眼，后半段是抬头睛开
+    // 字幕屏在 T=1100ms 开始淡出 (0.5s)，完全消失在 T=1600ms
+    // 目标：FlickUp 的睛眼阶段 ≈ T=1100~1600ms 内完成 → 即刻开始动作
+    // ───────────────────────────────────────────────────
+
+    // 第一步：立刻启动 FlickUp（在字幕屏背后偷偷开始）
+    if(live2dModel){
+      lastMotionTime=0;
+      isPlayingMotion=false;
+      playMotion('FlickUp'); // 不 await，让它在背景播放
+    }
+
+    // 第二步：900ms 后隐藏连接屏，显示主界面
+    setTimeout(()=>{
+      const cs=document.getElementById('connect-screen');
+      cs.style.zIndex=''; // 恢复正常 z-index
+      cs.classList.add('hidden'); // display:none 隐藏
+      document.getElementById('bottom-bar').classList.add('show');
+      document.getElementById('chat-panel').classList.add('show');
+      document.getElementById('disconnect-btn').classList.add('show');
+      document.getElementById('drive-info').classList.add('show');
+      connected=true;
+      // 若已登录则自动展开侧边栏
+      if(_authToken && !_sidebarOpen) toggleSidebar();
+    },900);
+
+    // 第三步：字幕完全消失后（T=1600ms），小安已刺好睛眼微笑，稍后打招呼
+    setTimeout(()=>{
+      if(ttsEnabled) speakText('你好，我是小安，很高兴见到你！');
+    },3000);
+
+  }catch(e){
+    st.textContent='连接失败: '+e.message;
+    btn.classList.remove('loading');
+    btn.innerHTML='<span>🔗</span><span>重新连接</span>';
+  }
+}
+
+function disconnectAll(){
+  if(driveWs){driveWs.close();driveWs=null;driveWsReady=false;}
+  if(chatWs){chatWs.close();chatWs=null;chatWsReady=false;}
+  stopMicOnly();
+  connected=false;
+  // 隐藏聊天/控制栏
+  document.getElementById('bottom-bar').classList.remove('show');
+  document.getElementById('chat-panel').classList.remove('show');
+  document.getElementById('disconnect-btn').classList.remove('show');
+  document.getElementById('drive-info').classList.remove('show');
+  document.getElementById('connect-btn').classList.remove('loading');
+  document.getElementById('connect-btn').innerHTML='<span>🔗</span><span>连接数字人</span>';
+  // 收起侧边栏（回到初始页面不需要侧边栏）
+  if(_sidebarOpen){
+    _sidebarOpen=false;
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-toggle').innerHTML='&#8250;';
+    document.getElementById('sidebar-toggle').style.left='0';
+  }
+  // 显示连接屏（z-index 覆盖所有元素）
+  const cs = document.getElementById('connect-screen');
+  cs.style.zIndex = '9999';
+  cs.classList.remove('hidden');
+  setStatus('','未连接');
+}
+
+/* ═══════════ Live2D 初始化 ═══════════ */
+async function initPixiAndModel(){
+  if(live2dModel) return; // 已加载
+  if(!window.PIXI||!PIXI.live2d) throw new Error('Live2D SDK 未加载');
+  const canvas=document.getElementById('live2d-canvas');
+  const wrap=document.getElementById('live2d-wrap');
+  pixiApp=new PIXI.Application({
+    view:canvas,width:wrap.clientWidth,height:wrap.clientHeight,
+    backgroundAlpha:0,antialias:true,resolution:window.devicePixelRatio||1,
+  });
+  live2dModel=await PIXI.live2d.Live2DModel.from(MODEL_PATH,{autoInteract:false,autoUpdate:true});
+  const scW=wrap.clientWidth/live2dModel.width;
+  const scH=wrap.clientHeight/live2dModel.height;
+  const sc=Math.min(scW,scH)*0.9;
+  live2dModel.scale.set(sc);
+  live2dModel.x=wrap.clientWidth/2;
+  live2dModel.y=wrap.clientHeight/2;
+  live2dModel.anchor.set(0.5,0.5);
+  pixiApp.stage.addChild(live2dModel);
+
+  // 禁用内置自动行为
+  const im=live2dModel.internalModel;
+  if(im.eyeBlink) im.eyeBlink=null;
+  if(im.breath) im.breath=null;
+  if(im.pose) im.pose=null;
+  if(im.motionManager){im.motionManager.groups.idle='';im.motionManager.stopAllMotions();}
+
+  // 手臂姿势：叠手
+  const cm=im.coreModel;
+  const partsShow=['PARTS_01_ARM_R_01','PARTS_01_ARM_L_01'];
+  const partsHide=['PARTS_01_ARM_R_02','PARTS_01_ARM_L_02'];
+  partsShow.forEach(id=>{const i=cm.getPartIndex(id);if(i>=0)cm.setPartOpacityByIndex(i,1);});
+  partsHide.forEach(id=>{const i=cm.getPartIndex(id);if(i>=0)cm.setPartOpacityByIndex(i,0);});
+  // 默认微笑
+  const mfIdx=cm.getParameterIndex('PARAM_MOUTH_FORM');
+  if(mfIdx>=0) cm.setParameterValueByIndex(mfIdx,0.7);
+
+  // 手臂归零参数
+  const armParams=['PARAM_ARM_L','PARAM_ARM_L_02','PARAM_HAND_L','PARAM_ARM_R','PARAM_ARM_R_02','PARAM_HAND_R',
+    'PARAM_ARM_02_L_01','PARAM_ARM_02_L_02','PARAM_HAND_02_L','PARAM_ARM_02_R_01','PARAM_ARM_02_R_02','PARAM_HAND_02_R'];
+
+  // 每帧 ticker
+  pixiApp.ticker.add(()=>{
+    if(!live2dModel||!live2dModel.internalModel) return;
+    const c=live2dModel.internalModel.coreModel;
+    if(!c) return;
+    // 锁定部件
+    partsShow.forEach(id=>{const i=c.getPartIndex(id);if(i>=0)c.setPartOpacityByIndex(i,1);});
+    partsHide.forEach(id=>{const i=c.getPartIndex(id);if(i>=0)c.setPartOpacityByIndex(i,0);});
+    // 手臂归零
+    armParams.forEach(id=>{const i=c.getParameterIndex(id);if(i>=0)c.setParameterValueByIndex(i,0);});
+    // 自主动画（眨眼/呼吸/微动），先于驱动参数应用
+    tickAutoAnim();
+    // 应用外部驱动参数（会覆盖自主动画中对应参数）
+    applyDriveParams(c);
+    // TTS口型：Web Audio振幅分析实时同步
+    if(ttsSpeaking){
+      const openIdx=c.getParameterIndex('PARAM_MOUTH_OPEN_Y');
+      const formIdx=c.getParameterIndex('PARAM_MOUTH_FORM');
+      if(openIdx>=0){
+        const target=_getLipSyncTarget();
+        // 开口快(0.75)闭口快(0.40)，口型快速转换更精准
+        const lerpSpeed=target>_mouthSmooth?0.75:0.40;
+        _mouthSmooth+=(target-_mouthSmooth)*lerpSpeed;
+        const openVal=Math.max(0,Math.min(1,_mouthSmooth));
+        c.setParameterValueByIndex(openIdx, openVal);
+        // 嘴型宽窄：开口小时嘴形扁平(0.7)，开口大时变圆(0.2)
+        if(formIdx>=0){
+          const form=0.7-openVal*0.5;
+          c.setParameterValueByIndex(formIdx, form);
+        }
+      }
+    } else if(_mouthSmooth>0.005){
+      _mouthSmooth*=0.60;
+      const openIdx=c.getParameterIndex('PARAM_MOUTH_OPEN_Y');
+      const formIdx=c.getParameterIndex('PARAM_MOUTH_FORM');
+      if(openIdx>=0) c.setParameterValueByIndex(openIdx,_mouthSmooth);
+      if(formIdx>=0) c.setParameterValueByIndex(formIdx,0.7);
+    }
+  });
+}
+
+function applyDriveParams(coreModel){
+  for(const [key,value] of Object.entries(wsParamsBuffer)){
+    // 支持两种格式：
+    // 1. camelCase 驼峰：ParamAngleX → PARAM_MAP 查表 → PARAM_ANGLE_X
+    // 2. 后端直接发送 PARAM_* 格式：直接尝试作为参数ID
+    let paramId = PARAM_MAP[key] || (key.startsWith('PARAM_') ? key : null);
+    // 兼容 PARAM_BODY_ANGLE_* → PARAM_BODY_*
+    if(!paramId && key==='PARAM_BODY_ANGLE_X') paramId='PARAM_BODY_X';
+    if(!paramId && key==='PARAM_BODY_ANGLE_Y') paramId='PARAM_BODY_Y';
+    if(!paramId && key==='PARAM_BODY_ANGLE_Z') paramId='PARAM_BODY_Z';
+    if(paramId){
+      try{
+        const idx=coreModel.getParameterIndex(paramId);
+        if(idx>=0){
+          const smileBias=(paramId==='PARAM_MOUTH_FORM')?0.7:0;
+          coreModel.setParameterValueByIndex(idx,value+smileBias);
+        }
+      }catch(e){}
+    }
+  }
+}
+
+/* ═══════════ 动作播放 ═══════════ */
+async function playMotion(motionName){
+  if(!live2dModel||!motionName||isPlayingMotion) return;
+  const now=Date.now();
+  if(now-lastMotionTime<MOTION_COOLDOWN_MS) return;
+  const group=MOTION_GROUP_MAP[motionName];
+  if(!group) return;
+  try{
+    lastMotionTime=now;isPlayingMotion=true;
+    console.log('[Motion]',motionName);
+    await live2dModel.motion(group,0);
+    setTimeout(()=>{isPlayingMotion=false;},2500);
+  }catch(e){isPlayingMotion=false;console.warn('[Motion]',e);}
+}
+
+/* ═══════════ 自主动画（眨眼 + 呼吸 + 头部微动）═══════════ */
+let _blinkTimer=0, _blinkState=0, _blinkOpen=1.0;
+let _breathPhase=Math.random()*Math.PI*2;
+let _headPhaseX=Math.random()*Math.PI*2, _headPhaseY=Math.random()*Math.PI*2;
+let _autoAnimLastT=Date.now();
+
+function tickAutoAnim(){
+  const now=Date.now();
+  const dt=(now-_autoAnimLastT)/1000;
+  _autoAnimLastT=now;
+  if(!live2dModel||!live2dModel.internalModel) return;
+  const c=live2dModel.internalModel.coreModel;
+  if(!c) return;
+
+  // ── 眨眼状态机 ──
+  _blinkTimer-=dt;
+  if(_blinkState===0&&_blinkTimer<=0){
+    // 开始闭眼
+    _blinkState=1;
+    _blinkTimer=0.08; // 闭眼耗时
+  } else if(_blinkState===1){
+    _blinkOpen=Math.max(0,_blinkOpen-dt/0.08);
+    if(_blinkOpen<=0){_blinkState=2;_blinkTimer=0.06;} // 保持闭合
+  } else if(_blinkState===2&&_blinkTimer<=0){
+    _blinkState=3; // 睁开
+  } else if(_blinkState===3){
+    _blinkOpen=Math.min(1,_blinkOpen+dt/0.10);
+    if(_blinkOpen>=1){
+      _blinkState=0;
+      // 下次眨眼间隔 2.5~6s，偶尔连续眨（0.3s）
+      _blinkTimer=Math.random()<0.15?0.3:2.5+Math.random()*3.5;
+    }
+  }
+
+  // ── 呼吸 ──
+  _breathPhase+=dt*0.28; // ~0.045Hz，约22秒/次
+  const breathVal=0.3+0.7*Math.abs(Math.sin(_breathPhase));
+
+  // ── 头部微动（柔和漂移）──
+  _headPhaseX+=dt*0.18;
+  _headPhaseY+=dt*0.13;
+  const hx=Math.sin(_headPhaseX)*4+Math.sin(_headPhaseX*1.7)*2;
+  const hy=Math.sin(_headPhaseY)*3+Math.sin(_headPhaseY*2.1)*1.5;
+
+  // ── 只在没有外部驱动参数时才应用自主动画 ──
+  const hasExternalDrive=Object.keys(wsParamsBuffer).length>0;
+
+  function setP(name,val){
+    const idx=c.getParameterIndex(name);
+    if(idx>=0) c.setParameterValueByIndex(idx,val);
+  }
+
+  if(!hasExternalDrive){
+    // 眼睛开合
+    setP('PARAM_EYE_L_OPEN',_blinkOpen);
+    setP('PARAM_EYE_R_OPEN',_blinkOpen);
+    // 呼吸
+    setP('PARAM_BREATH',breathVal);
+    setP('PARAM_BODY_Y',breathVal*0.08);
+    // 头部微动
+    setP('PARAM_ANGLE_X',hx);
+    setP('PARAM_ANGLE_Y',hy);
+    setP('PARAM_ANGLE_Z',hx*0.3);
+    setP('PARAM_BODY_X',hx*0.03);
+  } else {
+    // 有外部驱动时：眨眼叠加（外部驱动没有眨眼）
+    const extEye=wsParamsBuffer['ParamEyeLOpen'];
+    if(extEye===undefined){
+      setP('PARAM_EYE_L_OPEN',_blinkOpen);
+      setP('PARAM_EYE_R_OPEN',_blinkOpen);
+    } else {
+      setP('PARAM_EYE_L_OPEN',Math.min(extEye,_blinkOpen));
+      setP('PARAM_EYE_R_OPEN',Math.min((wsParamsBuffer['ParamEyeROpen']||extEye),_blinkOpen));
+    }
+    // 呼吸叠加
+    if(wsParamsBuffer['ParamBreath']===undefined) setP('PARAM_BREATH',breathVal);
+  }
+}
+
+/* ═══════════ 驱动 WebSocket (/ws/drive 或 /ws/main)═══════════ */
+function connectDriveWS(url){
+  if(driveWs) driveWs.close();
+  driveWs=new WebSocket(url);
+  driveWs.onopen=()=>{driveWsReady=true;updateOverallStatus();};
+  driveWs.onclose=()=>{driveWsReady=false;updateOverallStatus();
+    if(connected) setTimeout(()=>connectDriveWS(url),3000);};
+  driveWs.onerror=()=>{};
+  driveWs.onmessage=(e)=>{
+    try{
+      const msg=JSON.parse(e.data);
+      if(msg.type==='info'||msg.type==='ping') return;
+      // 支持两种格式：{type:'params',data:{...}} 和 {type:'live2d_params',params:{...}}
+      let paramData=null;
+      if(msg.type==='params'&&msg.data) paramData=msg.data;
+      else if(msg.type==='live2d_params'&&msg.params) paramData=msg.params;
+      if(paramData){
+        const startT=performance.now();
+        for(const [name,value] of Object.entries(paramData)){
+          wsParamsBuffer[name]=value;
+        }
+        if(msg.motion&&live2dModel) playMotion(msg.motion);
+        driveFrameCount++;
+        document.getElementById('di-frames').textContent=driveFrameCount;
+        document.getElementById('di-latency').textContent=Math.round(performance.now()-startT)+'ms';
+        const ei=(Math.abs(wsParamsBuffer['ParamMouthForm']||0)+
+          Math.abs(wsParamsBuffer['ParamBrowLY']||0)+
+          Math.abs(wsParamsBuffer['ParamEyeBallForm']||0))/3;
+        document.getElementById('di-expr').textContent=ei.toFixed(2);
+      }
+    }catch(err){}
+  };
+}
+
+/* ═══════════ 聊天 WebSocket (8800) ═══════════ */
+function connectChatWS(){
+  if(chatWs) chatWs.close();
+  chatWs=new WebSocket(CHAT_WS_URL);
+  chatWs.onopen=()=>{
+    chatWsReady=true;updateOverallStatus();
+    // 绑定用户身份和当前会话到后端
+    if(_authToken&&_currentDbSession){
+      chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
+    }
+  };
+  chatWs.onclose=()=>{chatWsReady=false;updateOverallStatus();
+    if(connected) setTimeout(connectChatWS,3000);};
+  chatWs.onerror=()=>{};
+  chatWs.onmessage=(e)=>{try{handleChatMessage(JSON.parse(e.data));}catch(err){}};
+}
+function chatSend(data){if(chatWs&&chatWs.readyState===WebSocket.OPEN) chatWs.send(JSON.stringify(data));}
+
+function handleChatMessage(msg){
+  switch(msg.type){
+    case 'live2d_params':
+      // /ws/main 同时推送驱动参数，当 /ws/drive 无数据时作为备用
+      if(msg.params&&Object.keys(wsParamsBuffer).length===0){
+        for(const [k,v] of Object.entries(msg.params)) wsParamsBuffer[k]=v;
+        driveFrameCount++;
+        document.getElementById('di-frames').textContent=driveFrameCount;
+      }
+      break;
+    case 'asr_result':
+      if(msg.is_final&&msg.text) addBubble('user',msg.text);
+      break;
+    case 'llm_thinking':showThinking(true);break;
+    case 'llm_reply':
+      showThinking(false);
+      const cleanText=msg.text.replace(/\[MOTION:[^\]]+\]/gi,'').trim();
+      addBubble('ai',cleanText,msg.emotion_label);
+      updateEmotion(msg.emotion,msg.valence,msg.arousal,msg.risk_level);
+      if(ttsEnabled) speakText(cleanText);
+      if(msg.motion&&msg.motion!=='Idle') setTimeout(()=>playMotion(msg.motion),200);
+      break;
+    case 'status':updateModuleStatus(msg.modules);break;
+    case 'reset_ack':document.getElementById('chat-area').innerHTML='';break;
+    case 'session_title':{
+      // 后端自动生成会话标题后推送，更新侧边栏
+      const tid=msg.session_id; const ttl=msg.title;
+      if(tid&&ttl){
+        const el=document.getElementById('st-'+tid);
+        if(el) el.textContent=ttl;
+      }
+      break;
+    }
+  }
+}
+
+/* ═══════════ 状态管理 ═══════════ */
+function updateOverallStatus(){
+  const parts=[];
+  parts.push('驱动:'+(driveWsReady?'✓':'✗'));
+  parts.push('对话:'+(chatWsReady?'✓':'✗'));
+  const anyOk=driveWsReady||chatWsReady;
+  setStatus(anyOk?'ok':'warn',parts.join(' '));
+}
+function updateModuleStatus(modules){
+  const parts=[];
+  if(driveWsReady) parts.push('驱动:✓');
+  else parts.push('驱动:✗');
+  parts.push('LLM:'+(modules.llm?'✓':'✗'));
+  if(modules.asr) parts.push('ASR:✓');
+  setStatus((driveWsReady||modules.llm)?'ok':'warn',parts.join(' '));
+}
+function setStatus(cls,text){
+  document.getElementById('status-dot').className=cls||'';
+  document.getElementById('status-txt').textContent=text;
+}
+
+/* ═══════════ 麦克风 ═══════════ */
+/* ═══════ 语音输入（Web Speech API 实时识别） ═══════ */
+let _speechRec=null, _isListening=false;
+function toggleMic(){
+  if(_isListening) stopVoiceInput();
+  else startVoiceInput();
+}
+function startVoiceInput(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert('当前浏览器不支持语音识别，请使用 Chrome');return;}
+  _speechRec=new SR();
+  _speechRec.lang='zh-CN';
+  _speechRec.continuous=true;
+  _speechRec.interimResults=true;
+  _speechRec.maxAlternatives=1;
+  const input=document.getElementById('text-input');
+  const origPlaceholder=input.placeholder;
+  _speechRec.onresult=(e)=>{
+    let finalText='', interimText='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalText+=t;
+      else interimText+=t;
+    }
+    if(finalText){
+      input.value='';
+      const txt=finalText.trim();
+      if(txt){addBubble('user',txt);chatSend({type:'text_input',text:txt});}
+    }else if(interimText){
+      input.value=interimText;
+    }
+  };
+  _speechRec.onerror=(e)=>{
+    console.error('[语音识别]',e.error);
+    if(e.error==='not-allowed') alert('麦克风权限被拒绝，请在浏览器设置中允许');
+    if(e.error!=='no-speech'&&e.error!=='aborted') stopVoiceInput();
+  };
+  _speechRec.onend=()=>{
+    // 持续聆听模式：自动重启（除非用户主动关闭）
+    if(_isListening){try{_speechRec.start();}catch(e){}}
+  };
+  try{
+    _speechRec.start();
+    _isListening=true;
+    document.getElementById('mic-btn').classList.add('mic-on');
+    input.placeholder='🎤 正在聆听，请说话...';
+    console.log('[语音识别] 已开启');
+  }catch(e){console.error('[语音识别] 启动失败',e);}
+}
+function stopVoiceInput(){
+  _isListening=false;
+  if(_speechRec){try{_speechRec.stop();}catch(e){}_speechRec=null;}
+  document.getElementById('mic-btn').classList.remove('mic-on');
+  const input=document.getElementById('text-input');
+  input.placeholder='和小安说点什么...';
+  input.value='';
+  console.log('[语音识别] 已关闭');
+}
+
+/* ═══════════ TTS + Web Audio 实时口型同步 ═══════════ */
+let ttsUtterance=null;
+let _audioCtx=null;
+let _analyser=null;
+let _audioSrc=null;
+let _mouthSmooth=0;
+let _freqData=null;
+let _ttsAbort=null;
+let _useBrowserTTS=false;   // 是否当前使用浏览器TTS降级
+
+// 浏览器TTS口型时序状态
+let _lipText='', _lipCharIdx=0, _lipCharTimer=0, _lipOpen=0, _lipOpenDur=0;
+function _charMouthOpen(ch){
+  if(!ch) return 0;
+  if(/[\s\u3002\uff0c\uff01\uff1f\u3001,\.!?;:\uff1b\uff1a]/.test(ch)) return 0;
+  if(/[\u554a\u963f\u554a\u5440\u54c8\u5462\u563b\u563f\u5927\u554a]/.test(ch)) return 0.85;
+  if(/[\u4e00-\u9fff]/.test(ch)) return 0.38+Math.random()*0.30;
+  if(/[aeiouAEIOU]/.test(ch)) return 0.65;
+  if(/[a-zA-Z]/.test(ch)) return 0.30+Math.random()*0.20;
+  return 0.25;
+}
+function _startLipSync(text){
+  _lipText=text; _lipCharIdx=0;
+  _lipOpenDur=Math.round(1000/(4.2*0.92));
+  _lipOpen=_charMouthOpen(text[0]);
+  _lipCharTimer=Date.now()+_lipOpenDur;
+}
+function _getLipSyncFromText(){
+  const now=Date.now();
+  if(now>=_lipCharTimer&&_lipCharIdx<_lipText.length-1){
+    _lipCharIdx++; _lipOpen=_charMouthOpen(_lipText[_lipCharIdx]);
+    _lipCharTimer=now+_lipOpenDur;
+  }
+  return _lipOpen;
+}
+
+function _ensureAudioCtx(){
+  if(!_audioCtx||_audioCtx.state==='closed'){
+    _audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  }
+  if(_audioCtx.state==='suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
+function _stopAudio(){
+  if(_ttsAbort){_ttsAbort.abort();_ttsAbort=null;}
+  if(_audioSrc){try{_audioSrc.stop();}catch(e){}_audioSrc=null;}
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
+  ttsSpeaking=false; _mouthSmooth=0; _useBrowserTTS=false; _lipText='';
+  document.getElementById('speaking-indicator').classList.remove('show');
+}
+
+async function speakText(text){
+  if(!ttsEnabled||!text) return;
+  _stopAudio();
+  const ok=await _speakViaCosyVoice(text);
+  if(!ok){
+    console.warn('[TTS] CosyVoice失败，降级到浏览器TTS');
+    _speakViaBrowser(text);
+  }
+}
+
+async function _speakViaCosyVoice(text){
+  try{
+    _ttsAbort=new AbortController();
+    console.log('[TTS] 请求CosyVoice...');
+    const resp=await fetch(`/api/tts?text=${encodeURIComponent(text)}`,{signal:_ttsAbort.signal});
+    if(!resp.ok){
+      console.warn('[TTS] /api/tts返回',resp.status);
+      return false;
+    }
+    const arrayBuf=await resp.arrayBuffer();
+    if(_ttsAbort&&_ttsAbort.signal.aborted) return true;
+    const ctx=_ensureAudioCtx();
+    _analyser=ctx.createAnalyser();
+    _analyser.fftSize=256;
+    _analyser.smoothingTimeConstant=0.45;
+    _freqData=new Uint8Array(_analyser.frequencyBinCount);
+    _analyser.connect(ctx.destination);
+    const audioBuf=await ctx.decodeAudioData(arrayBuf);
+    _audioSrc=ctx.createBufferSource();
+    _audioSrc.buffer=audioBuf;
+    _audioSrc.connect(_analyser);
+    _audioSrc.onended=()=>{
+      ttsSpeaking=false; _mouthSmooth=0; _audioSrc=null; _useBrowserTTS=false;
+      document.getElementById('speaking-indicator').classList.remove('show');
+    };
+    _useBrowserTTS=false;
+    ttsSpeaking=true;
+    document.getElementById('speaking-indicator').classList.add('show');
+    document.getElementById('thinking-bar').classList.remove('show');
+    _audioSrc.start(0);
+    console.log('[TTS] CosyVoice播放中，时长',audioBuf.duration.toFixed(1),'s');
+    return true;
+  }catch(e){
+    if(e.name==='AbortError') return true;
+    console.error('[CosyVoice异常]',e);
+    return false;
+  }
+}
+
+const _SWEET_VOICES=['Microsoft Xiaoxiao','Microsoft XiaoXiao','Xiaoxiao',
+  'Microsoft Xiaoyi','Microsoft Yaoyao','Ting-Ting'];
+function _speakViaBrowser(text){
+  if(!window.speechSynthesis) return;
+  const utt=new SpeechSynthesisUtterance(text);
+  utt.lang='zh-CN'; utt.rate=0.92; utt.pitch=1.25; utt.volume=1.0;
+  const doSpeak=()=>{
+    const voices=window.speechSynthesis.getVoices();
+    let v=null;
+    for(const name of _SWEET_VOICES){v=voices.find(x=>x.name.includes(name));if(v)break;}
+    if(!v) v=voices.find(x=>x.lang==='zh-CN')||voices.find(x=>x.lang.startsWith('zh'));
+    if(v){ utt.voice=v; console.log('[TTS] 浏览器TTS音色:',v.name); }
+    utt.onstart=()=>{
+      _useBrowserTTS=true;
+      ttsSpeaking=true;
+      _startLipSync(text); // 启动字符时序口型
+      document.getElementById('speaking-indicator').classList.add('show');
+      document.getElementById('thinking-bar').classList.remove('show');
+    };
+    utt.onend=utt.onerror=()=>{
+      ttsSpeaking=false; _mouthSmooth=0; _useBrowserTTS=false; _lipText='';
+      document.getElementById('speaking-indicator').classList.remove('show');
+    };
+    ttsUtterance=utt;
+    window.speechSynthesis.speak(utt);
+  };
+  if(window.speechSynthesis.getVoices().length>0) doSpeak();
+  else{window.speechSynthesis.onvoiceschanged=()=>{window.speechSynthesis.onvoiceschanged=null;doSpeak();};}
+}
+
+// 每帧口型目标值
+let _timeDomainData=null; // 时域数据缓冲
+function _getLipSyncTarget(){
+  if(!ttsSpeaking) return 0;
+  if(_useBrowserTTS){
+    return _lipText?_getLipSyncFromText():0.4+0.3*Math.sin(Date.now()*0.009);
+  }
+  // Web Audio：时域振幅分析（比频域更精准反映语音能量）
+  if(_analyser){
+    if(!_timeDomainData) _timeDomainData=new Uint8Array(_analyser.fftSize);
+    _analyser.getByteTimeDomainData(_timeDomainData);
+    // 计算 RMS 振幅（根均方）
+    let sumSq=0;
+    for(let i=0;i<_timeDomainData.length;i++){
+      const v=(_timeDomainData[i]-128)/128; // 归一化到 -1~1
+      sumSq+=v*v;
+    }
+    const rms=Math.sqrt(sumSq/_timeDomainData.length);
+    // 非线性映射：增益8倍+幂0.5，嘴巴张得更大更明显
+    const mapped=Math.pow(Math.min(1, rms*8.0), 0.5);
+    return mapped;
+  }
+  return 0.4+0.3*Math.sin(Date.now()*0.009);
+}
+function toggleTTS(){
+  ttsEnabled=!ttsEnabled;
+  const btn=document.getElementById('tts-btn');
+  btn.classList.toggle('on',ttsEnabled);
+  btn.innerHTML=ttsEnabled?'🔊 语音':'🔇 静音';
+  if(!ttsEnabled){window.speechSynthesis&&window.speechSynthesis.cancel();ttsSpeaking=false;}
+}
+
+/* ═══════════ UI ═══════════ */
+function updateEmotion(emotion){
+  document.body.className='';
+  if(emotion==='Happy') document.body.classList.add('emo-happy');
+  else if(emotion==='Sad') document.body.classList.add('emo-sad');
+  else if(emotion==='Anxiety'||emotion==='Fear') document.body.classList.add('emo-anxiety');
+}
+function showThinking(show){
+  document.getElementById('thinking-bar').classList.toggle('show',show);
+}
+function addBubble(role,text,label){
+  showThinking(false);
+  const area=document.getElementById('chat-area');
+  const wc=document.getElementById('welcome-card');
+  if(wc&&area.children.length===0) wc.style.display='none';
+  const row=document.createElement('div');row.className='bubble-row '+role;
+  const meta=document.createElement('div');meta.className='bubble-meta';
+  meta.textContent=role==='ai'?'小安':'你';
+  const b=document.createElement('div');b.className='bubble '+role;b.textContent=text;
+  if(role==='ai'&&label){
+    const tag=document.createElement('div');tag.className='emo-tag';tag.textContent=label;
+    b.appendChild(document.createElement('br'));b.appendChild(tag);
+  }
+  row.appendChild(meta);row.appendChild(b);area.appendChild(row);
+  area.scrollTop=area.scrollHeight;
+}
+function sendText(){
+  const input=document.getElementById('text-input');
+  const text=input.value.trim();if(!text) return;
+  input.value='';addBubble('user',text);
+  chatSend({type:'text_input',text});
+}
+
+/* ═══════════ 窗口自适应 ═══════════ */
+window.addEventListener('resize',()=>{
+  if(pixiApp&&live2dModel){
+    const wrap=document.getElementById('live2d-wrap');
+    pixiApp.renderer.resize(wrap.clientWidth,wrap.clientHeight);
+    const scW=wrap.clientWidth/live2dModel.width;
+    const scH=wrap.clientHeight/live2dModel.height;
+    const sc=Math.min(scW,scH)*0.9;
+    live2dModel.scale.set(sc);
+    live2dModel.x=wrap.clientWidth/2;
+    live2dModel.y=wrap.clientHeight/2;
+  }
+});
+
+/* ═══════════ 启动 ═══════════ */
+window.addEventListener('load',()=>{
+  window.speechSynthesis&&window.speechSynthesis.getVoices();
+  initAuth();
+});
+
+/* ═══════════ 认证与会话管理 ═══════════ */
+let _authToken='', _currentUser='', _currentDbSession='', _sidebarOpen=false;
+
+function getCookie(name){
+  const m=document.cookie.match(new RegExp('(?:^|; )'+name+'=([^;]*)'));
+  return m?decodeURIComponent(m[1]):'';
+}
+function setCookie(name,val,days){
+  const d=new Date();d.setTime(d.getTime()+days*86400000);
+  document.cookie=name+'='+encodeURIComponent(val)+';expires='+d.toUTCString()+';path=/';
+}
+function delCookie(name){document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';}
+
+function initAuth(){
+  _authToken=getCookie('auth_token');
+  _currentUser=getCookie('auth_user');
+  if(_authToken&&_currentUser){
+    _onLoginSuccess(_authToken,_currentUser,true);
+  }else{
+    document.getElementById('auth-modal').classList.remove('hidden');
+    setTimeout(()=>document.getElementById('auth-username').focus(),300);
+  }
+}
+
+function switchAuthTab(tab){
+  document.getElementById('tab-login').classList.toggle('active',tab==='login');
+  document.getElementById('tab-register').classList.toggle('active',tab==='register');
+  document.getElementById('auth-submit').textContent=tab==='login'?'进 入':'注 册';
+  document.getElementById('auth-err').textContent='';
+  document.getElementById('auth-submit').dataset.mode=tab;
+}
+document.getElementById('auth-submit').dataset.mode='login';
+
+async function doAuth(){
+  const btn=document.getElementById('auth-submit');
+  const mode=btn.dataset.mode||'login';
+  const username=document.getElementById('auth-username').value.trim();
+  const password=document.getElementById('auth-password').value;
+  const errEl=document.getElementById('auth-err');
+  if(!username||!password){errEl.textContent='请填写用户名和密码';return;}
+  btn.disabled=true;
+  btn.textContent='请稍候...';
+  try{
+    const url=mode==='login'?'/api/auth/login':'/api/auth/register';
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username,password})});
+    const data=await res.json();
+    if(!res.ok){errEl.textContent=data.error||'操作失败';return;}
+    setCookie('auth_token',data.token,7);
+    setCookie('auth_user',data.username,7);
+    _onLoginSuccess(data.token,data.username,false);
+  }catch(e){errEl.textContent='网络错误，请重试';}
+  finally{btn.disabled=false;btn.textContent=mode==='login'?'进 入':'注 册';}
+}
+
+async function _onLoginSuccess(token,username,silent){
+  _authToken=token; _currentUser=username;
+  document.getElementById('auth-modal').classList.add('hidden');
+  // 更新底部用户区（豆包风格）
+  const initial=username.charAt(0).toUpperCase();
+  document.getElementById('sb-avatar').textContent=initial;
+  document.getElementById('sb-name').textContent=username;
+  // 自动打开侧边栏
+  if(!_sidebarOpen) toggleSidebar();
+  await loadSessions();
+  // 若无历史记录则自动创建新会话
+  if(!_currentDbSession) await newSession();
+  if(!silent) console.log('[Auth] 登录成功:',username);
+}
+
+async function doLogout(){
+  if(!confirm('确定退出登录？')) return;
+  try{
+    await fetch('/api/auth/logout',{method:'POST',headers:{'X-Auth-Token':_authToken}});
+  }catch(e){}
+  delCookie('auth_token'); delCookie('auth_user');
+  _authToken=''; _currentUser=''; _currentDbSession='';
+  document.getElementById('sb-sessions').innerHTML=
+    '<div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>';
+  document.getElementById('sb-avatar').textContent='?';
+  document.getElementById('sb-name').textContent='未登录';
+  if(_sidebarOpen) toggleSidebar();
+  document.getElementById('auth-modal').classList.remove('hidden');
+  document.getElementById('auth-username').value='';
+  document.getElementById('auth-password').value='';
+  setTimeout(()=>document.getElementById('auth-username').focus(),300);
+}
+
+function toggleSidebar(){
+  _sidebarOpen=!_sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('open',_sidebarOpen);
+  document.getElementById('sidebar-toggle').innerHTML=_sidebarOpen?'&#8249;':'&#8250;';
+}
+
+/* ══ 侧边栏宽度拖拽 ══ */
+(function(){
+  const sidebar=document.getElementById('sidebar');
+  const handle=document.getElementById('sb-resize');
+  const toggle=document.getElementById('sidebar-toggle');
+  let dragging=false, startX=0, startW=0;
+  handle.addEventListener('mousedown',e=>{
+    dragging=true; startX=e.clientX; startW=sidebar.offsetWidth;
+    document.body.style.cursor='col-resize'; document.body.style.userSelect='none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    const newW=Math.min(400,Math.max(180,startW+(e.clientX-startX)));
+    sidebar.style.width=newW+'px';
+    document.documentElement.style.setProperty('--sb-width',newW+'px');
+    toggle.style.left=(_sidebarOpen?newW:0)+'px';
+  });
+  document.addEventListener('mouseup',()=>{
+    if(!dragging) return;
+    dragging=false; document.body.style.cursor=''; document.body.style.userSelect='';
+  });
+})();
+
+async function loadSessions(){
+  if(!_authToken) return;
+  try{
+    const res=await fetch('/api/sessions',{headers:{'X-Auth-Token':_authToken}});
+    const data=await res.json();
+    renderSessions(data.sessions||[]);
+  }catch(e){console.error('[Sessions]',e);}
+}
+
+function _groupByDate(sessions){
+  const now=new Date(); const today=now.toDateString();
+  const yesterday=new Date(now-86400000).toDateString();
+  const groups={今天:[],昨天:[],更早:[]};
+  for(const s of sessions){
+    const d=new Date(s.updated_at||s.created_at).toDateString();
+    if(d===today) groups['今天'].push(s);
+    else if(d===yesterday) groups['昨天'].push(s);
+    else groups['更早'].push(s);
+  }
+  return groups;
+}
+
+function renderSessions(sessions){
+  const container=document.getElementById('sb-sessions');
+  if(!sessions.length){
+    container.innerHTML='<div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>';
+    return;
+  }
+  const groups=_groupByDate(sessions);
+  let html='';
+  for(const [label,list] of Object.entries(groups)){
+    if(!list.length) continue;
+    html+=`<div class="sb-group-label">${label}</div>`;
+    for(const s of list){
+      const active=s.id===_currentDbSession?'active':'';
+      html+=`<div class="sb-session ${active}" data-id="${s.id}" onclick="switchSession('${s.id}')">
+        <span class="sb-session-title" id="st-${s.id}">${s.title||'新对话'}</span>
+        <button class="sb-del-btn" onclick="event.stopPropagation();deleteSession('${s.id}')" title="删除">✕</button>
+      </div>`;
+    }
+  }
+  container.innerHTML=html;
+}
+
+async function newSession(){
+  if(!_authToken) return;
+  try{
+    const res=await fetch('/api/sessions',{method:'POST',headers:{'X-Auth-Token':_authToken}});
+    const data=await res.json();
+    _currentDbSession=data.session_id;
+    // 清空对话区
+    document.getElementById('chat-area').innerHTML='';
+    // 通知后端绑定新会话
+    if(chatWs&&chatWs.readyState===WebSocket.OPEN){
+      chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
+    }
+    await loadSessions();
+  }catch(e){console.error('[NewSession]',e);}
+}
+
+async function switchSession(sessionId){
+  if(sessionId===_currentDbSession) return;
+  _currentDbSession=sessionId;
+  // 刷新侧边栏高亮
+  document.querySelectorAll('.sb-session').forEach(el=>{
+    el.classList.toggle('active',el.dataset.id===sessionId);
+  });
+  // 加载历史消息
+  try{
+    const res=await fetch(`/api/sessions/${sessionId}/messages`,{headers:{'X-Auth-Token':_authToken}});
+    const data=await res.json();
+    const area=document.getElementById('chat-area');
+    area.innerHTML='';
+    for(const m of (data.messages||[])){
+      addBubble(m.role==='user'?'user':'ai', m.content, m.emotion_label||'');
+    }
+    area.scrollTop=area.scrollHeight;
+  }catch(e){console.error('[SwitchSession]',e);}
+  // 通知后端切换会话（恢复LLM历史记录）
+  if(chatWs&&chatWs.readyState===WebSocket.OPEN){
+    chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:sessionId}));
+  }
+}
+
+async function deleteSession(sessionId){
+  if(!confirm('删除这条对话记录？')) return;
+  try{
+    await fetch(`/api/sessions/${sessionId}`,{method:'DELETE',headers:{'X-Auth-Token':_authToken}});
+    if(sessionId===_currentDbSession){
+      _currentDbSession='';
+      document.getElementById('chat-area').innerHTML='';
+    }
+    await loadSessions();
+    if(!_currentDbSession) await newSession();
+  }catch(e){console.error('[DeleteSession]',e);}
+}
+
+</script>
+</body>
+</html>

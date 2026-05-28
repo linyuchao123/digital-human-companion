@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>灵伴 · 视觉听觉评测平台</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --bg:#07090f; --bg-panel:#0d1117; --bg-card:#161b27;
+      --border:rgba(99,179,237,0.13); --border-hi:rgba(99,179,237,0.4);
+      --accent:#58a6ff; --accent2:#a78bfa; --accent3:#34d399;
+      --warn:#fbbf24; --danger:#f87171;
+      --text:#e6edf3; --text2:#8b949e; --text3:#484f58;
+      --r:10px; --r-lg:16px;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{min-height:100%;background:var(--bg);color:var(--text);
+              font-family:'PingFang SC','Microsoft YaHei','Inter',sans-serif;font-size:14px}
+
+    /* ── 顶栏 ── */
+    header{
+      height:54px;display:flex;align-items:center;gap:16px;padding:0 28px;
+      background:rgba(13,17,23,.92);border-bottom:1px solid var(--border);
+      position:sticky;top:0;z-index:100;backdrop-filter:blur(18px)
+    }
+    .logo{font-size:16px;font-weight:700;
+          background:linear-gradient(135deg,var(--accent),var(--accent2));
+          -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .logo-sub{font-size:12px;color:var(--text2);border-left:1px solid var(--border);
+              padding-left:14px;margin-left:4px}
+    .hdr-tags{flex:1;display:flex;gap:8px}
+    .tag{font-size:11px;padding:3px 10px;border-radius:99px;border:1px solid var(--border);
+         color:var(--text2);background:rgba(255,255,255,.02)}
+    .tag.green{border-color:rgba(52,211,153,.3);color:var(--accent3)}
+    .tag.blue{border-color:rgba(88,166,255,.3);color:var(--accent)}
+
+    /* ── 主体 ── */
+    .page{max-width:1100px;margin:0 auto;padding:28px 24px 60px}
+
+    /* ── 卡片 ── */
+    .card{background:var(--bg-card);border:1px solid var(--border);
+          border-radius:var(--r-lg);padding:22px 24px;margin-bottom:20px}
+    .card-title{font-size:13px;font-weight:600;color:var(--accent);
+                letter-spacing:.04em;text-transform:uppercase;margin-bottom:16px;
+                display:flex;align-items:center;gap:8px}
+    .card-title svg{width:15px;height:15px;opacity:.8}
+
+    /* ── 上传区 ── */
+    .upload-zone{
+      border:2px dashed var(--border);border-radius:var(--r-lg);
+      padding:36px 24px;text-align:center;cursor:pointer;transition:.2s;
+      background:rgba(88,166,255,.02)
+    }
+    .upload-zone:hover,.upload-zone.drag-over{
+      border-color:var(--accent);background:rgba(88,166,255,.06)}
+    .upload-zone input{display:none}
+    .upload-icon{font-size:36px;margin-bottom:10px;opacity:.6}
+    .upload-hint{color:var(--text2);font-size:13px;line-height:1.8}
+    .upload-hint strong{color:var(--accent)}
+    .file-info{margin-top:14px;padding:10px 14px;background:rgba(88,166,255,.07);
+               border-radius:var(--r);display:none;
+               border-left:3px solid var(--accent);font-size:13px}
+
+    /* ── 表单行 ── */
+    .form-row{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
+    .form-row label{font-size:12px;color:var(--text2);white-space:nowrap;
+                    padding-top:9px;min-width:90px}
+    textarea,input[type=text]{
+      flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border);
+      border-radius:var(--r);color:var(--text);padding:8px 12px;font-size:13px;
+      resize:vertical;outline:none;font-family:inherit;transition:.2s;
+      min-height:60px
+    }
+    textarea:focus,input[type=text]:focus{border-color:var(--accent);
+      background:rgba(88,166,255,.04)}
+    .checkbox-row{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+    .checkbox-row input{accent-color:var(--accent);width:15px;height:15px}
+    .checkbox-row label{font-size:13px;color:var(--text2);cursor:pointer}
+
+    /* ── 按钮 ── */
+    .btn{
+      display:inline-flex;align-items:center;gap:7px;padding:9px 22px;
+      border-radius:var(--r);border:none;cursor:pointer;font-size:13px;
+      font-weight:500;transition:.18s;font-family:inherit
+    }
+    .btn-primary{background:linear-gradient(135deg,var(--accent),#4f8cff);color:#fff}
+    .btn-primary:hover{filter:brightness(1.12);transform:translateY(-1px)}
+    .btn-primary:disabled{opacity:.45;cursor:not-allowed;transform:none}
+    .btn-outline{background:transparent;border:1px solid var(--border);
+                 color:var(--text2)}
+    .btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-sm{padding:6px 14px;font-size:12px}
+
+    /* ── 进度条 ── */
+    .progress-wrap{display:none;margin-top:14px}
+    .progress-bar-track{height:4px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden}
+    .progress-bar-fill{height:100%;border-radius:2px;width:0%;transition:width .3s;
+                        background:linear-gradient(90deg,var(--accent),var(--accent2))}
+    .progress-label{font-size:12px;color:var(--text2);margin-top:6px}
+
+    /* ── 结果区 ── */
+    .results{display:none}
+    .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+    @media(max-width:700px){.result-grid{grid-template-columns:1fr}}
+
+    /* 指标卡片 */
+    .metric-card{
+      background:var(--bg-panel);border:1px solid var(--border);
+      border-radius:var(--r-lg);padding:18px 20px;text-align:center;
+    }
+    .metric-val{font-size:36px;font-weight:700;line-height:1;margin-bottom:6px}
+    .metric-val.good{color:var(--accent3)}
+    .metric-val.warn{color:var(--warn)}
+    .metric-val.bad{color:var(--danger)}
+    .metric-label{font-size:12px;color:var(--text2);letter-spacing:.04em}
+    .metric-sub{font-size:11px;color:var(--text3);margin-top:6px}
+
+    /* 文本对比 */
+    .text-compare{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+    @media(max-width:700px){.text-compare{grid-template-columns:1fr}}
+    .text-box{background:var(--bg-panel);border:1px solid var(--border);
+              border-radius:var(--r);padding:14px 16px}
+    .text-box-label{font-size:11px;color:var(--text2);margin-bottom:8px;
+                    text-transform:uppercase;letter-spacing:.05em}
+    .text-box-content{font-size:13px;line-height:1.7;color:var(--text);
+                      max-height:120px;overflow-y:auto;word-break:break-all}
+    /* diff高亮 */
+    .diff-del{background:rgba(248,113,113,.2);color:var(--danger);
+              text-decoration:line-through;border-radius:3px;padding:0 2px}
+    .diff-ins{background:rgba(52,211,153,.15);color:var(--accent3);
+              border-radius:3px;padding:0 2px}
+
+    /* WER详情表格 */
+    .wer-detail{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .wer-item{background:rgba(255,255,255,.04);border:1px solid var(--border);
+              border-radius:var(--r);padding:8px 14px;font-size:12px;
+              display:flex;flex-direction:column;gap:3px;min-width:80px}
+    .wer-item-val{font-size:18px;font-weight:700;color:var(--accent)}
+    .wer-item-key{color:var(--text2)}
+
+    /* SER情绪分布 */
+    .emo-bars{margin-top:12px}
+    .emo-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-size:12px}
+    .emo-bar-label{width:70px;color:var(--text2);text-align:right}
+    .emo-bar-track{flex:1;height:8px;background:rgba(255,255,255,.07);
+                   border-radius:4px;overflow:hidden}
+    .emo-bar-fill{height:100%;border-radius:4px;transition:width .4s}
+    .emo-bar-pct{width:44px;color:var(--text2);text-align:right}
+
+    /* 分段结果表格 */
+    .seg-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+    .seg-table th{background:rgba(255,255,255,.04);color:var(--text2);
+                  padding:7px 10px;text-align:left;border-bottom:1px solid var(--border)}
+    .seg-table td{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04);
+                  color:var(--text);vertical-align:top}
+    .seg-table tr:last-child td{border-bottom:none}
+    .seg-table tr:hover td{background:rgba(88,166,255,.04)}
+    .conf-badge{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px}
+    .conf-high{background:rgba(52,211,153,.15);color:var(--accent3)}
+    .conf-mid{background:rgba(251,191,36,.15);color:var(--warn)}
+    .conf-low{background:rgba(248,113,113,.15);color:var(--danger)}
+
+    /* SER句错率表格 */
+    .ser-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+    .ser-table th{background:rgba(255,255,255,.04);color:var(--text2);
+                  padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+    .ser-table td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.04);
+                  color:var(--text);vertical-align:top;line-height:1.6}
+    .ser-table tr:last-child td{border-bottom:none}
+    .ser-table tr:hover td{background:rgba(88,166,255,.04)}
+    .ser-ok{color:var(--accent3)}
+    .ser-err{color:var(--danger)}
+    .result-badge{display:inline-flex;align-items:center;justify-content:center;
+                  width:44px;height:22px;border-radius:4px;font-size:11px;font-weight:600}
+    .result-badge.ok{background:rgba(52,211,153,.15);color:var(--accent3)}
+    .result-badge.err{background:rgba(248,113,113,.15);color:var(--danger)}
+
+    /* 日志 */
+    .log{background:rgba(0,0,0,.35);border:1px solid var(--border);
+         border-radius:var(--r);padding:12px 14px;font-size:11.5px;
+         font-family:monospace;max-height:140px;overflow-y:auto;
+         color:var(--text2);line-height:1.65;margin-top:8px}
+    .log-line{padding:1px 0}
+    .log-ok{color:var(--accent3)}
+    .log-warn{color:var(--warn)}
+    .log-err{color:var(--danger)}
+
+    /* 分隔线 */
+    .divider{height:1px;background:var(--border);margin:20px 0}
+
+    /* 标签页 */
+    .tabs{display:flex;gap:4px;margin-bottom:20px;
+          border-bottom:1px solid var(--border);padding-bottom:0}
+    .tab{padding:8px 18px;font-size:13px;cursor:pointer;color:var(--text2);
+         border-bottom:2px solid transparent;transition:.15s;margin-bottom:-1px}
+    .tab:hover{color:var(--text)}
+    .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+    .tab-panel{display:none}
+    .tab-panel.active{display:block}
+
+    /* 提示框 */
+    .tip{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);
+         border-radius:var(--r);padding:10px 14px;font-size:12.5px;color:var(--text2);
+         line-height:1.7;margin-bottom:16px}
+    .tip strong{color:var(--accent)}
+
+    /* 加载动画 */
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.15);
+             border-top-color:var(--accent);border-radius:50%;
+             animation:spin .7s linear infinite;flex-shrink:0}
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">灵伴</div>
+  <div class="logo-sub">视觉听觉评测平台</div>
+  <div class="hdr-tags" id="hdr-tags">
+    <span class="tag blue">ASR · WER</span>
+    <span class="tag green">SER · 情感识别</span>
+    <span class="tag" id="srv-tag">服务检测中…</span>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- 标签页导航 -->
+  <div class="tabs">
+    <div class="tab active" data-tab="full">完整评测</div>
+    <div class="tab" data-tab="asr-only">单独 ASR</div>
+    <div class="tab" data-tab="wer-only">单独 WER</div>
+    <div class="tab" data-tab="ser-only">单独 SER</div>
+  </div>
+
+  <!-- ══ 完整评测 ══ -->
+  <div class="tab-panel active" id="tab-full">
+
+    <div class="tip">
+      <strong>使用说明：</strong>上传 MP4/WAV/MP3 文件（支持中文语音），系统将自动进行
+      ASR 转写，并与参考文本比对计算 <strong>WER（字错误率）</strong> 和
+      <strong>SER（句错误率）</strong>。勾选「启用视觉SER」可额外分析视频中的人脸情绪。
+    </div>
+
+    <!-- 上传区 -->
+    <div class="card">
+      <div class="card-title">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2 10v3h12v-3M8 2v8M5 5l3-3 3 3"/>
+        </svg>
+        上传视频文件
+      </div>
+
+      <div class="upload-zone" id="dz-full" onclick="document.getElementById('file-full').click()">
+        <input type="file" id="file-full" accept="video/*,audio/*,.wav,.mp3,.flac">
+        <div class="upload-icon">🎬</div>
+        <div class="upload-hint">
+          拖拽或 <strong>点击选择</strong> MP4 / WAV / MP3 文件<br>
+          <small>支持格式：MP4、AVI、MOV、WAV、MP3、FLAC，建议文件 ≤ 100MB</small>
+        </div>
+      </div>
+      <div class="file-info" id="fi-full"></div>
+
+      <div style="margin-top:18px">
+        <div class="form-row">
+          <label>参考文本</label>
+          <textarea id="ref-full" placeholder="粘贴人工标注的参考转写文本（用于计算WER，不填则只转写不评测）" rows="3"></textarea>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="chk-ser" value="true">
+          <label for="chk-ser">启用视觉 SER（情感识别，需安装 MediaPipe，速度较慢）</label>
+        </div>
+        <button class="btn btn-primary" id="btn-full" onclick="runFull()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5,3 13,8 5,13"/>
+          </svg>
+          开始评测
+        </button>
+      </div>
+
+      <div class="progress-wrap" id="prog-full">
+        <div class="progress-bar-track"><div class="progress-bar-fill" id="pb-full"></div></div>
+        <div class="progress-label" id="pl-full">准备中…</div>
+      </div>
+    </div>
+
+    <!-- 结果区 -->
+    <div class="results" id="res-full">
+
+      <!-- 核心指标 -->
+      <div class="result-grid" id="metrics-full"></div>
+
+      <!-- WER详情 -->
+      <div class="card" id="wer-detail-card" style="display:none">
+        <div class="card-title">WER 词错误率详情</div>
+        <div class="text-compare" id="text-compare"></div>
+        <div class="wer-detail" id="wer-items"></div>
+      </div>
+
+      <!-- SER 句错率详情（文本对比，自动计算） -->
+      <div class="card" id="text-ser-card" style="display:none">
+        <div class="card-title">SER 句错误率 — 逐句对比</div>
+        <div id="text-ser-summary" style="margin-bottom:14px"></div>
+        <table class="ser-table">
+          <thead>
+            <tr>
+              <th style="width:32px">#</th>
+              <th>参考文本</th>
+              <th>识别文本</th>
+              <th style="width:50px">WER</th>
+              <th style="width:36px" title="替换错误数">S</th>
+              <th style="width:36px" title="删除错误数">D</th>
+              <th style="width:36px" title="插入错误数">I</th>
+              <th style="width:56px">结果</th>
+            </tr>
+          </thead>
+          <tbody id="ser-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- ASR分段 -->
+      <div class="card" id="seg-card" style="display:none">
+        <div class="card-title">ASR 分段识别结果</div>
+        <table class="seg-table" id="seg-table">
+          <thead><tr><th>时间段</th><th>识别文本</th><th>置信度</th></tr></thead>
+          <tbody id="seg-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- SER结果 -->
+      <div class="card" id="ser-card" style="display:none">
+        <div class="card-title">SER 情感识别结果</div>
+        <div id="ser-content"></div>
+      </div>
+
+      <!-- 操作日志 -->
+      <div class="card">
+        <div class="card-title">处理日志</div>
+        <div class="log" id="log-full"></div>
+      </div>
+    </div>
+
+  </div><!-- /tab-full -->
+
+  <!-- ══ 单独 ASR ══ -->
+  <div class="tab-panel" id="tab-asr-only">
+
+    <div class="card">
+      <div class="card-title">上传文件 → ASR 转写</div>
+      <div class="upload-zone" id="dz-asr" onclick="document.getElementById('file-asr').click()">
+        <input type="file" id="file-asr" accept="video/*,audio/*,.wav,.mp3,.flac">
+        <div class="upload-icon">🎙️</div>
+        <div class="upload-hint">拖拽或 <strong>点击选择</strong> 音视频文件</div>
+      </div>
+      <div class="file-info" id="fi-asr"></div>
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" id="btn-asr" onclick="runAsr()">识别</button>
+      </div>
+      <div class="progress-wrap" id="prog-asr">
+        <div class="progress-bar-track"><div class="progress-bar-fill" id="pb-asr"></div></div>
+        <div class="progress-label" id="pl-asr">处理中…</div>
+      </div>
+    </div>
+
+    <div class="results" id="res-asr">
+      <div class="card">
+        <div class="card-title">转写结果</div>
+        <div class="text-box" style="margin-bottom:12px">
+          <div class="text-box-label">完整识别文本</div>
+          <div class="text-box-content" id="asr-text"></div>
+        </div>
+        <table class="seg-table" id="asr-seg-table">
+          <thead><tr><th>时间段</th><th>文本</th><th>置信度</th></tr></thead>
+          <tbody id="asr-seg-tbody"></tbody>
+        </table>
+        <!-- 快捷复制到WER/SER -->
+        <div style="margin-top:12px;display:flex;gap:10px">
+          <button class="btn btn-outline btn-sm" onclick="copyToWer()">复制到 WER 评测</button>
+          <button class="btn btn-outline btn-sm" onclick="copyToSer()">复制到 SER 评测</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-asr-only -->
+
+  <!-- ══ 单独 WER ══ -->
+  <div class="tab-panel" id="tab-wer-only">
+    <div class="card">
+      <div class="card-title">手动输入 → WER 计算</div>
+      <div class="tip">
+        适用于已有 ASR 转写结果时，直接粘贴计算 WER。支持中文（按字计算）和英文（按词计算）。
+      </div>
+      <div class="form-row">
+        <label>参考文本<br><small style="color:var(--text3)">Ground Truth</small></label>
+        <textarea id="wer-ref" placeholder="粘贴人工标注的正确文本" rows="4"></textarea>
+      </div>
+      <div class="form-row">
+        <label>假设文本<br><small style="color:var(--text3)">ASR输出</small></label>
+        <textarea id="wer-hyp" placeholder="粘贴 ASR 识别输出文本" rows="4"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="runWerOnly()">计算 WER</button>
+    </div>
+
+    <div class="results" id="res-wer-only">
+      <div class="card">
+        <div class="card-title">WER 计算结果</div>
+        <div class="result-grid" id="wer-metrics"></div>
+        <div class="divider"></div>
+        <div class="text-compare" id="wer-compare"></div>
+        <div class="wer-detail" id="wer-detail-only"></div>
+      </div>
+    </div>
+  </div><!-- /tab-wer-only -->
+
+  <!-- ══ 单独 SER ══ -->
+  <div class="tab-panel" id="tab-ser-only">
+    <div class="card">
+      <div class="card-title">手动输入 → SER 句错率计算</div>
+      <div class="tip">
+        输入参考文本和ASR识别文本，系统按句切分后逐句比对，计算 <strong>SER（句错误率）</strong>。<br>
+        规则：WER &gt; 0 的句子视为错误句，SER = 错误句数 / 总句数。
+      </div>
+      <div class="form-row">
+        <label>参考文本<br><small style="color:var(--text3)">Ground Truth</small></label>
+        <textarea id="ser-ref" placeholder="粘贴人工标注的正确文本（按句号/感叹号/问号自动切句）" rows="4"></textarea>
+      </div>
+      <div class="form-row">
+        <label>识别文本<br><small style="color:var(--text3)">ASR输出</small></label>
+        <textarea id="ser-hyp" placeholder="粘贴 ASR 识别输出文本" rows="4"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="runSerOnly()">计算 SER</button>
+    </div>
+
+    <div class="results" id="res-ser-only">
+      <div class="card">
+        <div class="card-title">SER 计算结果</div>
+        <div id="ser-only-summary" style="margin-bottom:16px"></div>
+        <table class="ser-table">
+          <thead>
+            <tr>
+              <th style="width:32px">#</th>
+              <th>参考文本</th>
+              <th>识别文本</th>
+              <th style="width:50px">WER</th>
+              <th style="width:36px" title="替换错误数">S</th>
+              <th style="width:36px" title="删除错误数">D</th>
+              <th style="width:36px" title="插入错误数">I</th>
+              <th style="width:56px">结果</th>
+            </tr>
+          </thead>
+          <tbody id="ser-only-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-ser-only -->
+
+</div><!-- /page -->
+
+<script>
+const API = 'http://localhost:8766';
+
+// ── 标签页 ───────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-'+t.dataset.tab).classList.add('active');
+  };
+});
+
+// ── 服务健康检测 ─────────────────────────────────────────
+async function checkServer(){
+  const tag=document.getElementById('srv-tag');
+  try{
+    const r=await fetch(API+'/docs',{method:'HEAD',signal:AbortSignal.timeout(3000)});
+    tag.textContent='服务在线 :8766'; tag.className='tag green';
+  }catch{
+    tag.textContent='服务离线 请启动 eval_server.py'; tag.className='tag';
+    tag.style.color='var(--danger)'; tag.style.borderColor='rgba(248,113,113,.3)';
+  }
+}
+checkServer();
+
+// ── 上传区拖拽 ───────────────────────────────────────────
+function initDrop(zoneId, inputId, infoId){
+  const zone=document.getElementById(zoneId);
+  const input=document.getElementById(inputId);
+  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag-over')});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('drag-over'));
+  zone.addEventListener('drop',e=>{
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const f=e.dataTransfer.files[0]; if(f){ input.files=e.dataTransfer.files; showFile(f,infoId); }
+  });
+  input.onchange=()=>{ if(input.files[0]) showFile(input.files[0],infoId); };
+}
+function showFile(f, infoId){
+  const el=document.getElementById(infoId);
+  const mb=(f.size/1024/1024).toFixed(2);
+  el.innerHTML=`📁 <strong>${f.name}</strong>&nbsp;&nbsp;${mb} MB &nbsp;|&nbsp; ${f.type||'未知类型'}`;
+  el.style.display='block';
+}
+initDrop('dz-full','file-full','fi-full');
+initDrop('dz-asr', 'file-asr', 'fi-asr');
+
+// ── 进度动画 ─────────────────────────────────────────────
+function startProg(pbId, plId, wrapId, label='上传中…'){
+  const w=document.getElementById(wrapId);
+  const pb=document.getElementById(pbId);
+  const pl=document.getElementById(plId);
+  w.style.display='block'; pb.style.width='0%'; pl.textContent=label;
+  let v=0, tid=setInterval(()=>{
+    v+=Math.random()*8; if(v>88) v=88;
+    pb.style.width=v+'%';
+  },200);
+  return {finish(msg='完成'){
+    clearInterval(tid); pb.style.width='100%'; pl.textContent=msg;
+    setTimeout(()=>w.style.display='none',1200);
+  }};
+}
+
+// ── 日志 ─────────────────────────────────────────────────
+function appendLog(logId, text, cls=''){
+  const el=document.getElementById(logId);
+  const d=document.createElement('div');
+  d.className='log-line'+(cls?' '+cls:'');
+  d.textContent='['+new Date().toLocaleTimeString()+'] '+text;
+  el.appendChild(d); el.scrollTop=el.scrollHeight;
+}
+
+// ── 工具 ─────────────────────────────────────────────────
+function werColor(v){ if(v<=0.1)return'good'; if(v<=0.25)return'warn'; return'bad'; }
+function confBadge(c){
+  if(c===null||c===undefined)return'<span class="conf-badge">-</span>';
+  const pct=Math.round(c*100);
+  const cls=pct>=80?'conf-high':pct>=50?'conf-mid':'conf-low';
+  return `<span class="conf-badge ${cls}">${pct}%</span>`;
+}
+function msToTime(ms){
+  const s=ms/1000; const m=Math.floor(s/60); const rs=(s%60).toFixed(1);
+  return m>0?`${m}m${rs}s`:rs+'s';
+}
+const EMO_COLORS={
+  Happiness:'#34d399',Joy:'#34d399',Happy:'#34d399',
+  Sadness:'#58a6ff',Sad:'#58a6ff',
+  Anger:'#f87171',Angry:'#f87171',
+  Fear:'#a78bfa',
+  Disgust:'#fbbf24',
+  Surprise:'#fb923c',Surprised:'#fb923c',
+  Neutral:'#8b949e',
+  Contempt:'#94a3b8',
+};
+function emoColor(e){ return EMO_COLORS[e]||'#8b949e'; }
+
+// ── 简单字级别diff（用于文本对比高亮）────────────────────
+function charDiff(ref, hyp){
+  // 中文按字，英文按词
+  const isCN = (t)=>[...t].filter(c=>c>'\u4e00'&&c<'\u9fff').length > t.length*0.3;
+  const PUNCT='，。！？、；：“”‘’（）【】…';
+  const tok = (t)=>isCN(t)?[...t].filter(c=>c.trim()&&!PUNCT.includes(c)):t.split(/\s+/);
+  const r=tok(ref), h=tok(hyp);
+  // LCS差异标注（简化：直接显示文本，用删除线标注删除，下划线标注插入）
+  return {refHtml: r.join(''), hypHtml: h.join('')};
+}
+
+// ══════════════════════════════════════════════
+// 完整评测
+// ══════════════════════════════════════════════
+async function runFull(){
+  const f=document.getElementById('file-full').files[0];
+  if(!f){ alert('请先选择视频文件'); return; }
+  const ref=document.getElementById('ref-full').value.trim();
+  const ser=document.getElementById('chk-ser').checked;
+
+  const btn=document.getElementById('btn-full');
+  btn.disabled=true; btn.innerHTML='<div class="spinner"></div> 评测中…';
+
+  const logId='log-full';
+  document.getElementById('res-full').style.display='block';
+  document.getElementById('log-full').innerHTML='';
+  document.getElementById('metrics-full').innerHTML='';
+  document.getElementById('wer-detail-card').style.display='none';
+  document.getElementById('text-ser-card').style.display='none';
+  document.getElementById('seg-card').style.display='none';
+  document.getElementById('ser-card').style.display='none';
+
+  appendLog(logId, `开始评测: ${f.name} (${(f.size/1024/1024).toFixed(2)}MB)`,'log-ok');
+  if(ser) appendLog(logId,'已启用 SER 视觉情感识别（耗时较长）');
+
+  const prog=startProg('pb-full','pl-full','prog-full','上传并处理中…');
+
+  try{
+    const fd=new FormData();
+    fd.append('file', f);
+    fd.append('reference', ref);
+    fd.append('enable_ser', ser?'true':'false');
+
+    appendLog(logId,'上传文件到服务端…');
+    const resp=await fetch(API+'/api/eval/full',{method:'POST',body:fd});
+    const data=await resp.json();
+
+    if(data.error){
+      prog.finish('❌ 失败');
+      appendLog(logId,'错误: '+data.error,'log-err');
+      if(data.traceback) appendLog(logId, data.traceback.split('\n').slice(-3).join(' '),'log-err');
+      btn.disabled=false; btn.innerHTML='开始评测'; return;
+    }
+
+    prog.finish('✅ 完成');
+    appendLog(logId,'ASR识别完成','log-ok');
+
+    // ── 展示核心指标
+    const asr=data.asr||{};
+    const wer=data.wer;
+    const tser=data.text_ser;
+    const dur=data.duration_s||0;
+    let metricsHtml='';
+
+    // 时长
+    metricsHtml+=metricCard(`${dur}s`,'文件时长','','');
+
+    // WER
+    if(wer){
+      const wv=wer.wer;
+      metricsHtml+=metricCard(wer.wer_pct,'WER 字错误率',werColor(wv),
+        `编辑距离: ${wer.edit_distance} / 参考: ${wer.ref_len}字`);
+      appendLog(logId,`WER=${wer.wer_pct}  S=${wer.substitutions} D=${wer.deletions} I=${wer.insertions}`,'log-ok');
+    } else {
+      metricsHtml+=metricCard('N/A','WER','','无参考文本');
+    }
+
+    // SER 句错率
+    if(tser){
+      const sv=tser.ser;
+      metricsHtml+=metricCard(tser.ser_pct,'SER 句错误率',werColor(sv),
+        `错误句: ${tser.error_sentences} / 总句: ${tser.total_sentences}`);
+      appendLog(logId,`SER=${tser.ser_pct}  错误句=${tser.error_sentences}/${tser.total_sentences}`,'log-ok');
+    } else {
+      metricsHtml+=metricCard('N/A','SER','','无参考文本');
+    }
+
+    // 置信度
+    const conf=asr.confidence;
+    metricsHtml+=metricCard(
+      conf!=null?Math.round(conf*100)+'%':'N/A',
+      'ASR 置信度',
+      conf!=null?(conf>=0.8?'good':conf>=0.5?'warn':'bad'):'',''
+    );
+
+    document.getElementById('metrics-full').innerHTML=metricsHtml;
+
+    // ── WER详情
+    if(wer && ref){
+      document.getElementById('wer-detail-card').style.display='block';
+      const refText=ref; const hypText=asr.text||'';
+      document.getElementById('text-compare').innerHTML=
+        `<div class="text-box"><div class="text-box-label">参考文本 (Reference)</div>
+           <div class="text-box-content">${escHtml(refText)}</div></div>
+         <div class="text-box"><div class="text-box-label">ASR转写 (Hypothesis)</div>
+           <div class="text-box-content">${escHtml(hypText)}</div></div>`;
+      document.getElementById('wer-items').innerHTML=
+        werItemsHtml(wer);
+    }
+
+    // ── SER句错率逐句对比
+    if(tser && tser.sentences && tser.sentences.length>0){
+      document.getElementById('text-ser-card').style.display='block';
+      const sv=tser.ser;
+      document.getElementById('text-ser-summary').innerHTML=
+        `<div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="wer-item"><div class="wer-item-val" style="color:${sv<=0.4?'var(--accent3)':sv<=0.6?'var(--warn)':'var(--danger)'}">${tser.ser_pct}</div><div class="wer-item-key">SER 句错误率</div></div>
+          <div class="wer-item"><div class="wer-item-val">${tser.error_sentences}</div><div class="wer-item-key">错误句数</div></div>
+          <div class="wer-item"><div class="wer-item-val">${tser.total_sentences - tser.error_sentences}</div><div class="wer-item-key">正确句数</div></div>
+          <div class="wer-item"><div class="wer-item-val">${tser.total_sentences}</div><div class="wer-item-key">总句数</div></div>
+        </div>`;
+      document.getElementById('ser-tbody').innerHTML=tser.sentences.map(s=>
+        `<tr>
+          <td style="color:var(--text2)">${s.index}</td>
+          <td class="${s.correct?'ser-ok':''}">${escHtml(s.ref)}</td>
+          <td class="${s.correct?'':' ser-err'}">${escHtml(s.hyp)||'<span style="color:var(--text3)">(空)</span>'}</td>
+          <td style="color:var(--text2)">${s.wer}</td>
+          <td style="color:var(--text2);text-align:center">${s.substitutions??'-'}</td>
+          <td style="color:var(--text2);text-align:center">${s.deletions??'-'}</td>
+          <td style="color:var(--text2);text-align:center">${s.insertions??'-'}</td>
+          <td><span class="result-badge ${s.correct?'ok':'err'}">${s.correct?'正确':'错误'}</span></td>
+        </tr>`
+      ).join('');
+    }
+
+    // ── ASR分段
+    const segs=asr.segments||[];
+    if(segs.length>0){
+      document.getElementById('seg-card').style.display='block';
+      const tbody=document.getElementById('seg-tbody');
+      tbody.innerHTML=segs.map(s=>
+        `<tr>
+          <td style="white-space:nowrap;color:var(--text2)">${msToTime(s.start_ms)} - ${msToTime(s.end_ms)}</td>
+          <td>${escHtml(s.text||'')}</td>
+          <td>${confBadge(s.confidence)}</td>
+        </tr>`
+      ).join('');
+    }
+
+    // ── SER
+    if(data.ser){
+      document.getElementById('ser-card').style.display='block';
+      document.getElementById('ser-content').innerHTML=renderSer(data.ser);
+      appendLog(logId,'SER完成, 主导情绪: '+data.ser.dominant_emotion,'log-ok');
+    }
+
+  } catch(e){
+    prog.finish('❌ 网络错误');
+    appendLog(logId,'网络错误: '+e.message,'log-err');
+  }
+
+  btn.disabled=false;
+  btn.innerHTML='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 13,8 5,13"/></svg> 开始评测';
+}
+
+function metricCard(val, label, colorCls, sub){
+  return `<div class="metric-card">
+    <div class="metric-val ${colorCls}">${val}</div>
+    <div class="metric-label">${label}</div>
+    ${sub?`<div class="metric-sub">${sub}</div>`:''}
+  </div>`;
+}
+
+function werItemsHtml(wer){
+  return [
+    ['替换(S)', wer.substitutions],
+    ['删除(D)', wer.deletions],
+    ['插入(I)', wer.insertions],
+    ['参考字数(N)', wer.ref_len],
+    ['假设字数', wer.hyp_len],
+    ['编辑距离', wer.edit_distance],
+  ].map(([k,v])=>`<div class="wer-item"><div class="wer-item-val">${v}</div><div class="wer-item-key">${k}</div></div>`).join('');
+}
+
+function renderSer(ser){
+  if(ser.error) return `<div style="color:var(--danger)">❌ ${escHtml(ser.error)}</div>`;
+  const emo=ser.dominant_emotion||'N/A';
+  const conf=ser.confidence||0;
+  const dist=ser.emotion_distribution||{};
+  const va=ser.va_mean||{};
+
+  let html=`<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+    <div class="metric-card" style="min-width:140px">
+      <div class="metric-val" style="color:${emoColor(emo)};font-size:28px">${emo}</div>
+      <div class="metric-label">主导情绪</div>
+      <div class="metric-sub">置信度 ${Math.round(conf*100)}%</div>
+    </div>`;
+
+  if(va.valence!==undefined){
+    html+=`<div class="metric-card" style="min-width:120px">
+      <div class="metric-val" style="font-size:26px">${va.valence>=0?'+':''}${va.valence}</div>
+      <div class="metric-label">效价 Valence</div>
+    </div>
+    <div class="metric-card" style="min-width:120px">
+      <div class="metric-val" style="font-size:26px">${va.arousal}</div>
+      <div class="metric-label">唤醒度 Arousal</div>
+    </div>`;
+  }
+  html+=`</div>`;
+
+  if(Object.keys(dist).length>0){
+    html+=`<div class="emo-bars" style="margin-top:16px">`;
+    const sorted=Object.entries(dist).sort((a,b)=>b[1]-a[1]);
+    sorted.forEach(([emo,pct])=>{
+      html+=`<div class="emo-bar-row">
+        <div class="emo-bar-label">${emo}</div>
+        <div class="emo-bar-track">
+          <div class="emo-bar-fill" style="width:${(pct*100).toFixed(1)}%;background:${emoColor(emo)}"></div>
+        </div>
+        <div class="emo-bar-pct">${(pct*100).toFixed(1)}%</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+
+  html+=`<div style="font-size:11px;color:var(--text3);margin-top:10px">
+    采样帧数: ${ser.frames_sampled||0} / 总帧数: ${ser.total_frames||0}</div>`;
+  return html;
+}
+
+// ══════════════════════════════════════════════
+// 单独 ASR
+// ══════════════════════════════════════════════
+async function runAsr(){
+  const f=document.getElementById('file-asr').files[0];
+  if(!f){ alert('请先选择文件'); return; }
+  const btn=document.getElementById('btn-asr');
+  btn.disabled=true; btn.innerHTML='<div class="spinner"></div> 识别中…';
+
+  const prog=startProg('pb-asr','pl-asr','prog-asr','上传中…');
+  document.getElementById('res-asr').style.display='none';
+
+  try{
+    const fd=new FormData(); fd.append('file',f);
+    const resp=await fetch(API+'/api/eval/asr',{method:'POST',body:fd});
+    const data=await resp.json();
+    prog.finish('✅ 完成');
+
+    const text=data.text||'';
+    document.getElementById('asr-text').textContent=text||'（无识别结果）';
+    const segs=data.segments||[];
+    document.getElementById('asr-seg-tbody').innerHTML=segs.map(s=>
+      `<tr>
+        <td style="white-space:nowrap;color:var(--text2)">${msToTime(s.start_ms)} - ${msToTime(s.end_ms)}</td>
+        <td>${escHtml(s.text||'')}</td>
+        <td>${confBadge(s.confidence)}</td>
+      </tr>`
+    ).join('');
+    document.getElementById('res-asr').style.display='block';
+
+    // 存到全局供复制
+    window._lastAsrText=text;
+  } catch(e){
+    prog.finish('❌ 失败');
+    alert('请求失败: '+e.message);
+  }
+  btn.disabled=false; btn.textContent='识别';
+}
+
+function copyToWer(){
+  if(window._lastAsrText){
+    document.querySelectorAll('.tab').forEach(t=>{if(t.dataset.tab==='wer-only')t.click()});
+    document.getElementById('wer-hyp').value=window._lastAsrText;
+  }
+}
+
+function copyToSer(){
+  if(window._lastAsrText){
+    document.querySelectorAll('.tab').forEach(t=>{if(t.dataset.tab==='ser-only')t.click()});
+    document.getElementById('ser-hyp').value=window._lastAsrText;
+  }
+}
+
+// ══════════════════════════════════════════════
+// 单独 WER
+// ══════════════════════════════════════════════
+async function runWerOnly(){
+  const ref=document.getElementById('wer-ref').value.trim();
+  const hyp=document.getElementById('wer-hyp').value.trim();
+  if(!ref||!hyp){ alert('请填写参考文本和假设文本'); return; }
+
+  try{
+    const resp=await fetch(API+'/api/eval/wer',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({reference:ref, hypothesis:hyp})
+    });
+    const data=await resp.json();
+
+    const wv=data.wer||0;
+    document.getElementById('wer-metrics').innerHTML=
+      metricCard(data.wer_pct,'WER 字错误率',werColor(wv),`编辑距离: ${data.edit_distance} / 参考: ${data.ref_len}字`)+
+      metricCard(data.substitutions,'替换错误 (S)','',`参考字数: ${data.ref_len}`)+
+      metricCard(data.deletions,   '删除错误 (D)','','')+
+      metricCard(data.insertions,  '插入错误 (I)','','');
+
+    document.getElementById('wer-compare').innerHTML=
+      `<div class="text-box"><div class="text-box-label">参考 Reference</div>
+         <div class="text-box-content">${escHtml(ref)}</div></div>
+       <div class="text-box"><div class="text-box-label">假设 Hypothesis</div>
+         <div class="text-box-content">${escHtml(hyp)}</div></div>`;
+
+    document.getElementById('wer-detail-only').innerHTML=werItemsHtml(data);
+    document.getElementById('res-wer-only').style.display='block';
+  } catch(e){
+    alert('请求失败: '+e.message);
+  }
+}
+
+// ══════════════════════════════════════════════
+// 单独 SER
+// ══════════════════════════════════════════════
+async function runSerOnly(){
+  const ref=document.getElementById('ser-ref').value.trim();
+  const hyp=document.getElementById('ser-hyp').value.trim();
+  if(!ref||!hyp){ alert('请填写参考文本和识别文本'); return; }
+
+  try{
+    const resp=await fetch(API+'/api/eval/text_ser',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({reference:ref, hypothesis:hyp})
+    });
+    const data=await resp.json();
+
+    if(data.error){ alert('计算失败: '+data.error); return; }
+
+    const sv=data.ser||0;
+    const colorCls=sv<=0.4?'var(--accent3)':sv<=0.6?'var(--warn)':'var(--danger)';
+    document.getElementById('ser-only-summary').innerHTML=
+      `<div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div class="wer-item"><div class="wer-item-val" style="color:${colorCls}">${data.ser_pct}</div><div class="wer-item-key">SER 句错误率</div></div>
+        <div class="wer-item"><div class="wer-item-val">${data.error_sentences}</div><div class="wer-item-key">错误句数</div></div>
+        <div class="wer-item"><div class="wer-item-val">${data.total_sentences - data.error_sentences}</div><div class="wer-item-key">正确句数</div></div>
+        <div class="wer-item"><div class="wer-item-val">${data.total_sentences}</div><div class="wer-item-key">总句数</div></div>
+      </div>`;
+
+    document.getElementById('ser-only-tbody').innerHTML=(data.sentences||[]).map(s=>
+      `<tr>
+        <td style="color:var(--text2)">${s.index}</td>
+        <td class="${s.correct?'ser-ok':''}">${escHtml(s.ref)}</td>
+        <td class="${s.correct?'':'ser-err'}">${escHtml(s.hyp)||'<span style="color:var(--text3)">(空)</span>'}</td>
+        <td style="color:var(--text2)">${s.wer}</td>
+        <td style="color:var(--text2);text-align:center">${s.substitutions??'-'}</td>
+        <td style="color:var(--text2);text-align:center">${s.deletions??'-'}</td>
+        <td style="color:var(--text2);text-align:center">${s.insertions??'-'}</td>
+        <td><span class="result-badge ${s.correct?'ok':'err'}">${s.correct?'正确':'错误'}</span></td>
+      </tr>`
+    ).join('');
+    document.getElementById('res-ser-only').style.display='block';
+  } catch(e){
+    alert('请求失败: '+e.message);
+  }
+}
+
+// ── 工具 ─────────────────────────────────────
+function escHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

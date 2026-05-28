@@ -1,0 +1,77 @@
+# =============================================
+# AI 数字人情感陪护系统 - 主配置文件
+# =============================================
+# 修改此文件后，重启服务即可生效
+# 敏感信息（API Key等）请在 .env 文件中配置，
+# 或通过环境变量传入，不要写在本文件中
+
+# ── 服务器配置 ────────────────────────────
+server:
+  host: "0.0.0.0"          # 监听地址，0.0.0.0 表示允许外部访问
+  port: 8800                # 主服务端口
+  eval_port: 8801           # 评测服务端口
+  reload: false             # 生产环境关闭热重载
+  workers: 1                # 工作进程数
+
+# ── 数据存储 ────────────────────────────
+data:
+  db_path: "data/users.db"                      # SQLite 数据库路径
+  kb_path: "data/kb/psychology_chroma"          # 心理学知识库 ChromaDB 路径
+  debug_kb_path: "data/kb/debug_chroma"         # 调试用知识库路径
+
+# ── 模型路径 ────────────────────────────
+models:
+  face_driver: "digital_human_engine/checkpoints_v2/best_model.pt"   # 面部行为驱动模型
+  face_landmarker: "models/face_landmarker.task"                      # MediaPipe 人脸关键点模型
+  live2d_js_dir: "digital_human_engine/live2d_web/js"                 # Live2D JS 资源目录
+  live2d_shizuku_dir: "digital_human_engine/live2d_web/shizuku"       # Live2D 数字人模型目录
+
+# ── 千问 LLM 配置 ────────────────────────
+llm:
+  model: "qwen-plus"                                              # 使用的模型名称
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"  # API 基础地址
+  max_tokens: 250                                                 # 最大输出 token 数
+  temperature: 0.75                                               # 温度参数（0~1，越高越随机）
+  # api_key: 通过环境变量 DASHSCOPE_API_KEY 传入
+
+# ── TTS 语音合成配置 ────────────────────────
+tts:
+  model: "cosyvoice-v1"         # TTS 模型
+  voice: "longxiaochun"         # 音色角色
+  format: "mp3"                 # 输出音频格式
+  # api_key: 同 llm.api_key，共用 DASHSCOPE_API_KEY
+
+# ── ASR 语音识别配置 ────────────────────────
+asr:
+  model: "paraformer-zh"                  # ASR 模型
+  vad_model: "fsmn-vad"                   # VAD 模型
+  punc_model: "ct-punc"                   # 标点模型
+  sample_rate: 16000                      # 采样率 (Hz)
+  chunk_duration_ms: 200                  # 音频块时长 (ms)
+  enable_timestamp: true                  # 是否输出词级时间戳
+  hotwords: ""                            # 热词（多个用空格分隔）
+
+# ── RAG 知识检索配置 ────────────────────────
+rag:
+  top_k: 3                    # 最多检索文档数
+  score_threshold: 0.05       # 相似度阈值（低于此值不采用）
+  enable_web_search: true     # RAG 无结果时启用千问联网搜索
+
+# ── 视觉模块配置 ────────────────────────
+vision:
+  enabled: false              # 是否启用摄像头视觉模块（需要摄像头硬件）
+  fps: 15                     # 视频处理帧率
+  iir_alpha: 0.6              # 表情平滑 IIR 滤波系数
+
+# ── 数字人驱动配置 ────────────────────────
+avatar:
+  fps: 25                     # 驱动帧率
+  idle_enabled: true          # 是否启用 Idle 待机自主动画
+  iir_alpha: 0.7              # 驱动参数平滑系数
+  device: "auto"              # 推理设备：auto / cpu / cuda
+
+# ── 对话配置 ────────────────────────
+dialogue:
+  max_history_turns: 20       # 保留的最大对话轮数
+  crisis_detection: true      # 是否启用危机信号检测
+  auto_title_turns: 2         # 对话几轮后自动生成会话标题

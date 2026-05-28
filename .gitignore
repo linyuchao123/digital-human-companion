@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Conda环境
+D:/Anaconda3/
+anaconda3/
+miniconda3/
+
+# Node
+node_modules/
+*.zip
+*.zip.filepart
+
+# 大文件/模型文件（超过100MB）
+*.pt
+*.pth
+*.pth.tar
+*.onnx
+*.bin
+*.safetensors
+checkpoints_v2/
+checkpoints/
+*.npy
+*.npy.filepart
+
+# 资产文件
+assets/avatars/*.vrm
+shizuku/runtime/*.moc3
+shizuku/runtime/*.model3.json
+digital_human_engine/checkpoints_v2/
+digital_human_package/checkpoints_v2/
+
+# 数据集
+data/raw/
+data/processed/
+data/eval/
+data/kb/*/chroma.sqlite3
+数字人测试/
+数字人面部行为驱动模型验证集/
+数字人面部行为驱动模型训练集/
+数字人面部行为驱动模型验证脚本/*.npy
+
+# 交付物
+交付物_v2/
+digital_human_package/
+digital_human_engine/output/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.claude/
+
+# 系统
+.DS_Store
+Thumbs.db
+*.log
+
+# 前端构建
+dist/
+*.tsbuildinfo
+*.mjs
+
+# 临时文件
+__TEMP__/
+temp/
+*.tmp
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+data/users.db
