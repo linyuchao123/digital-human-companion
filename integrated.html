@@ -1319,19 +1319,37 @@ function renderSessions(sessions){
     return;
   }
   const groups=_groupByDate(sessions);
-  let html='';
+  container.textContent='';
   for(const [label,list] of Object.entries(groups)){
     if(!list.length) continue;
-    html+=`<div class="sb-group-label">${label}</div>`;
+    const groupLabel=document.createElement('div');
+    groupLabel.className='sb-group-label';
+    groupLabel.textContent=label;
+    container.appendChild(groupLabel);
     for(const s of list){
-      const active=s.id===_currentDbSession?'active':'';
-      html+=`<div class="sb-session ${active}" data-id="${s.id}" onclick="switchSession('${s.id}')">
-        <span class="sb-session-title" id="st-${s.id}">${s.title||'新对话'}</span>
-        <button class="sb-del-btn" onclick="event.stopPropagation();deleteSession('${s.id}')" title="删除">✕</button>
-      </div>`;
+      const session=document.createElement('div');
+      session.className=`sb-session${s.id===_currentDbSession?' active':''}`;
+      session.dataset.id=s.id;
+      session.addEventListener('click',()=>switchSession(s.id));
+
+      const title=document.createElement('span');
+      title.className='sb-session-title';
+      title.id=`st-${s.id}`;
+      title.textContent=s.title||'新对话';
+
+      const deleteButton=document.createElement('button');
+      deleteButton.className='sb-del-btn';
+      deleteButton.title='删除';
+      deleteButton.textContent='✕';
+      deleteButton.addEventListener('click',event=>{
+        event.stopPropagation();
+        deleteSession(s.id);
+      });
+
+      session.append(title,deleteButton);
+      container.appendChild(session);
     }
   }
-  container.innerHTML=html;
 }
 
 async function newSession(){
