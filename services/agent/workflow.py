@@ -7,7 +7,7 @@ from langgraph.graph import END, START, StateGraph
 
 from .emotion import EmotionAnalyzer
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
-from .memory import MemoryStore, NullMemoryStore
+from .memory import MemoryStore, NullMemoryStore, extract_memory_candidate
 from .providers import CompanionProvider, FakeCompanionProvider
 from .safety import SafetyTriage
 from .state import AgentState, AvatarCommand, ChatMessage, ToolCallRecord
@@ -175,6 +175,7 @@ class DigitalXinyuWorkflow:
             state.get("memory_consent")
             and state.get("user_id") is not None
             and state["safety"].allow_memory_write
+            and extract_memory_candidate(state.get("user_text", "")) is not None
         ):
             return "memory_writer"
         return "avatar_director"
@@ -190,7 +191,11 @@ class DigitalXinyuWorkflow:
 
     async def _write_memory(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
-        await self._memory_store.remember(state["user_id"], state["user_text"], "context")
+        candidate = extract_memory_candidate(state["user_text"])
+        if candidate is not None:
+            await self._memory_store.remember(
+                state["user_id"], candidate.content, candidate.category
+            )
         return self._complete_node(state, "memory_writer", started_at)
 
     async def _retrieve_knowledge(self, state: AgentState) -> dict[str, Any]:

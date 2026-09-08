@@ -77,18 +77,25 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
         state.user_id = 12
         state.memory_consent = integrated_server._memory_enabled_for_user(12)
 
+        first_socket = CaptureWebSocket()
         await integrated_server._trigger_llm(
-            "我喜欢睡前听轻音乐", state, CaptureWebSocket()
+            "我喜欢睡前听轻音乐", state, first_socket
         )
         second_socket = CaptureWebSocket()
         await integrated_server._trigger_llm(
             "睡前听什么音乐合适", state, second_socket
         )
 
-        trace = next(message for message in second_socket.messages if message["type"] == "agent_trace")
-        self.assertIn("memory_retriever", trace["execution_path"])
-        self.assertIn("memory_writer", trace["execution_path"])
-        self.assertEqual(len(trace["memories"]), 1)
+        first_trace = next(
+            message for message in first_socket.messages if message["type"] == "agent_trace"
+        )
+        second_trace = next(
+            message for message in second_socket.messages if message["type"] == "agent_trace"
+        )
+        self.assertIn("memory_writer", first_trace["execution_path"])
+        self.assertIn("memory_retriever", second_trace["execution_path"])
+        self.assertNotIn("memory_writer", second_trace["execution_path"])
+        self.assertEqual(len(second_trace["memories"]), 1)
 
 
 if __name__ == "__main__":

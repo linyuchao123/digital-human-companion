@@ -155,6 +155,22 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("memory_writer", result["execution_path"])
         self.assertEqual(await store.search(9, "不想活"), [])
 
+    async def test_casual_chat_is_not_written_to_long_term_memory(self):
+        store = InMemoryMemoryStore()
+        workflow = DigitalXinyuWorkflow(provider=RecordingProvider(), memory_store=store)
+
+        result = await workflow.run(
+            user_text="今天的天气不错",
+            trace_id="trace-noisy-memory",
+            session_id="session-noisy-memory",
+            user_id=10,
+            memory_consent=True,
+        )
+
+        self.assertIn("memory_retriever", result["execution_path"])
+        self.assertNotIn("memory_writer", result["execution_path"])
+        self.assertEqual(await store.search(10, "天气"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

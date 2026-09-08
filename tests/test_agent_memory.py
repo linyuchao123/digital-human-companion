@@ -4,6 +4,36 @@ import unittest
 from pathlib import Path
 
 from services.agent import InMemoryMemoryStore, NullMemoryStore, SQLiteMemoryStore
+from services.agent.memory import extract_memory_candidate
+
+
+class MemoryExtractionTests(unittest.TestCase):
+    def test_extracts_stable_information_by_category(self):
+        cases = {
+            "我喜欢睡前听轻音乐": "preference",
+            "我的目标是成为一名AI应用开发工程师": "goal",
+            "我叫小林": "profile",
+            "我每天早上七点起床": "context",
+        }
+
+        for text, category in cases.items():
+            with self.subTest(text=text):
+                candidate = extract_memory_candidate(text)
+                self.assertIsNotNone(candidate)
+                self.assertEqual(candidate.category, category)
+
+    def test_rejects_casual_questions_and_sensitive_information(self):
+        rejected = (
+            "今天天气不错",
+            "你记得我喜欢什么吗？",
+            "不要记住我喜欢跑步",
+            "我的银行卡是123456",
+            "我被诊断为焦虑症",
+        )
+
+        for text in rejected:
+            with self.subTest(text=text):
+                self.assertIsNone(extract_memory_candidate(text))
 
 
 class MemoryStoreTests(unittest.IsolatedAsyncioTestCase):

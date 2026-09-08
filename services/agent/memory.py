@@ -3,9 +3,44 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from collections import defaultdict
-from typing import Callable, Protocol, Sequence
+from typing import Callable, Literal, NamedTuple, Protocol, Sequence
 
 from .state import MemoryRecord
+
+
+class MemoryCandidate(NamedTuple):
+    content: str
+    category: Literal["preference", "profile", "goal", "context"]
+
+
+_SENSITIVE_TERMS = (
+    "密码", "验证码", "身份证", "银行卡", "信用卡", "家庭住址", "详细地址",
+    "手机号", "电话号码", "护照", "病历", "诊断", "抑郁症", "焦虑症",
+)
+_REJECTION_TERMS = ("不要记", "别记", "不许记", "忘掉", "删除记忆", "清除记忆")
+_CATEGORY_MARKERS = (
+    ("preference", ("我喜欢", "我不喜欢", "我偏好", "我习惯", "我最爱", "我讨厌")),
+    ("goal", ("我的目标", "我打算", "我计划", "我正在准备", "我想要", "我希望")),
+    ("profile", ("我叫", "我的名字", "请叫我", "我是一个", "我是名", "我有一只")),
+    ("context", ("我每天", "我每周", "我通常", "我经常", "请记住", "记住我")),
+)
+
+
+def extract_memory_candidate(text: str) -> MemoryCandidate | None:
+    """只提取用户主动表达、相对稳定且非敏感的长期信息。"""
+    content = " ".join(text.strip().split())
+    if not 4 <= len(content) <= 500:
+        return None
+    if content.endswith(("?", "？")):
+        return None
+    if any(term in content for term in _REJECTION_TERMS):
+        return None
+    if any(term in content for term in _SENSITIVE_TERMS):
+        return None
+    for category, markers in _CATEGORY_MARKERS:
+        if any(marker in content for marker in markers):
+            return MemoryCandidate(content=content, category=category)
+    return None
 
 
 class MemoryStore(Protocol):
