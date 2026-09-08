@@ -15,6 +15,7 @@ SAFE_RESPONSE = (
     "尽快联系一位你信任的人陪在身边。如果你正面临立即危险，"
     "请马上联系当地紧急服务或前往最近的急诊机构。"
 )
+MAX_CONTEXT_MESSAGES = 40
 
 
 class DigitalXinyuWorkflow:
@@ -81,11 +82,17 @@ class DigitalXinyuWorkflow:
 
     async def _create_safe_response(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
+        messages = [
+            *state.get("messages", []),
+            ChatMessage(role="user", content=state["user_text"]),
+            ChatMessage(role="assistant", content=SAFE_RESPONSE),
+        ][-MAX_CONTEXT_MESSAGES:]
         return self._complete_node(
             state,
             "safe_response",
             started_at,
             final_response=SAFE_RESPONSE,
+            messages=messages,
         )
 
     async def _route_intent(self, state: AgentState) -> dict[str, Any]:
@@ -105,7 +112,7 @@ class DigitalXinyuWorkflow:
         messages: Sequence[ChatMessage] = [
             *state.get("messages", []),
             ChatMessage(role="user", content=state["user_text"]),
-        ]
+        ][-(MAX_CONTEXT_MESSAGES - 1):]
         response = await self._provider.generate(messages)
         return self._complete_node(
             state,
@@ -113,7 +120,9 @@ class DigitalXinyuWorkflow:
             started_at,
             draft_response=response,
             final_response=response,
-            messages=[*messages, ChatMessage(role="assistant", content=response)],
+            messages=[*messages, ChatMessage(role="assistant", content=response)][
+                -MAX_CONTEXT_MESSAGES:
+            ],
         )
 
     async def _direct_avatar(self, state: AgentState) -> dict[str, Any]:
@@ -147,7 +156,7 @@ class DigitalXinyuWorkflow:
             "session_id": session_id,
             "turn_id": 1,
             "user_text": user_text,
-            "messages": list(messages),
+            "messages": list(messages)[-(MAX_CONTEXT_MESSAGES - 2):],
             "execution_path": [],
             "node_timings_ms": {},
             "cancelled": False,

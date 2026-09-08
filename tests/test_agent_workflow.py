@@ -1,11 +1,20 @@
 import unittest
 
-from services.agent import DigitalXinyuWorkflow, RiskLevel
+from services.agent import ChatMessage, DigitalXinyuWorkflow, RiskLevel
 
 
 class FailingProvider:
     async def generate(self, messages):
         raise AssertionError("高风险路径不应调用普通对话模型")
+
+
+class RecordingProvider:
+    def __init__(self):
+        self.messages = []
+
+    async def generate(self, messages):
+        self.messages = list(messages)
+        return "我记得，我们继续聊。"
 
 
 class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
@@ -46,6 +55,44 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(result["node_timings_ms"]), set(result["execution_path"]))
         self.assertEqual(result["avatar_command"].motion, "Comfort")
         self.assertNotIn("draft_response", result)
+        self.assertEqual(result["messages"][-1].role, "assistant")
+
+    async def test_workflow_passes_previous_turns_to_provider(self):
+        provider = RecordingProvider()
+        workflow = DigitalXinyuWorkflow(provider=provider)
+
+        result = await workflow.run(
+            user_text="那我应该怎么办？",
+            trace_id="trace-context",
+            session_id="session-context",
+            messages=[
+                ChatMessage(role="user", content="我最近工作压力很大"),
+                ChatMessage(role="assistant", content="愿意说说压力来自哪里吗？"),
+            ],
+        )
+
+        self.assertEqual([message.content for message in provider.messages], [
+            "我最近工作压力很大",
+            "愿意说说压力来自哪里吗？",
+            "那我应该怎么办？",
+        ])
+        self.assertEqual(result["messages"][-1].content, "我记得，我们继续聊。")
+
+    async def test_workflow_bounds_long_conversation_context(self):
+        provider = RecordingProvider()
+        workflow = DigitalXinyuWorkflow(provider=provider)
+        history = [ChatMessage(role="user", content=f"消息{i}") for i in range(60)]
+
+        result = await workflow.run(
+            user_text="最新消息",
+            trace_id="trace-bounded",
+            session_id="session-bounded",
+            messages=history,
+        )
+
+        self.assertLessEqual(len(provider.messages), 39)
+        self.assertLessEqual(len(result["messages"]), 40)
+        self.assertEqual(provider.messages[-1].content, "最新消息")
 
 
 if __name__ == "__main__":
