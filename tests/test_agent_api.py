@@ -41,6 +41,7 @@ class AgentChatApiTests(unittest.TestCase):
             payload["execution_path"],
             ["safety_triage", "intent_router", "companion", "avatar_director"],
         )
+        self.assertEqual(set(payload["node_timings_ms"]), set(payload["execution_path"]))
 
     def test_chat_rejects_empty_text(self):
         response = self.client.post("/api/agent/chat", json={"text": ""})

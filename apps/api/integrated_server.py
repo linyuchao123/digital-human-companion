@@ -665,6 +665,7 @@ async def agent_chat(payload: AgentChatRequest):
             "safety": result["safety"].model_dump(mode="json"),
             "avatar": result["avatar_command"].model_dump(mode="json"),
             "execution_path": result["execution_path"],
+            "node_timings_ms": result["node_timings_ms"],
         })
     except ImportError as exc:
         return JSONResponse(

@@ -23,6 +23,8 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
             result["execution_path"],
             ["safety_triage", "intent_router", "companion", "avatar_director"],
         )
+        self.assertEqual(set(result["node_timings_ms"]), set(result["execution_path"]))
+        self.assertTrue(all(value >= 0 for value in result["node_timings_ms"].values()))
         self.assertEqual(result["intent"], "emotional_support")
         self.assertEqual(result["avatar_command"].motion, "Respond")
         self.assertTrue(result["final_response"])
@@ -41,6 +43,7 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
             result["execution_path"],
             ["safety_triage", "safe_response", "avatar_director"],
         )
+        self.assertEqual(set(result["node_timings_ms"]), set(result["execution_path"]))
         self.assertEqual(result["avatar_command"].motion, "Comfort")
         self.assertNotIn("draft_response", result)
 
