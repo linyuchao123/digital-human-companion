@@ -148,6 +148,23 @@ def _db_save_message(session_id: str, role: str, content: str, emotion_label: st
     except Exception as e:
         print(f"[DB] 保存消息失败: {e}")
 
+
+def _db_load_message_context(session_id: str, limit: int = 40) -> list[dict[str, str]]:
+    """按时间顺序加载最近的对话上下文。调用前必须完成会话归属校验。"""
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            """SELECT role, content FROM (
+                   SELECT id, role, content FROM chat_messages
+                   WHERE session_id=? AND role IN ('user', 'assistant')
+                   ORDER BY id DESC LIMIT ?
+               ) ORDER BY id ASC""",
+            (session_id, limit),
+        ).fetchall()
+        return [{"role": row["role"], "content": row["content"]} for row in rows]
+    finally:
+        conn.close()
+
 # 初始化数据库
 _init_db()
 
@@ -948,6 +965,8 @@ class SessionState:
         self.emotion_decay: float = 0.0        # 情感衰减计时
         # 待触发的动作
         self.pending_motion: Optional[str] = None
+        # 智能体短期上下文；登录用户在安全校验后从数据库恢复。
+        self.agent_messages: list[dict[str, str]] = []
 
 # 驱动 WebSocket 客户端集合（供 /ws/drive 广播）
 _drive_clients: set = set()
@@ -1036,6 +1055,9 @@ async def ws_main(websocket: WebSocket):
                     continue
                 state.user_id = user_id
                 state.db_session_id = db_sid if db_sid else None
+                state.agent_messages = (
+                    _db_load_message_context(db_sid) if db_sid else []
+                )
                 print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
                 await _send(websocket, {
                     "type": "session_bound",
@@ -1184,36 +1206,40 @@ def _parse_motion_and_clean(reply: str):
 
 
 async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
-    """调用Qwen API生成回复，解析动作标签，并发送到前端"""
+    """通过数字心屿智能体工作流生成回复并同步数字人状态。"""
     if not text or state.llm_running:
         return
     state.llm_running = True
     try:
-        # 先发"思考中"状态
         await _send(ws, {"type": "llm_thinking", "text": "小安正在思考..."})
+        from services.agent import ChatMessage
 
-        # 调用Qwen API（含RAG + 危机检测）
-        reply = await _qwen_reply(text, state.session_id)
+        trace_id = str(uuid.uuid4())
+        session_id = state.db_session_id or state.session_id
+        history = [ChatMessage(**message) for message in state.agent_messages]
+        result = await _get_agent_workflow().run(
+            user_text=text,
+            trace_id=trace_id,
+            session_id=session_id,
+            messages=history,
+        )
+        state.agent_messages = [
+            message.model_dump() for message in result.get("messages", [])
+        ]
 
-        # 降级到规则
-        if not reply:
-            emo = _local_analyze(text)
-            fallback_map = {
-                'Anxiety': ('我听到你了，这种感受很正常。能和我多说说吗？', 'Flick3'),
-                'Sad':     ('谢谢你愿意告诉我这些。我在这里陪着你。', 'FlickUp'),
-                'Happy':   ('听到你这么说我也很开心！', 'Tap'),
-                'Fear':    ('我非常担心你。请立即拨打心理援助热线 400-161-9995。', 'FlickUp'),
+        reply_text = result["final_response"]
+        safety = result["safety"]
+        avatar = result["avatar_command"]
+        emo_result = _local_analyze(text)
+        if safety.risk_level.value == "high":
+            emo_result = {
+                "emotion": "Fear",
+                "valence": -0.9,
+                "arousal": 0.3,
+                "risk_level": "high",
+                "emotion_label": "紧急",
             }
-            fb = fallback_map.get(emo['emotion'],
-                                  ('谢谢你的分享，我在认真倾听。你现在最想聊的是什么？', 'Idle'))
-            reply_text, motion_name = fb[0], fb[1]
-            emo_result = emo
-        else:
-            # 解析动作标签
-            reply_text, motion_name = _parse_motion_and_clean(reply)
-            if not motion_name:
-                motion_name = 'Idle'
-            emo_result = _local_analyze(text)
+        motion_name = "FlickUp" if avatar.motion == "Comfort" else "Idle"
 
         # 更新会话情感状态（用于表情叠加）
         state.current_emotion = emo_result["emotion"]
@@ -1228,7 +1254,17 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         if motion_name and motion_name != 'Idle':
             state.pending_motion = motion_name
 
-        # 发送回复（含动作触发）
+        await _send(ws, {
+            "type": "agent_trace",
+            "trace_id": trace_id,
+            "session_id": session_id,
+            "provider": _agent_provider_name,
+            "safety": safety.model_dump(mode="json"),
+            "avatar": avatar.model_dump(mode="json"),
+            "execution_path": result["execution_path"],
+            "node_timings_ms": result["node_timings_ms"],
+        })
+
         msg = {
             "type": "llm_reply",
             "text": reply_text,
@@ -1242,7 +1278,6 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             msg["motion"] = motion_name
         await _send(ws, msg)
 
-        # 消息持久化：保存到数据库
         if state.db_session_id:
             _db_save_message(state.db_session_id, "user", text)
             _db_save_message(state.db_session_id, "assistant", reply_text, emo_result["emotion_label"])
@@ -1252,7 +1287,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
                 asyncio.create_task(_auto_generate_title(state.db_session_id, ws))
 
     except Exception as e:
-        print(f"[LLM] 失败: {e}")
+        print(f"[Agent] 失败: {e}")
         await _send(ws, {"type": "llm_reply", "text": "抱歉，我暂时无法回应，请稍后再试。",
                          "emotion": "Neutral", "valence": 0, "arousal": 0,
                          "risk_level": "low", "emotion_label": "平静"})
