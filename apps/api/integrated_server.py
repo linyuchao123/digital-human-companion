@@ -178,6 +178,17 @@ def _db_load_message_context(session_id: str, limit: int = 40) -> list[dict[str,
     finally:
         conn.close()
 
+
+def _memory_enabled_for_user(user_id: int) -> bool:
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT enabled FROM user_memory_settings WHERE user_id=?", (user_id,)
+        ).fetchone()
+        return bool(row["enabled"]) if row else False
+    finally:
+        conn.close()
+
 # 初始化数据库
 _init_db()
 
@@ -669,14 +680,21 @@ _agent_provider_name = "offline"
 def _get_agent_workflow():
     global _agent_provider_name, _agent_workflow
     if _agent_workflow is None:
-        from services.agent import DigitalXinyuWorkflow, create_companion_provider
+        from services.agent import (
+            DigitalXinyuWorkflow,
+            SQLiteMemoryStore,
+            create_companion_provider,
+        )
 
         provider, _agent_provider_name = create_companion_provider(
             api_key=QWEN_API_KEY,
             base_url=QWEN_BASE_URL,
             model=QWEN_MODEL,
         )
-        _agent_workflow = DigitalXinyuWorkflow(provider=provider)
+        _agent_workflow = DigitalXinyuWorkflow(
+            provider=provider,
+            memory_store=SQLiteMemoryStore(_get_db),
+        )
     return _agent_workflow
 
 
@@ -1056,6 +1074,7 @@ class SessionState:
         self.pending_motion: Optional[str] = None
         # 智能体短期上下文；登录用户在安全校验后从数据库恢复。
         self.agent_messages: list[dict[str, str]] = []
+        self.memory_consent: bool = False
 
 # 驱动 WebSocket 客户端集合（供 /ws/drive 广播）
 _drive_clients: set = set()
@@ -1147,6 +1166,7 @@ async def ws_main(websocket: WebSocket):
                 state.agent_messages = (
                     _db_load_message_context(db_sid) if db_sid else []
                 )
+                state.memory_consent = _memory_enabled_for_user(user_id)
                 print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
                 await _send(websocket, {
                     "type": "session_bound",
@@ -1311,6 +1331,8 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             trace_id=trace_id,
             session_id=session_id,
             messages=history,
+            user_id=state.user_id,
+            memory_consent=state.memory_consent,
         )
         state.agent_messages = [
             message.model_dump() for message in result.get("messages", [])
@@ -1352,6 +1374,9 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "emotion": emotion.model_dump(mode="json"),
             "knowledge": [
                 item.model_dump(mode="json") for item in result["retrieved_knowledge"]
+            ],
+            "memories": [
+                item.model_dump(mode="json") for item in result["retrieved_memories"]
             ],
             "tool_calls": [item.model_dump(mode="json") for item in result["tool_calls"]],
             "avatar": avatar.model_dump(mode="json"),

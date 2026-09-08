@@ -1,5 +1,7 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from apps.api import integrated_server
 
@@ -14,14 +16,20 @@ class CaptureWebSocket:
 
 class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.original_db_path = integrated_server.DB_PATH
         self.original_api_key = integrated_server.QWEN_API_KEY
+        integrated_server.DB_PATH = Path(self.temp_dir.name) / "users.db"
+        integrated_server._init_db()
         integrated_server.QWEN_API_KEY = ""
         integrated_server._agent_workflow = None
         integrated_server._agent_provider_name = "offline"
 
     def tearDown(self):
         integrated_server.QWEN_API_KEY = self.original_api_key
+        integrated_server.DB_PATH = self.original_db_path
         integrated_server._agent_workflow = None
+        self.temp_dir.cleanup()
 
     async def test_websocket_chat_uses_agent_and_emits_trace(self):
         state = integrated_server.SessionState("guest-session")
@@ -54,6 +62,33 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(state.agent_messages), 4)
         self.assertEqual(state.agent_messages[-2]["content"], "第二轮消息")
+
+    async def test_authorized_user_memory_is_persisted_and_retrieved(self):
+        conn = integrated_server._get_db()
+        try:
+            conn.execute(
+                "INSERT INTO user_memory_settings(user_id,enabled,updated_at) VALUES(?,?,?)",
+                (12, 1, "2026-09-08T00:00:00"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        state = integrated_server.SessionState("memory-session")
+        state.user_id = 12
+        state.memory_consent = integrated_server._memory_enabled_for_user(12)
+
+        await integrated_server._trigger_llm(
+            "我喜欢睡前听轻音乐", state, CaptureWebSocket()
+        )
+        second_socket = CaptureWebSocket()
+        await integrated_server._trigger_llm(
+            "睡前听什么音乐合适", state, second_socket
+        )
+
+        trace = next(message for message in second_socket.messages if message["type"] == "agent_trace")
+        self.assertIn("memory_retriever", trace["execution_path"])
+        self.assertIn("memory_writer", trace["execution_path"])
+        self.assertEqual(len(trace["memories"]), 1)
 
 
 if __name__ == "__main__":
