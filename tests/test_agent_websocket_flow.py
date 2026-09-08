@@ -39,6 +39,7 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
                 "safety_triage",
                 "intent_router",
                 "emotion_analyzer",
+                "knowledge_retriever",
                 "companion",
                 "avatar_director",
             ],

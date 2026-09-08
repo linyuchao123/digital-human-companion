@@ -34,6 +34,7 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 "safety_triage",
                 "intent_router",
                 "emotion_analyzer",
+                "knowledge_retriever",
                 "companion",
                 "avatar_director",
             ],
@@ -102,7 +103,8 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider.messages[-1].content, "最新消息")
 
     async def test_emotion_node_directs_anxious_avatar_to_listen(self):
-        workflow = DigitalXinyuWorkflow()
+        provider = RecordingProvider()
+        workflow = DigitalXinyuWorkflow(provider=provider)
 
         result = await workflow.run(
             user_text="我最近总是焦虑和睡不着",
@@ -112,6 +114,11 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["emotion_context"].emotion, "Anxiety")
         self.assertEqual(result["avatar_command"].motion, "Listen")
+        self.assertEqual(result["execution_path"][3], "knowledge_retriever")
+        self.assertGreaterEqual(len(result["retrieved_knowledge"]), 1)
+        self.assertEqual(result["tool_calls"][0].name, "psychology_knowledge")
+        self.assertEqual(provider.messages[0].role, "system")
+        self.assertIn("心理教育知识", provider.messages[0].content)
 
 
 if __name__ == "__main__":

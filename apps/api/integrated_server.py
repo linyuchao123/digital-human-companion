@@ -681,6 +681,7 @@ async def agent_chat(payload: AgentChatRequest):
             "response": result["final_response"],
             "safety": result["safety"].model_dump(mode="json"),
             "emotion": result["emotion_context"].model_dump(mode="json"),
+            "knowledge": [item.model_dump(mode="json") for item in result["retrieved_knowledge"]],
             "avatar": result["avatar_command"].model_dump(mode="json"),
             "execution_path": result["execution_path"],
             "node_timings_ms": result["node_timings_ms"],
@@ -1262,6 +1263,10 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "provider": _agent_provider_name,
             "safety": safety.model_dump(mode="json"),
             "emotion": emotion.model_dump(mode="json"),
+            "knowledge": [
+                item.model_dump(mode="json") for item in result["retrieved_knowledge"]
+            ],
+            "tool_calls": [item.model_dump(mode="json") for item in result["tool_calls"]],
             "avatar": avatar.model_dump(mode="json"),
             "execution_path": result["execution_path"],
             "node_timings_ms": result["node_timings_ms"],

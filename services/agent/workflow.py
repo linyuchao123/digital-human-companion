@@ -6,9 +6,10 @@ from typing import Any, Literal, Sequence
 from langgraph.graph import END, START, StateGraph
 
 from .emotion import EmotionAnalyzer
+from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
 from .providers import CompanionProvider, FakeCompanionProvider
 from .safety import SafetyTriage
-from .state import AgentState, AvatarCommand, ChatMessage
+from .state import AgentState, AvatarCommand, ChatMessage, ToolCallRecord
 
 
 SAFE_RESPONSE = (
@@ -25,11 +26,13 @@ class DigitalXinyuWorkflow:
         provider: CompanionProvider | None = None,
         safety_triage: SafetyTriage | None = None,
         emotion_analyzer: EmotionAnalyzer | None = None,
+        knowledge_retriever: KnowledgeRetriever | None = None,
         checkpointer: Any | None = None,
     ) -> None:
         self._provider = provider or FakeCompanionProvider()
         self._safety_triage = safety_triage or SafetyTriage()
         self._emotion_analyzer = emotion_analyzer or EmotionAnalyzer()
+        self._knowledge_retriever = knowledge_retriever or BuiltInKnowledgeRetriever()
         self.graph = self._build_graph().compile(checkpointer=checkpointer)
 
     def _build_graph(self) -> StateGraph[AgentState]:
@@ -38,6 +41,7 @@ class DigitalXinyuWorkflow:
         graph.add_node("safe_response", self._create_safe_response)
         graph.add_node("intent_router", self._route_intent)
         graph.add_node("emotion_analyzer", self._analyze_emotion)
+        graph.add_node("knowledge_retriever", self._retrieve_knowledge)
         graph.add_node("companion", self._generate_companion_response)
         graph.add_node("avatar_director", self._direct_avatar)
 
@@ -52,8 +56,13 @@ class DigitalXinyuWorkflow:
         graph.add_conditional_edges(
             "emotion_analyzer",
             self._select_response_route,
-            {"companion": "companion", "avatar_director": "avatar_director"},
+            {
+                "knowledge_retriever": "knowledge_retriever",
+                "companion": "companion",
+                "avatar_director": "avatar_director",
+            },
         )
+        graph.add_edge("knowledge_retriever", "companion")
         graph.add_edge("companion", "avatar_director")
         graph.add_edge("avatar_director", END)
         return graph
@@ -129,25 +138,58 @@ class DigitalXinyuWorkflow:
     @staticmethod
     def _select_response_route(
         state: AgentState,
-    ) -> Literal["companion", "avatar_director"]:
+    ) -> Literal["knowledge_retriever", "companion", "avatar_director"]:
         if state["safety"].requires_safe_response:
             return "avatar_director"
+        if state.get("intent") == "emotional_support":
+            return "knowledge_retriever"
         return "companion"
+
+    async def _retrieve_knowledge(self, state: AgentState) -> dict[str, Any]:
+        started_at = perf_counter()
+        snippets = list(await self._knowledge_retriever.retrieve(state["user_text"], top_k=3))
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
+        return self._complete_node(
+            state,
+            "knowledge_retriever",
+            started_at,
+            retrieved_knowledge=snippets,
+            tool_calls=[
+                *state.get("tool_calls", []),
+                ToolCallRecord(
+                    name="psychology_knowledge",
+                    reason=state.get("intent", ""),
+                    status="completed",
+                    elapsed_ms=elapsed_ms,
+                ),
+            ],
+        )
 
     async def _generate_companion_response(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
-        messages: Sequence[ChatMessage] = [
+        conversation_messages: Sequence[ChatMessage] = [
             *state.get("messages", []),
             ChatMessage(role="user", content=state["user_text"]),
         ][-(MAX_CONTEXT_MESSAGES - 1):]
-        response = await self._provider.generate(messages)
+        knowledge = state.get("retrieved_knowledge", [])
+        provider_messages = list(conversation_messages)
+        if knowledge:
+            context = "\n".join(
+                f"[{index}] {item.content}（来源：{item.source}）"
+                for index, item in enumerate(knowledge, 1)
+            )
+            provider_messages.insert(0, ChatMessage(
+                role="system",
+                content=f"以下是可参考的心理教育知识，不要将其当作医疗诊断：\n{context}",
+            ))
+        response = await self._provider.generate(provider_messages)
         return self._complete_node(
             state,
             "companion",
             started_at,
             draft_response=response,
             final_response=response,
-            messages=[*messages, ChatMessage(role="assistant", content=response)][
+            messages=[*conversation_messages, ChatMessage(role="assistant", content=response)][
                 -MAX_CONTEXT_MESSAGES:
             ],
         )
@@ -194,6 +236,8 @@ class DigitalXinyuWorkflow:
             "messages": list(messages)[-(MAX_CONTEXT_MESSAGES - 2):],
             "execution_path": [],
             "node_timings_ms": {},
+            "retrieved_knowledge": [],
+            "tool_calls": [],
             "cancelled": False,
             "memory_consent": False,
             "errors": [],

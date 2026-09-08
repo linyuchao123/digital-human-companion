@@ -44,6 +44,7 @@ class AgentChatApiTests(unittest.TestCase):
                 "safety_triage",
                 "intent_router",
                 "emotion_analyzer",
+                "knowledge_retriever",
                 "companion",
                 "avatar_director",
             ],
