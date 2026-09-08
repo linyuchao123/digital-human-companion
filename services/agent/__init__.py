@@ -1,5 +1,6 @@
 """数字心屿智能体工作流公共协议。"""
 
+from .providers import CompanionProvider, FakeCompanionProvider
 from .state import (
     AgentEvent,
     AgentEventType,
@@ -18,6 +19,8 @@ __all__ = [
     "AgentState",
     "AvatarCommand",
     "ChatMessage",
+    "CompanionProvider",
+    "FakeCompanionProvider",
     "RiskLevel",
     "SafetyDecision",
     "SafetyTriage",
