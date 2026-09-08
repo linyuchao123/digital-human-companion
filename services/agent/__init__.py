@@ -12,6 +12,7 @@ from .state import (
     ToolCallRecord,
 )
 from .safety import SafetyTriage
+from .workflow import DigitalXinyuWorkflow
 
 __all__ = [
     "AgentEvent",
@@ -20,6 +21,7 @@ __all__ = [
     "AvatarCommand",
     "ChatMessage",
     "CompanionProvider",
+    "DigitalXinyuWorkflow",
     "FakeCompanionProvider",
     "RiskLevel",
     "SafetyDecision",
