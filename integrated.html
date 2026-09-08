@@ -224,6 +224,42 @@ html,body{height:100%;overflow:hidden;
 .ad-value{font:10px/1.6 monospace;word-break:break-all;color:#d9e6ff}
 .ad-risk-high{color:#ff9a9a}.ad-risk-low{color:#72e6a8}
 
+/* ══ 长期记忆管理 ══ */
+#memory-btn{display:none}
+#memory-btn.authenticated{display:inline-flex}
+#memory-panel{position:fixed;top:56px;left:50%;z-index:160;width:min(360px,calc(100vw - 32px));
+  display:none;transform:translateX(-50%);padding:18px;
+  background:rgba(255,255,255,.9);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border:1px solid rgba(255,255,255,.78);border-radius:var(--r-lg);
+  box-shadow:0 18px 54px rgba(35,60,110,.22)}
+#memory-panel.show{display:block}
+.memory-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.memory-title{font-size:14px;font-weight:700;color:var(--text);flex:1}
+.memory-sub{font-size:10px;color:var(--text2);line-height:1.55;margin-top:3px}
+.memory-close{border:0;background:transparent;color:var(--text2);font-size:18px;cursor:pointer;line-height:1}
+.memory-setting{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(79,142,247,.08)}
+.memory-setting-copy{flex:1}
+.memory-setting-title{font-size:12px;font-weight:650;color:var(--text)}
+.memory-setting-desc{font-size:10px;line-height:1.5;color:var(--text2);margin-top:3px}
+.memory-switch{position:relative;width:40px;height:22px;flex:none}
+.memory-switch input{opacity:0;width:0;height:0}
+.memory-slider{position:absolute;inset:0;border-radius:12px;background:#c9d2df;cursor:pointer;transition:.2s}
+.memory-slider::after{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.2);transition:.2s}
+.memory-switch input:checked + .memory-slider{background:var(--accent3)}
+.memory-switch input:checked + .memory-slider::after{transform:translateX(18px)}
+.memory-summary{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 8px}
+.memory-count{font-size:10px;color:var(--text2)}
+.memory-list{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:7px}
+.memory-item{padding:9px 10px;border:1px solid rgba(79,142,247,.14);border-radius:10px;background:rgba(255,255,255,.65)}
+.memory-item-content{font-size:11px;line-height:1.55;color:var(--text);word-break:break-word}
+.memory-item-meta{font-size:9px;color:var(--text2);margin-top:4px}
+.memory-empty{padding:20px 10px;text-align:center;font-size:11px;line-height:1.6;color:var(--text2)}
+.memory-actions{display:flex;justify-content:flex-end;margin-top:12px}
+.memory-clear{height:30px;padding:0 12px;border-radius:8px;border:1px solid rgba(231,76,60,.25);
+  background:rgba(231,76,60,.06);color:var(--danger);font-size:10px;cursor:pointer}
+.memory-clear:disabled{opacity:.4;cursor:not-allowed}
+.memory-error{min-height:15px;margin-top:8px;font-size:10px;color:var(--danger);text-align:center}
+
 /* ══ 情感主题 ══ */
 body.emo-happy #bg{background:linear-gradient(180deg,#c8f0e0 0%,#d8f5ea 30%,#eefff6 65%,#f5f5e8 100%)}
 body.emo-sad #bg{background:linear-gradient(180deg,#b8c8e0 0%,#ccd5e8 30%,#dde3f0 65%,#eceef5 100%)}
@@ -379,6 +415,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <button id="disconnect-btn" onclick="disconnectAll()">🔌 断开连接</button>
   <div class="spacer"></div>
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
+<button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()" title="管理长期记忆授权与已保存内容">🧠 长期记忆</button>
 <button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()" title="显示智能体节点、风控与形象指令">🧭 开发者模式</button>
 <button class="tb-chip" onclick="window.open('/vision','_blank')" title="打开视觉人脸检测监控页面">👁 人脸检测</button>
 <button class="tb-chip" onclick="window.open('/rag','_blank')" title="打开心理学知识库管理页面">📚 知识库</button>
@@ -416,6 +453,37 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <span class="ad-badge" id="agent-provider-badge">等待运行</span>
   </div>
   <div id="agent-debug-content" class="ad-empty">发送消息后，这里会显示工作流节点、安全分诊和数字人动作指令。</div>
+</aside>
+
+<!-- ══ 长期记忆管理面板 ══ -->
+<aside id="memory-panel" aria-label="长期记忆管理">
+  <div class="memory-head">
+    <div>
+      <div class="memory-title">🧠 长期记忆</div>
+      <div class="memory-sub">默认关闭。开启后，小安可以记住你的偏好和对话背景；你可以随时关闭或清空。</div>
+    </div>
+    <button class="memory-close" onclick="toggleMemoryPanel(false)" aria-label="关闭">×</button>
+  </div>
+  <div class="memory-setting">
+    <div class="memory-setting-copy">
+      <div class="memory-setting-title">允许小安使用长期记忆</div>
+      <div class="memory-setting-desc">授权仅对当前账号生效，高风险对话不会被记忆。</div>
+    </div>
+    <label class="memory-switch" title="切换长期记忆授权">
+      <input id="memory-consent" type="checkbox" onchange="updateMemoryConsent(this.checked)"/>
+      <span class="memory-slider"></span>
+    </label>
+  </div>
+  <div class="memory-summary">
+    <span class="memory-count" id="memory-count">正在读取…</span>
+  </div>
+  <div class="memory-list" id="memory-list">
+    <div class="memory-empty">正在加载长期记忆…</div>
+  </div>
+  <div class="memory-actions">
+    <button class="memory-clear" id="memory-clear" onclick="clearAllMemories()">清空全部记忆</button>
+  </div>
+  <div class="memory-error" id="memory-error" role="status"></div>
 </aside>
 
 <!-- ══ 指示器 ══ -->
@@ -526,6 +594,83 @@ function toggleDeveloperMode(){
   developerMode=!developerMode;
   document.getElementById('developer-btn').classList.toggle('on',developerMode);
   document.getElementById('agent-debug').classList.toggle('show',developerMode);
+}
+
+function toggleMemoryPanel(force){
+  const panel=document.getElementById('memory-panel');
+  if(force===false){panel.classList.remove('show');return;}
+  if(!_authToken){
+    document.getElementById('auth-modal').classList.remove('hidden');
+    return;
+  }
+  const show=typeof force==='boolean'?force:!panel.classList.contains('show');
+  panel.classList.toggle('show',show);
+  if(show) loadMemorySettings();
+}
+
+function renderMemories(memories){
+  const list=document.getElementById('memory-list');
+  const clear=document.getElementById('memory-clear');
+  document.getElementById('memory-count').textContent=`已保存 ${memories.length} 条`;
+  clear.disabled=memories.length===0;
+  list.replaceChildren();
+  if(!memories.length){
+    const empty=document.createElement('div');empty.className='memory-empty';
+    empty.textContent='还没有长期记忆。开启授权后，在自然对话中告诉小安你的偏好即可。';
+    list.appendChild(empty);return;
+  }
+  memories.forEach(memory=>{
+    const item=document.createElement('div');item.className='memory-item';
+    const content=document.createElement('div');content.className='memory-item-content';content.textContent=memory.content;
+    const meta=document.createElement('div');meta.className='memory-item-meta';
+    const date=memory.created_at?new Date(memory.created_at).toLocaleString('zh-CN'):'';
+    meta.textContent=`${memory.category||'对话背景'}${date?' · '+date:''}`;
+    item.append(content,meta);list.appendChild(item);
+  });
+}
+
+async function loadMemorySettings(){
+  if(!_authToken) return;
+  const error=document.getElementById('memory-error');error.textContent='';
+  try{
+    const headers={'X-Auth-Token':_authToken};
+    const [settingsRes,memoriesRes]=await Promise.all([
+      fetch('/api/memory/settings',{headers}),fetch('/api/memories',{headers})
+    ]);
+    if(!settingsRes.ok||!memoriesRes.ok) throw new Error('无法读取记忆设置');
+    const settings=await settingsRes.json();
+    const memoryData=await memoriesRes.json();
+    document.getElementById('memory-consent').checked=Boolean(settings.enabled);
+    document.getElementById('memory-btn').classList.toggle('on',Boolean(settings.enabled));
+    renderMemories(memoryData.memories||[]);
+  }catch(e){error.textContent=e.message||'加载失败，请稍后重试';}
+}
+
+async function updateMemoryConsent(enabled){
+  const input=document.getElementById('memory-consent');
+  const error=document.getElementById('memory-error');error.textContent='';input.disabled=true;
+  try{
+    const res=await fetch('/api/memory/settings',{method:'PUT',headers:{
+      'Content-Type':'application/json','X-Auth-Token':_authToken
+    },body:JSON.stringify({enabled})});
+    if(!res.ok) throw new Error('设置保存失败');
+    document.getElementById('memory-btn').classList.toggle('on',enabled);
+    if(chatWs&&chatWs.readyState===WebSocket.OPEN&&_currentDbSession){
+      chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
+    }
+  }catch(e){input.checked=!enabled;error.textContent=e.message||'设置保存失败';}
+  finally{input.disabled=false;}
+}
+
+async function clearAllMemories(){
+  if(!confirm('确定清空当前账号的全部长期记忆？此操作无法撤销。')) return;
+  const button=document.getElementById('memory-clear');
+  const error=document.getElementById('memory-error');error.textContent='';button.disabled=true;
+  try{
+    const res=await fetch('/api/memories',{method:'DELETE',headers:{'X-Auth-Token':_authToken}});
+    if(!res.ok) throw new Error('清空失败');
+    renderMemories([]);
+  }catch(e){error.textContent=e.message||'清空失败，请稍后重试';button.disabled=false;}
 }
 
 function renderAgentTrace(result){
@@ -1309,6 +1454,8 @@ async function _onLoginSuccess(token,username,silent){
   await loadSessions();
   // 若无历史记录则自动创建新会话
   if(!_currentDbSession) await newSession();
+  document.getElementById('memory-btn').classList.add('authenticated');
+  await loadMemorySettings();
   if(!silent) console.log('[Auth] 登录成功:',username);
 }
 
@@ -1318,6 +1465,8 @@ function continueAsGuest(){
   document.getElementById('sb-avatar').textContent='游';
   document.getElementById('sb-name').textContent='游客模式';
   document.getElementById('sb-logout-btn').textContent='登录';
+  document.getElementById('memory-btn').classList.remove('authenticated','on');
+  toggleMemoryPanel(false);
 }
 
 async function doLogout(){
@@ -1337,6 +1486,8 @@ async function doLogout(){
   document.getElementById('sb-avatar').textContent='?';
   document.getElementById('sb-name').textContent='未登录';
   document.getElementById('sb-logout-btn').textContent='退出';
+  document.getElementById('memory-btn').classList.remove('authenticated','on');
+  document.getElementById('memory-panel').classList.remove('show');
   if(_sidebarOpen) toggleSidebar();
   document.getElementById('auth-modal').classList.remove('hidden');
   document.getElementById('auth-username').value='';
