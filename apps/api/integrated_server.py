@@ -680,6 +680,7 @@ async def agent_chat(payload: AgentChatRequest):
             "provider": _agent_provider_name,
             "response": result["final_response"],
             "safety": result["safety"].model_dump(mode="json"),
+            "emotion": result["emotion_context"].model_dump(mode="json"),
             "avatar": result["avatar_command"].model_dump(mode="json"),
             "execution_path": result["execution_path"],
             "node_timings_ms": result["node_timings_ms"],
@@ -1230,16 +1231,16 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         reply_text = result["final_response"]
         safety = result["safety"]
         avatar = result["avatar_command"]
-        emo_result = _local_analyze(text)
-        if safety.risk_level.value == "high":
-            emo_result = {
-                "emotion": "Fear",
-                "valence": -0.9,
-                "arousal": 0.3,
-                "risk_level": "high",
-                "emotion_label": "紧急",
-            }
-        motion_name = "FlickUp" if avatar.motion == "Comfort" else "Idle"
+        emotion = result["emotion_context"]
+        emo_result = {
+            "emotion": emotion.emotion,
+            "valence": emotion.valence,
+            "arousal": emotion.arousal,
+            "risk_level": safety.risk_level.value,
+            "emotion_label": emotion.label,
+        }
+        legacy_motion_map = {"Comfort": "FlickUp", "Listen": "Flick3"}
+        motion_name = legacy_motion_map.get(avatar.motion, "Idle")
 
         # 更新会话情感状态（用于表情叠加）
         state.current_emotion = emo_result["emotion"]
@@ -1260,6 +1261,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "session_id": session_id,
             "provider": _agent_provider_name,
             "safety": safety.model_dump(mode="json"),
+            "emotion": emotion.model_dump(mode="json"),
             "avatar": avatar.model_dump(mode="json"),
             "execution_path": result["execution_path"],
             "node_timings_ms": result["node_timings_ms"],

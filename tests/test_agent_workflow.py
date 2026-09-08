@@ -30,7 +30,13 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["safety"].risk_level, RiskLevel.LOW)
         self.assertEqual(
             result["execution_path"],
-            ["safety_triage", "intent_router", "companion", "avatar_director"],
+            [
+                "safety_triage",
+                "intent_router",
+                "emotion_analyzer",
+                "companion",
+                "avatar_director",
+            ],
         )
         self.assertEqual(set(result["node_timings_ms"]), set(result["execution_path"]))
         self.assertTrue(all(value >= 0 for value in result["node_timings_ms"].values()))
@@ -50,10 +56,11 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["safety"].risk_level, RiskLevel.HIGH)
         self.assertEqual(
             result["execution_path"],
-            ["safety_triage", "safe_response", "avatar_director"],
+            ["safety_triage", "safe_response", "emotion_analyzer", "avatar_director"],
         )
         self.assertEqual(set(result["node_timings_ms"]), set(result["execution_path"]))
         self.assertEqual(result["avatar_command"].motion, "Comfort")
+        self.assertEqual(result["emotion_context"].emotion, "Concerned")
         self.assertNotIn("draft_response", result)
         self.assertEqual(result["messages"][-1].role, "assistant")
 
@@ -93,6 +100,18 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(len(provider.messages), 39)
         self.assertLessEqual(len(result["messages"]), 40)
         self.assertEqual(provider.messages[-1].content, "最新消息")
+
+    async def test_emotion_node_directs_anxious_avatar_to_listen(self):
+        workflow = DigitalXinyuWorkflow()
+
+        result = await workflow.run(
+            user_text="我最近总是焦虑和睡不着",
+            trace_id="trace-anxiety",
+            session_id="session-anxiety",
+        )
+
+        self.assertEqual(result["emotion_context"].emotion, "Anxiety")
+        self.assertEqual(result["avatar_command"].motion, "Listen")
 
 
 if __name__ == "__main__":

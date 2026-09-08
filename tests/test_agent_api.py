@@ -37,9 +37,16 @@ class AgentChatApiTests(unittest.TestCase):
         self.assertEqual(payload["provider"], "offline")
         self.assertEqual(payload["safety"]["risk_level"], "low")
         self.assertEqual(payload["avatar"]["motion"], "Respond")
+        self.assertEqual(payload["emotion"]["emotion"], "Neutral")
         self.assertEqual(
             payload["execution_path"],
-            ["safety_triage", "intent_router", "companion", "avatar_director"],
+            [
+                "safety_triage",
+                "intent_router",
+                "emotion_analyzer",
+                "companion",
+                "avatar_director",
+            ],
         )
         self.assertEqual(set(payload["node_timings_ms"]), set(payload["execution_path"]))
 

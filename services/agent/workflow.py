@@ -5,9 +5,10 @@ from typing import Any, Literal, Sequence
 
 from langgraph.graph import END, START, StateGraph
 
+from .emotion import EmotionAnalyzer
 from .providers import CompanionProvider, FakeCompanionProvider
 from .safety import SafetyTriage
-from .state import AgentState, AvatarCommand, ChatMessage, RiskLevel
+from .state import AgentState, AvatarCommand, ChatMessage
 
 
 SAFE_RESPONSE = (
@@ -23,10 +24,12 @@ class DigitalXinyuWorkflow:
         self,
         provider: CompanionProvider | None = None,
         safety_triage: SafetyTriage | None = None,
+        emotion_analyzer: EmotionAnalyzer | None = None,
         checkpointer: Any | None = None,
     ) -> None:
         self._provider = provider or FakeCompanionProvider()
         self._safety_triage = safety_triage or SafetyTriage()
+        self._emotion_analyzer = emotion_analyzer or EmotionAnalyzer()
         self.graph = self._build_graph().compile(checkpointer=checkpointer)
 
     def _build_graph(self) -> StateGraph[AgentState]:
@@ -34,6 +37,7 @@ class DigitalXinyuWorkflow:
         graph.add_node("safety_triage", self._run_safety_triage)
         graph.add_node("safe_response", self._create_safe_response)
         graph.add_node("intent_router", self._route_intent)
+        graph.add_node("emotion_analyzer", self._analyze_emotion)
         graph.add_node("companion", self._generate_companion_response)
         graph.add_node("avatar_director", self._direct_avatar)
 
@@ -43,8 +47,13 @@ class DigitalXinyuWorkflow:
             self._select_safety_route,
             {"safe_response": "safe_response", "intent_router": "intent_router"},
         )
-        graph.add_edge("safe_response", "avatar_director")
-        graph.add_edge("intent_router", "companion")
+        graph.add_edge("safe_response", "emotion_analyzer")
+        graph.add_edge("intent_router", "emotion_analyzer")
+        graph.add_conditional_edges(
+            "emotion_analyzer",
+            self._select_response_route,
+            {"companion": "companion", "avatar_director": "avatar_director"},
+        )
         graph.add_edge("companion", "avatar_director")
         graph.add_edge("avatar_director", END)
         return graph
@@ -107,6 +116,24 @@ class DigitalXinyuWorkflow:
             intent=intent,
         )
 
+    async def _analyze_emotion(self, state: AgentState) -> dict[str, Any]:
+        started_at = perf_counter()
+        emotion = self._emotion_analyzer.analyze(state["user_text"], state["safety"])
+        return self._complete_node(
+            state,
+            "emotion_analyzer",
+            started_at,
+            emotion_context=emotion,
+        )
+
+    @staticmethod
+    def _select_response_route(
+        state: AgentState,
+    ) -> Literal["companion", "avatar_director"]:
+        if state["safety"].requires_safe_response:
+            return "avatar_director"
+        return "companion"
+
     async def _generate_companion_response(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
         messages: Sequence[ChatMessage] = [
@@ -127,11 +154,19 @@ class DigitalXinyuWorkflow:
 
     async def _direct_avatar(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
-        is_high_risk = state["safety"].risk_level is RiskLevel.HIGH
+        emotion = state["emotion_context"].emotion
+        presentations = {
+            "Concerned": (0.7, "Comfort"),
+            "Sad": (0.55, "Listen"),
+            "Anxiety": (0.55, "Listen"),
+            "Happy": (0.6, "Respond"),
+            "Neutral": (0.4, "Respond"),
+        }
+        intensity, motion = presentations[emotion]
         command = AvatarCommand(
-            emotion="Concerned" if is_high_risk else "Warm",
-            intensity=0.65 if is_high_risk else 0.45,
-            motion="Comfort" if is_high_risk else "Respond",
+            emotion=emotion,
+            intensity=intensity,
+            motion=motion,
             speaking_state="speaking",
         )
         return self._complete_node(

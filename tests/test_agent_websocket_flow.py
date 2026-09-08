@@ -35,7 +35,13 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(trace["provider"], "offline")
         self.assertEqual(
             trace["execution_path"],
-            ["safety_triage", "intent_router", "companion", "avatar_director"],
+            [
+                "safety_triage",
+                "intent_router",
+                "emotion_analyzer",
+                "companion",
+                "avatar_director",
+            ],
         )
         self.assertEqual(len(state.agent_messages), 2)
 
