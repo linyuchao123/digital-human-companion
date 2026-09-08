@@ -564,27 +564,6 @@ function renderAgentTrace(result){
   addSection('追踪 ID',result.trace_id||'--');
 }
 
-async function sendThroughAgentWorkflow(text){
-  showThinking(true);
-  try{
-    const response=await fetch(`${API_URL}/api/agent/chat`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text,session_id:_currentDbSession||null})
-    });
-    const result=await response.json();
-    if(!response.ok) throw new Error(result.detail||'智能体工作流调用失败');
-    renderAgentTrace(result);
-    addBubble('ai',result.response,`风险: ${result.safety.risk_level}`);
-    updateEmotion(result.avatar?.emotion);
-    if(ttsEnabled) speakText(result.response);
-    if(result.avatar?.motion&&result.avatar.motion!=='Idle') setTimeout(()=>playMotion(result.avatar.motion),200);
-  }catch(error){
-    addBubble('ai',`开发者模式调用失败：${error.message}`,'系统错误');
-  }finally{
-    showThinking(false);
-  }
-}
-
 /* ═══════════ 连接总控 ═══════════ */
 async function connectAll(){
   const btn=document.getElementById('connect-btn');
@@ -931,6 +910,9 @@ function handleChatMessage(msg){
       if(msg.is_final&&msg.text) addBubble('user',msg.text);
       break;
     case 'llm_thinking':showThinking(true);break;
+    case 'agent_trace':
+      renderAgentTrace(msg);
+      break;
     case 'llm_reply':
       showThinking(false);
       const cleanText=msg.text.replace(/\[MOTION:[^\]]+\]/gi,'').trim();
@@ -1226,8 +1208,7 @@ function sendText(){
   const input=document.getElementById('text-input');
   const text=input.value.trim();if(!text) return;
   input.value='';addBubble('user',text);
-  if(developerMode) sendThroughAgentWorkflow(text);
-  else chatSend({type:'text_input',text});
+  chatSend({type:'text_input',text});
 }
 
 /* ═══════════ 窗口自适应 ═══════════ */
