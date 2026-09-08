@@ -34,6 +34,7 @@ from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisc
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 import numpy as np
 
@@ -616,6 +617,49 @@ async def api_status():
         },
         "port": 8800,
     })
+
+
+class AgentChatRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    session_id: str | None = None
+
+
+_agent_workflow = None
+
+
+def _get_agent_workflow():
+    global _agent_workflow
+    if _agent_workflow is None:
+        from services.agent import DigitalXinyuWorkflow
+
+        _agent_workflow = DigitalXinyuWorkflow()
+    return _agent_workflow
+
+
+@app.post("/api/agent/chat")
+async def agent_chat(payload: AgentChatRequest):
+    """使用离线 Provider 运行一次可观测的智能体工作流。"""
+    try:
+        trace_id = str(uuid.uuid4())
+        session_id = payload.session_id or str(uuid.uuid4())
+        result = await _get_agent_workflow().run(
+            user_text=payload.text,
+            trace_id=trace_id,
+            session_id=session_id,
+        )
+        return JSONResponse({
+            "trace_id": trace_id,
+            "session_id": session_id,
+            "response": result["final_response"],
+            "safety": result["safety"].model_dump(mode="json"),
+            "avatar": result["avatar_command"].model_dump(mode="json"),
+            "execution_path": result["execution_path"],
+        })
+    except ImportError as exc:
+        return JSONResponse(
+            {"error": "agent_dependencies_unavailable", "detail": str(exc)},
+            status_code=503,
+        )
 
 
 # ══════════════════════════════════════════════════════════════
