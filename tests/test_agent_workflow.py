@@ -1,6 +1,6 @@
 import unittest
 
-from services.agent import ChatMessage, DigitalXinyuWorkflow, RiskLevel
+from services.agent import ChatMessage, DigitalXinyuWorkflow, InMemoryMemoryStore, RiskLevel
 
 
 class FailingProvider:
@@ -119,6 +119,41 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["tool_calls"][0].name, "psychology_knowledge")
         self.assertEqual(provider.messages[0].role, "system")
         self.assertIn("心理教育知识", provider.messages[0].content)
+
+    async def test_memory_nodes_require_authenticated_consent(self):
+        store = InMemoryMemoryStore()
+        await store.remember(8, "用户喜欢睡前听轻音乐", "preference")
+        provider = RecordingProvider()
+        workflow = DigitalXinyuWorkflow(provider=provider, memory_store=store)
+
+        result = await workflow.run(
+            user_text="我喜欢睡前听轻音乐，最近有点焦虑",
+            trace_id="trace-memory",
+            session_id="session-memory",
+            user_id=8,
+            memory_consent=True,
+        )
+
+        self.assertIn("memory_retriever", result["execution_path"])
+        self.assertIn("memory_writer", result["execution_path"])
+        self.assertEqual(len(result["retrieved_memories"]), 1)
+        self.assertTrue(any("长期记忆" in message.content for message in provider.messages))
+
+    async def test_high_risk_chat_never_reads_or_writes_memory(self):
+        store = InMemoryMemoryStore()
+        workflow = DigitalXinyuWorkflow(provider=FailingProvider(), memory_store=store)
+
+        result = await workflow.run(
+            user_text="我不想活了",
+            trace_id="trace-risk-memory",
+            session_id="session-risk-memory",
+            user_id=9,
+            memory_consent=True,
+        )
+
+        self.assertNotIn("memory_retriever", result["execution_path"])
+        self.assertNotIn("memory_writer", result["execution_path"])
+        self.assertEqual(await store.search(9, "不想活"), [])
 
 
 if __name__ == "__main__":
