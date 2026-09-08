@@ -13,10 +13,12 @@ class SessionAuthorizationTests(unittest.TestCase):
         self.original_db_path = integrated_server.DB_PATH
         integrated_server.DB_PATH = Path(self.temp_dir.name) / "users.db"
         integrated_server._init_db()
+        integrated_server._drive_clients.clear()
         self.client = TestClient(integrated_server.app)
 
     def tearDown(self):
         self.client.close()
+        integrated_server._drive_clients.clear()
         integrated_server.DB_PATH = self.original_db_path
         self.temp_dir.cleanup()
 
@@ -92,6 +94,14 @@ class SessionAuthorizationTests(unittest.TestCase):
 
         self.assertEqual(response["type"], "error")
         self.assertEqual(response["code"], "session_forbidden")
+
+    def test_drive_websocket_releases_disconnected_client(self):
+        with self.client.websocket_connect("/ws/drive") as websocket:
+            response = websocket.receive_json()
+            self.assertEqual(response["type"], "info")
+            self.assertEqual(len(integrated_server._drive_clients), 1)
+
+        self.assertEqual(len(integrated_server._drive_clients), 0)
 
 
 if __name__ == "__main__":

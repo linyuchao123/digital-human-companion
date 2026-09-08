@@ -24,6 +24,7 @@ import time
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -963,10 +964,12 @@ async def ws_drive(websocket: WebSocket):
     try:
         await websocket.send_json({"type": "info", "msg": "drive channel ready"})
         while True:
-            # 保持连接，等待断开
-            await asyncio.sleep(30)
-            await websocket.send_json({"type": "ping"})
-    except Exception:
+            # 主动接收断开事件，避免服务关停时等待下一次心跳。
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30)
+            except TimeoutError:
+                await websocket.send_json({"type": "ping"})
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         _drive_clients.discard(websocket)
@@ -1068,6 +1071,8 @@ async def ws_main(websocket: WebSocket):
         traceback.print_exc()
     finally:
         drive_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await drive_task
         print(f"[WS] 会话结束: {session_id}")
 
 
