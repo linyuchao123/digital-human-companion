@@ -92,9 +92,22 @@ def _init_db():
                 emotion_label TEXT DEFAULT '',
                 ts TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS user_memory_settings (
+                user_id INTEGER PRIMARY KEY,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS user_memories (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'context',
+                created_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_sessions_user ON chat_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
             CREATE INDEX IF NOT EXISTS idx_tokens_user ON auth_tokens(user_id);
+            CREATE INDEX IF NOT EXISTS idx_memories_user ON user_memories(user_id);
         """)
         conn.commit()
         print("[DB] 数据库初始化完成")
@@ -645,6 +658,10 @@ class AgentChatRequest(BaseModel):
     session_id: str | None = None
 
 
+class MemorySettingsRequest(BaseModel):
+    enabled: bool
+
+
 _agent_workflow = None
 _agent_provider_name = "offline"
 
@@ -776,6 +793,76 @@ def _session_belongs_to_user(session_id: str, user_id: int) -> bool:
             (session_id, user_id),
         ).fetchone()
         return row is not None
+    finally:
+        conn.close()
+
+
+@app.get("/api/memory/settings")
+async def get_memory_settings(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT enabled FROM user_memory_settings WHERE user_id=?", (user_id,)
+        ).fetchone()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM user_memories WHERE user_id=?", (user_id,)
+        ).fetchone()[0]
+        return JSONResponse({"enabled": bool(row["enabled"]) if row else False, "count": count})
+    finally:
+        conn.close()
+
+
+@app.put("/api/memory/settings")
+async def update_memory_settings(payload: MemorySettingsRequest, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    conn = _get_db()
+    try:
+        conn.execute(
+            """INSERT INTO user_memory_settings(user_id, enabled, updated_at)
+               VALUES(?,?,?)
+               ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,
+               updated_at=excluded.updated_at""",
+            (user_id, int(payload.enabled), now),
+        )
+        conn.commit()
+        return JSONResponse({"enabled": payload.enabled})
+    finally:
+        conn.close()
+
+
+@app.get("/api/memories")
+async def get_memories(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            """SELECT id, content, category, created_at FROM user_memories
+               WHERE user_id=? ORDER BY created_at DESC LIMIT 100""",
+            (user_id,),
+        ).fetchall()
+        return JSONResponse({"memories": [dict(row) for row in rows]})
+    finally:
+        conn.close()
+
+
+@app.delete("/api/memories")
+async def delete_memories(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        cursor = conn.execute("DELETE FROM user_memories WHERE user_id=?", (user_id,))
+        conn.commit()
+        return JSONResponse({"ok": True, "deleted": cursor.rowcount})
     finally:
         conn.close()
 
