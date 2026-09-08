@@ -59,6 +59,24 @@ class SessionAuthorizationTests(unittest.TestCase):
         self.assertEqual(session_count, 1)
         self.assertEqual(message_count, 1)
 
+    def test_user_cannot_generate_title_for_another_users_session(self):
+        owner_token = self._register("title-owner")
+        attacker_token = self._register("title-attacker")
+        session_id = self._create_session(owner_token)
+        integrated_server._db_save_message(session_id, "user", "private topic")
+
+        response = self.client.post(
+            f"/api/sessions/{session_id}/generate_title",
+            headers={"X-Auth-Token": attacker_token},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        with integrated_server._get_db() as conn:
+            title = conn.execute(
+                "SELECT title FROM chat_sessions WHERE id=?", (session_id,)
+            ).fetchone()[0]
+        self.assertEqual(title, "新对话")
+
 
 if __name__ == "__main__":
     unittest.main()

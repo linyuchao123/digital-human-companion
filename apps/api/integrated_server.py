@@ -771,6 +771,12 @@ async def generate_session_title(session_id: str, request: Request):
         return JSONResponse({"error": "未登录"}, status_code=401)
     conn = _get_db()
     try:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE id=? AND user_id=?",
+            (session_id, user_id),
+        ).fetchone()
+        if not session:
+            return JSONResponse({"error": "会话不存在"}, status_code=404)
         msgs = conn.execute(
             "SELECT role,content FROM chat_messages WHERE session_id=? ORDER BY id ASC LIMIT 6",
             (session_id,)
@@ -798,7 +804,10 @@ async def generate_session_title(session_id: str, request: Request):
                 title = msgs[0]["content"][:10] if msgs else "新对话"
         else:
             title = msgs[0]["content"][:10] if msgs else "新对话"
-        conn.execute("UPDATE chat_sessions SET title=? WHERE id=?", (title, session_id))
+        conn.execute(
+            "UPDATE chat_sessions SET title=? WHERE id=? AND user_id=?",
+            (title, session_id, user_id),
+        )
         conn.commit()
         return JSONResponse({"title": title, "session_id": session_id})
     finally:
