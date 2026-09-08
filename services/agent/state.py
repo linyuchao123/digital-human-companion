@@ -38,6 +38,13 @@ class SafetyDecision(BaseModel):
     allow_web_search: bool = False
 
 
+class EmotionContext(BaseModel):
+    emotion: Literal["Neutral", "Happy", "Sad", "Anxiety", "Concerned"] = "Neutral"
+    valence: float = Field(default=0, ge=-1, le=1)
+    arousal: float = Field(default=0, ge=-1, le=1)
+    label: str = "平静"
+
+
 class ToolCallRecord(BaseModel):
     name: str = Field(min_length=1)
     reason: str = ""
@@ -76,7 +83,7 @@ class AgentState(TypedDict, total=False):
     messages: list[ChatMessage]
     intent: str
     safety: SafetyDecision
-    emotion_context: dict[str, Any]
+    emotion_context: EmotionContext
     retrieved_memories: list[dict[str, Any]]
     retrieved_knowledge: list[dict[str, Any]]
     tool_calls: list[ToolCallRecord]

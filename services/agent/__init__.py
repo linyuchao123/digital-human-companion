@@ -1,5 +1,6 @@
 """数字心屿智能体工作流公共协议。"""
 
+from .emotion import EmotionAnalyzer
 from .providers import (
     CompanionProvider,
     CompanionProviderError,
@@ -15,6 +16,7 @@ from .state import (
     AgentState,
     AvatarCommand,
     ChatMessage,
+    EmotionContext,
     RiskLevel,
     SafetyDecision,
     ToolCallRecord,
@@ -31,6 +33,8 @@ __all__ = [
     "CompanionProvider",
     "CompanionProviderError",
     "DigitalXinyuWorkflow",
+    "EmotionAnalyzer",
+    "EmotionContext",
     "FakeCompanionProvider",
     "FallbackCompanionProvider",
     "OpenAICompatibleCompanionProvider",
