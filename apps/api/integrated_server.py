@@ -690,6 +690,20 @@ def _get_user_id_from_request(request: Request) -> Optional[int]:
     token = request.headers.get("X-Auth-Token", "")
     return _verify_auth_token(token)
 
+
+def _session_belongs_to_user(session_id: str, user_id: int) -> bool:
+    if not session_id:
+        return False
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM chat_sessions WHERE id=? AND user_id=?",
+            (session_id, user_id),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
 @app.get("/api/sessions")
 async def get_sessions(request: Request):
     user_id = _get_user_id_from_request(request)
@@ -948,10 +962,27 @@ async def ws_main(websocket: WebSocket):
                 token = msg.get("token", "")
                 db_sid = msg.get("session_id", "")
                 user_id = _verify_auth_token(token)
-                if user_id:
-                    state.user_id = user_id
-                    state.db_session_id = db_sid if db_sid else None
-                    print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
+                if not user_id:
+                    await _send(websocket, {
+                        "type": "error",
+                        "code": "unauthorized",
+                        "message": "登录状态已失效",
+                    })
+                    continue
+                if db_sid and not _session_belongs_to_user(db_sid, user_id):
+                    await _send(websocket, {
+                        "type": "error",
+                        "code": "session_forbidden",
+                        "message": "无权绑定该会话",
+                    })
+                    continue
+                state.user_id = user_id
+                state.db_session_id = db_sid if db_sid else None
+                print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
+                await _send(websocket, {
+                    "type": "session_bound",
+                    "session_id": state.db_session_id,
+                })
                 continue
 
             elif msg_type == "frame":

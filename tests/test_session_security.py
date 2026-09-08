@@ -77,6 +77,22 @@ class SessionAuthorizationTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(title, "新对话")
 
+    def test_websocket_cannot_bind_another_users_session(self):
+        owner_token = self._register("ws-owner")
+        attacker_token = self._register("ws-attacker")
+        session_id = self._create_session(owner_token)
+
+        with self.client.websocket_connect("/ws/main") as websocket:
+            websocket.send_json({
+                "type": "init",
+                "token": attacker_token,
+                "session_id": session_id,
+            })
+            response = websocket.receive_json()
+
+        self.assertEqual(response["type"], "error")
+        self.assertEqual(response["code"], "session_forbidden")
+
 
 if __name__ == "__main__":
     unittest.main()
