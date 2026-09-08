@@ -750,8 +750,14 @@ async def delete_session(session_id: str, request: Request):
         return JSONResponse({"error": "未登录"}, status_code=401)
     conn = _get_db()
     try:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE id=? AND user_id=?",
+            (session_id, user_id),
+        ).fetchone()
+        if not session:
+            return JSONResponse({"error": "会话不存在"}, status_code=404)
         conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
-        conn.execute("DELETE FROM chat_sessions WHERE id=? AND user_id=?", (session_id, user_id))
+        conn.execute("DELETE FROM chat_sessions WHERE id=?", (session_id,))
         conn.commit()
         _session_histories.pop(session_id, None)
         return JSONResponse({"ok": True})
