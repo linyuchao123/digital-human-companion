@@ -1,6 +1,13 @@
 """数字心屿智能体工作流公共协议。"""
 
-from .providers import CompanionProvider, FakeCompanionProvider
+from .providers import (
+    CompanionProvider,
+    CompanionProviderError,
+    FakeCompanionProvider,
+    FallbackCompanionProvider,
+    OpenAICompatibleCompanionProvider,
+    OpenAICompatibleConfig,
+)
 from .state import (
     AgentEvent,
     AgentEventType,
@@ -21,8 +28,12 @@ __all__ = [
     "AvatarCommand",
     "ChatMessage",
     "CompanionProvider",
+    "CompanionProviderError",
     "DigitalXinyuWorkflow",
     "FakeCompanionProvider",
+    "FallbackCompanionProvider",
+    "OpenAICompatibleCompanionProvider",
+    "OpenAICompatibleConfig",
     "RiskLevel",
     "SafetyDecision",
     "SafetyTriage",

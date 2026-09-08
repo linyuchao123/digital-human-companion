@@ -1,6 +1,16 @@
+import json
 import unittest
 
-from services.agent import ChatMessage, FakeCompanionProvider
+import httpx
+
+from services.agent import (
+    ChatMessage,
+    CompanionProviderError,
+    FakeCompanionProvider,
+    FallbackCompanionProvider,
+    OpenAICompatibleCompanionProvider,
+    OpenAICompatibleConfig,
+)
 
 
 class FakeCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
@@ -20,6 +30,60 @@ class FakeCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
         response = await provider.generate([])
 
         self.assertEqual(response, "我在这里，你可以慢慢说。")
+
+
+class OpenAICompatibleCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_provider_sends_openai_compatible_request(self):
+        captured = {}
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            captured["authorization"] = request.headers["authorization"]
+            captured["payload"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": " 我愿意听你慢慢说。 "}}]},
+            )
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handle_request),
+            base_url="https://example.test/v1",
+        ) as client:
+            provider = OpenAICompatibleCompanionProvider(
+                OpenAICompatibleConfig(api_key="test-key", model="qwen-test"),
+                client=client,
+            )
+            response = await provider.generate([ChatMessage(role="user", content="我有点孤独")])
+
+        self.assertEqual(response, "我愿意听你慢慢说。")
+        self.assertEqual(captured["authorization"], "Bearer test-key")
+        self.assertEqual(captured["payload"]["model"], "qwen-test")
+        self.assertEqual(captured["payload"]["messages"][-1]["content"], "我有点孤独")
+
+    async def test_provider_wraps_invalid_cloud_response(self):
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})),
+            base_url="https://example.test/v1",
+        ) as client:
+            provider = OpenAICompatibleCompanionProvider(
+                OpenAICompatibleConfig(api_key="test-key"),
+                client=client,
+            )
+            with self.assertRaises(CompanionProviderError):
+                await provider.generate([ChatMessage(role="user", content="你好")])
+
+    async def test_fallback_provider_keeps_chat_available(self):
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(503)),
+            base_url="https://example.test/v1",
+        ) as client:
+            cloud = OpenAICompatibleCompanionProvider(
+                OpenAICompatibleConfig(api_key="test-key"),
+                client=client,
+            )
+            provider = FallbackCompanionProvider(cloud, FakeCompanionProvider())
+            response = await provider.generate([ChatMessage(role="user", content="今天很累")])
+
+        self.assertIn("压力", response)
 
 
 if __name__ == "__main__":
