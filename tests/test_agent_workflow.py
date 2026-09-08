@@ -17,6 +17,17 @@ class RecordingProvider:
         return "我记得，我们继续聊。"
 
 
+class FailingMemoryStore:
+    async def search(self, user_id, query, limit=5):
+        raise OSError("memory database unavailable")
+
+    async def remember(self, user_id, content, category="context"):
+        raise OSError("memory database unavailable")
+
+    async def forget_all(self, user_id):
+        raise OSError("memory database unavailable")
+
+
 class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_normal_chat_runs_through_companion_and_avatar_nodes(self):
         workflow = DigitalXinyuWorkflow()
@@ -170,6 +181,29 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("memory_retriever", result["execution_path"])
         self.assertNotIn("memory_writer", result["execution_path"])
         self.assertEqual(await store.search(10, "天气"), [])
+
+    async def test_memory_tool_failure_does_not_break_companion_response(self):
+        workflow = DigitalXinyuWorkflow(
+            provider=RecordingProvider(), memory_store=FailingMemoryStore()
+        )
+
+        result = await workflow.run(
+            user_text="我喜欢跑步",
+            trace_id="trace-memory-failure",
+            session_id="session-memory-failure",
+            user_id=11,
+            memory_consent=True,
+        )
+
+        self.assertEqual(result["final_response"], "我记得，我们继续聊。")
+        self.assertEqual(
+            [item.name for item in result["tool_calls"]],
+            ["long_term_memory_search", "long_term_memory_write"],
+        )
+        self.assertTrue(all(item.status == "failed" for item in result["tool_calls"]))
+        self.assertEqual(result["errors"], [
+            "memory_retriever:OSError", "memory_writer:OSError"
+        ])
 
 
 if __name__ == "__main__":

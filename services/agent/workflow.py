@@ -182,21 +182,69 @@ class DigitalXinyuWorkflow:
 
     async def _retrieve_memories(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
-        memories = list(await self._memory_store.search(
-            state["user_id"], state["user_text"], limit=5
-        ))
+        errors = list(state.get("errors", []))
+        try:
+            memories = list(await self._memory_store.search(
+                state["user_id"], state["user_text"], limit=5
+            ))
+            status = "completed"
+            error_code = None
+        except Exception as exc:
+            memories = []
+            status = "failed"
+            error_code = type(exc).__name__
+            errors.append(f"memory_retriever:{error_code}")
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
         return self._complete_node(
-            state, "memory_retriever", started_at, retrieved_memories=memories
+            state,
+            "memory_retriever",
+            started_at,
+            retrieved_memories=memories,
+            errors=errors,
+            tool_calls=[
+                *state.get("tool_calls", []),
+                ToolCallRecord(
+                    name="long_term_memory_search",
+                    reason="用户已授权长期记忆",
+                    status=status,
+                    elapsed_ms=elapsed_ms,
+                    error_code=error_code,
+                ),
+            ],
         )
 
     async def _write_memory(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
         candidate = extract_memory_candidate(state["user_text"])
+        errors = list(state.get("errors", []))
+        status = "completed"
+        error_code = None
         if candidate is not None:
-            await self._memory_store.remember(
-                state["user_id"], candidate.content, candidate.category
-            )
-        return self._complete_node(state, "memory_writer", started_at)
+            try:
+                await self._memory_store.remember(
+                    state["user_id"], candidate.content, candidate.category
+                )
+            except Exception as exc:
+                status = "failed"
+                error_code = type(exc).__name__
+                errors.append(f"memory_writer:{error_code}")
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
+        return self._complete_node(
+            state,
+            "memory_writer",
+            started_at,
+            errors=errors,
+            tool_calls=[
+                *state.get("tool_calls", []),
+                ToolCallRecord(
+                    name="long_term_memory_write",
+                    reason=candidate.category if candidate else "未提取到稳定信息",
+                    status=status,
+                    elapsed_ms=elapsed_ms,
+                    error_code=error_code,
+                ),
+            ],
+        )
 
     async def _retrieve_knowledge(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
