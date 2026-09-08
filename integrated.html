@@ -361,7 +361,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <button id="disconnect-btn" onclick="disconnectAll()">🔌 断开连接</button>
   <div class="spacer"></div>
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
-<button class="tb-chip" onclick="window.open('http://localhost:8800/vision','_blank')" title="打开视觉人脸检测监控页面">👁 人脸检测</button>
+<button class="tb-chip" onclick="window.open('/vision','_blank')" title="打开视觉人脸检测监控页面">👁 人脸检测</button>
 <button class="tb-chip" onclick="window.open('/rag','_blank')" title="打开心理学知识库管理页面">📚 知识库</button>
 </div>
 
@@ -374,7 +374,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <div class="cs-sub">基于深度学习模型驱动的情感陪护数字人系统<br>24维面部参数实时驱动 + 心理对话引擎</div>
   <div class="cs-ws-row">
     <label>驱动服务：</label>
-    <input type="text" id="drive-ws-input" value="ws://localhost:8800/ws/drive" />
+    <input type="text" id="drive-ws-input" />
   </div>
   <button id="connect-btn" onclick="connectAll()">
     <span>🔗</span><span>连接数字人</span>
@@ -439,10 +439,13 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 
 <script>
 /* ═══════════ 配置 ═══════════ */
-const CHAT_WS_URL  = 'ws://localhost:8800/ws/main';
-const API_URL      = 'http://localhost:8800';
+const WS_ORIGIN    = `${location.protocol==='https:'?'wss:':'ws:'}//${location.host}`;
+const CHAT_WS_URL  = `${WS_ORIGIN}/ws/main`;
+const DRIVE_WS_URL = `${WS_ORIGIN}/ws/drive`;
+const API_URL      = location.origin;
 const MODEL_PATH   = '/shizuku/shizuku.model3.json';
 const AUDIO_SLICE_MS = 2000;
+document.getElementById('drive-ws-input').value=DRIVE_WS_URL;
 
 /* 24参数映射（与 digital_human_engine 一致）*/
 const PARAM_MAP = {
@@ -501,7 +504,7 @@ async function connectAll(){
   try{
     await initPixiAndModel();
     st.textContent='连接驱动服务...';
-    const driveUrl=document.getElementById('drive-ws-input').value.trim()||'ws://localhost:8800/ws/drive';
+    const driveUrl=document.getElementById('drive-ws-input').value.trim()||DRIVE_WS_URL;
     connectDriveWS(driveUrl);
     st.textContent='连接对话服务...';
     connectChatWS();
