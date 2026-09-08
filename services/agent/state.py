@@ -51,6 +51,14 @@ class KnowledgeSnippet(BaseModel):
     score: float = Field(default=0, ge=0, le=1)
 
 
+class MemoryRecord(BaseModel):
+    id: str = Field(min_length=1)
+    user_id: int
+    content: str = Field(min_length=1, max_length=500)
+    category: Literal["preference", "profile", "goal", "context"] = "context"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class ToolCallRecord(BaseModel):
     name: str = Field(min_length=1)
     reason: str = ""
@@ -90,7 +98,7 @@ class AgentState(TypedDict, total=False):
     intent: str
     safety: SafetyDecision
     emotion_context: EmotionContext
-    retrieved_memories: list[dict[str, Any]]
+    retrieved_memories: list[MemoryRecord]
     retrieved_knowledge: list[KnowledgeSnippet]
     tool_calls: list[ToolCallRecord]
     draft_response: str

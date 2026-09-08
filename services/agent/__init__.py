@@ -2,6 +2,7 @@
 
 from .emotion import EmotionAnalyzer
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever, NullKnowledgeRetriever
+from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore
 from .providers import (
     CompanionProvider,
     CompanionProviderError,
@@ -19,6 +20,7 @@ from .state import (
     ChatMessage,
     EmotionContext,
     KnowledgeSnippet,
+    MemoryRecord,
     RiskLevel,
     SafetyDecision,
     ToolCallRecord,
@@ -42,7 +44,11 @@ __all__ = [
     "BuiltInKnowledgeRetriever",
     "KnowledgeRetriever",
     "KnowledgeSnippet",
+    "InMemoryMemoryStore",
+    "MemoryRecord",
+    "MemoryStore",
     "NullKnowledgeRetriever",
+    "NullMemoryStore",
     "OpenAICompatibleCompanionProvider",
     "OpenAICompatibleConfig",
     "RiskLevel",
