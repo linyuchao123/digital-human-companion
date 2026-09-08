@@ -45,6 +45,12 @@ class EmotionContext(BaseModel):
     label: str = "平静"
 
 
+class KnowledgeSnippet(BaseModel):
+    content: str = Field(min_length=1, max_length=1200)
+    source: str = Field(min_length=1, max_length=200)
+    score: float = Field(default=0, ge=0, le=1)
+
+
 class ToolCallRecord(BaseModel):
     name: str = Field(min_length=1)
     reason: str = ""
@@ -85,7 +91,7 @@ class AgentState(TypedDict, total=False):
     safety: SafetyDecision
     emotion_context: EmotionContext
     retrieved_memories: list[dict[str, Any]]
-    retrieved_knowledge: list[dict[str, Any]]
+    retrieved_knowledge: list[KnowledgeSnippet]
     tool_calls: list[ToolCallRecord]
     draft_response: str
     final_response: str

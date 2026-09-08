@@ -1,6 +1,7 @@
 """数字心屿智能体工作流公共协议。"""
 
 from .emotion import EmotionAnalyzer
+from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever, NullKnowledgeRetriever
 from .providers import (
     CompanionProvider,
     CompanionProviderError,
@@ -17,6 +18,7 @@ from .state import (
     AvatarCommand,
     ChatMessage,
     EmotionContext,
+    KnowledgeSnippet,
     RiskLevel,
     SafetyDecision,
     ToolCallRecord,
@@ -37,6 +39,10 @@ __all__ = [
     "EmotionContext",
     "FakeCompanionProvider",
     "FallbackCompanionProvider",
+    "BuiltInKnowledgeRetriever",
+    "KnowledgeRetriever",
+    "KnowledgeSnippet",
+    "NullKnowledgeRetriever",
     "OpenAICompatibleCompanionProvider",
     "OpenAICompatibleConfig",
     "RiskLevel",
