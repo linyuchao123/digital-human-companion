@@ -424,7 +424,7 @@ def _run_asr(audio_path: str) -> str:
         return ""
 
 # 4. Qwen API
-QWEN_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-81e2a139a4ed42c3a004fd2d67f5de7f")
+QWEN_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
 QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 QWEN_MODEL = "qwen-plus"
 _session_histories: Dict[str, list] = {}
