@@ -884,6 +884,25 @@ async def delete_memories(request: Request):
     finally:
         conn.close()
 
+
+@app.delete("/api/memories/{memory_id}")
+async def delete_memory(memory_id: str, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        cursor = conn.execute(
+            "DELETE FROM user_memories WHERE id=? AND user_id=?",
+            (memory_id, user_id),
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            return JSONResponse({"error": "记忆不存在"}, status_code=404)
+        return JSONResponse({"ok": True, "deleted": 1})
+    finally:
+        conn.close()
+
 @app.get("/api/sessions")
 async def get_sessions(request: Request):
     user_id = _get_user_id_from_request(request)

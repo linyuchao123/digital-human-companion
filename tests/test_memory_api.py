@@ -78,6 +78,41 @@ class MemoryApiTests(unittest.TestCase):
             [],
         )
 
+    def test_user_can_delete_one_own_memory_but_not_another_users_memory(self):
+        other = self.client.post(
+            "/api/auth/register",
+            json={"username": "another-memory-user", "password": "test-password"},
+        ).json()
+        own_memory_id = str(uuid.uuid4())
+        other_memory_id = str(uuid.uuid4())
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        conn = integrated_server._get_db()
+        try:
+            conn.executemany(
+                """INSERT INTO user_memories(id,user_id,content,category,created_at)
+                   VALUES(?,?,?,?,?)""",
+                (
+                    (own_memory_id, self.user_id, "我喜欢跑步", "preference", now),
+                    (other_memory_id, other["user_id"], "我喜欢游泳", "preference", now),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        forbidden = self.client.delete(
+            f"/api/memories/{other_memory_id}", headers=self.headers
+        )
+        deleted = self.client.delete(
+            f"/api/memories/{own_memory_id}", headers=self.headers
+        )
+
+        self.assertEqual(forbidden.status_code, 404)
+        self.assertEqual(deleted.json(), {"ok": True, "deleted": 1})
+        other_headers = {"X-Auth-Token": other["token"]}
+        other_memories = self.client.get("/api/memories", headers=other_headers).json()
+        self.assertEqual(other_memories["memories"][0]["id"], other_memory_id)
+
 
 if __name__ == "__main__":
     unittest.main()

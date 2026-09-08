@@ -250,9 +250,13 @@ html,body{height:100%;overflow:hidden;
 .memory-summary{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 8px}
 .memory-count{font-size:10px;color:var(--text2)}
 .memory-list{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:7px}
-.memory-item{padding:9px 10px;border:1px solid rgba(79,142,247,.14);border-radius:10px;background:rgba(255,255,255,.65)}
+.memory-item{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid rgba(79,142,247,.14);border-radius:10px;background:rgba(255,255,255,.65)}
+.memory-item-copy{flex:1;min-width:0}
 .memory-item-content{font-size:11px;line-height:1.55;color:var(--text);word-break:break-word}
 .memory-item-meta{font-size:9px;color:var(--text2);margin-top:4px}
+.memory-item-delete{width:24px;height:24px;flex:none;border:0;border-radius:7px;background:transparent;
+  color:var(--text2);cursor:pointer;font-size:13px;transition:.15s}
+.memory-item-delete:hover{color:var(--danger);background:var(--danger-dim)}
 .memory-empty{padding:20px 10px;text-align:center;font-size:11px;line-height:1.6;color:var(--text2)}
 .memory-actions{display:flex;justify-content:flex-end;margin-top:12px}
 .memory-clear{height:30px;padding:0 12px;border-radius:8px;border:1px solid rgba(231,76,60,.25);
@@ -621,11 +625,15 @@ function renderMemories(memories){
   }
   memories.forEach(memory=>{
     const item=document.createElement('div');item.className='memory-item';
+    const copy=document.createElement('div');copy.className='memory-item-copy';
     const content=document.createElement('div');content.className='memory-item-content';content.textContent=memory.content;
     const meta=document.createElement('div');meta.className='memory-item-meta';
     const date=memory.created_at?new Date(memory.created_at).toLocaleString('zh-CN'):'';
     meta.textContent=`${memory.category||'对话背景'}${date?' · '+date:''}`;
-    item.append(content,meta);list.appendChild(item);
+    const deleteButton=document.createElement('button');deleteButton.className='memory-item-delete';
+    deleteButton.textContent='✕';deleteButton.title='删除这条记忆';
+    deleteButton.addEventListener('click',()=>deleteMemory(memory.id));
+    copy.append(content,meta);item.append(copy,deleteButton);list.appendChild(item);
   });
 }
 
@@ -671,6 +679,18 @@ async function clearAllMemories(){
     if(!res.ok) throw new Error('清空失败');
     renderMemories([]);
   }catch(e){error.textContent=e.message||'清空失败，请稍后重试';button.disabled=false;}
+}
+
+async function deleteMemory(memoryId){
+  if(!confirm('删除这条长期记忆？')) return;
+  const error=document.getElementById('memory-error');error.textContent='';
+  try{
+    const res=await fetch(`/api/memories/${encodeURIComponent(memoryId)}`,{
+      method:'DELETE',headers:{'X-Auth-Token':_authToken}
+    });
+    if(!res.ok) throw new Error('删除失败');
+    await loadMemorySettings();
+  }catch(e){error.textContent=e.message||'删除失败，请稍后重试';}
 }
 
 function renderAgentTrace(result){
