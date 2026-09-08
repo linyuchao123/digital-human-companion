@@ -557,6 +557,8 @@ function renderAgentTrace(result){
   const risk=result.safety?.risk_level||'unknown';
   addSection('安全分诊',`${risk}${result.safety?.reason?' · '+result.safety.reason:''}`,
     `ad-value ${risk==='high'?'ad-risk-high':'ad-risk-low'}`);
+  const emotion=result.emotion||{};
+  addSection('情绪理解',`${emotion.label||'平静'} · ${emotion.emotion||'Neutral'} · V ${emotion.valence??0} / A ${emotion.arousal??0}`);
   addSection('模型 Provider',providerLabel);
   const totalMs=Object.values(result.node_timings_ms||{}).reduce((sum,value)=>sum+Number(value),0);
   addSection('节点总耗时',`${totalMs.toFixed(2)} ms`);
@@ -1183,7 +1185,7 @@ function updateEmotion(emotion){
   document.body.className='';
   if(emotion==='Happy') document.body.classList.add('emo-happy');
   else if(emotion==='Sad') document.body.classList.add('emo-sad');
-  else if(emotion==='Anxiety'||emotion==='Fear') document.body.classList.add('emo-anxiety');
+  else if(emotion==='Anxiety'||emotion==='Fear'||emotion==='Concerned') document.body.classList.add('emo-anxiety');
 }
 function showThinking(show){
   document.getElementById('thinking-bar').classList.toggle('show',show);
