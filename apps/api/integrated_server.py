@@ -426,8 +426,10 @@ def _run_asr(audio_path: str) -> str:
 
 # 4. Qwen API
 QWEN_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
-QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-QWEN_MODEL = "qwen-plus"
+QWEN_BASE_URL = os.environ.get(
+    "LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+).rstrip("/")
+QWEN_MODEL = os.environ.get("LLM_MODEL", "qwen-plus").strip() or "qwen-plus"
 _session_histories: Dict[str, list] = {}
 
 _SYSTEM_PROMPT = """你是一位专业的心理陪护助手，名叫小安，外表是温柔的动漫女孩形象。
@@ -614,6 +616,7 @@ async def api_status():
             "asr_funasr": HAS_ASR,
             "driver_model": HAS_DRIVER,
             "qwen_api": bool(QWEN_API_KEY),
+            "agent_provider": "cloud_with_fallback" if QWEN_API_KEY else "offline",
         },
         "port": 8800,
     })
@@ -625,14 +628,20 @@ class AgentChatRequest(BaseModel):
 
 
 _agent_workflow = None
+_agent_provider_name = "offline"
 
 
 def _get_agent_workflow():
-    global _agent_workflow
+    global _agent_provider_name, _agent_workflow
     if _agent_workflow is None:
-        from services.agent import DigitalXinyuWorkflow
+        from services.agent import DigitalXinyuWorkflow, create_companion_provider
 
-        _agent_workflow = DigitalXinyuWorkflow()
+        provider, _agent_provider_name = create_companion_provider(
+            api_key=QWEN_API_KEY,
+            base_url=QWEN_BASE_URL,
+            model=QWEN_MODEL,
+        )
+        _agent_workflow = DigitalXinyuWorkflow(provider=provider)
     return _agent_workflow
 
 
@@ -650,6 +659,7 @@ async def agent_chat(payload: AgentChatRequest):
         return JSONResponse({
             "trace_id": trace_id,
             "session_id": session_id,
+            "provider": _agent_provider_name,
             "response": result["final_response"],
             "safety": result["safety"].model_dump(mode="json"),
             "avatar": result["avatar_command"].model_dump(mode="json"),

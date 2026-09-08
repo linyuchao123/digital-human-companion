@@ -10,6 +10,7 @@ from services.agent import (
     FallbackCompanionProvider,
     OpenAICompatibleCompanionProvider,
     OpenAICompatibleConfig,
+    create_companion_provider,
 )
 
 
@@ -84,6 +85,18 @@ class OpenAICompatibleCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
             response = await provider.generate([ChatMessage(role="user", content="今天很累")])
 
         self.assertIn("压力", response)
+
+    def test_factory_uses_offline_provider_without_api_key(self):
+        provider, name = create_companion_provider(api_key="")
+
+        self.assertIsInstance(provider, FakeCompanionProvider)
+        self.assertEqual(name, "offline")
+
+    def test_factory_enables_cloud_provider_when_api_key_exists(self):
+        provider, name = create_companion_provider(api_key="test-key")
+
+        self.assertIsInstance(provider, FallbackCompanionProvider)
+        self.assertEqual(name, "cloud_with_fallback")
 
 
 if __name__ == "__main__":

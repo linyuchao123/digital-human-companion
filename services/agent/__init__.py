@@ -7,6 +7,7 @@ from .providers import (
     FallbackCompanionProvider,
     OpenAICompatibleCompanionProvider,
     OpenAICompatibleConfig,
+    create_companion_provider,
 )
 from .state import (
     AgentEvent,
@@ -38,4 +39,5 @@ __all__ = [
     "SafetyDecision",
     "SafetyTriage",
     "ToolCallRecord",
+    "create_companion_provider",
 ]

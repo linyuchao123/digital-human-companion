@@ -11,7 +11,9 @@ class AgentChatApiTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.original_db_path = integrated_server.DB_PATH
+        self.original_api_key = integrated_server.QWEN_API_KEY
         integrated_server.DB_PATH = Path(self.temp_dir.name) / "users.db"
+        integrated_server.QWEN_API_KEY = ""
         integrated_server._init_db()
         integrated_server._agent_workflow = None
         self.client = TestClient(integrated_server.app)
@@ -19,6 +21,7 @@ class AgentChatApiTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
         integrated_server.DB_PATH = self.original_db_path
+        integrated_server.QWEN_API_KEY = self.original_api_key
         integrated_server._agent_workflow = None
         self.temp_dir.cleanup()
 
@@ -31,6 +34,7 @@ class AgentChatApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["session_id"], "demo-session")
+        self.assertEqual(payload["provider"], "offline")
         self.assertEqual(payload["safety"]["risk_level"], "low")
         self.assertEqual(payload["avatar"]["motion"], "Respond")
         self.assertEqual(

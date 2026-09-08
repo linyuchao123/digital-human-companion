@@ -106,3 +106,22 @@ class FallbackCompanionProvider:
             return await self._primary.generate(messages)
         except CompanionProviderError:
             return await self._fallback.generate(messages)
+
+
+def create_companion_provider(
+    *,
+    api_key: str,
+    base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: str = "qwen-plus",
+) -> tuple[CompanionProvider, str]:
+    """根据服务配置选择云端 Provider；没有密钥时使用离线实现。"""
+    if not api_key.strip():
+        return FakeCompanionProvider(), "offline"
+    cloud = OpenAICompatibleCompanionProvider(
+        OpenAICompatibleConfig(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+        )
+    )
+    return FallbackCompanionProvider(cloud, FakeCompanionProvider()), "cloud_with_fallback"
