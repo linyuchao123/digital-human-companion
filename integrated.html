@@ -293,6 +293,9 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   font-weight:600;cursor:pointer;transition:opacity .2s;letter-spacing:.04em}
 #auth-submit:hover{opacity:.88}
 #auth-submit:disabled{opacity:.5;cursor:not-allowed}
+#auth-guest{width:100%;height:34px;border:none;background:transparent;color:var(--accent);
+  font-size:12px;font-family:inherit;cursor:pointer;transition:color .2s}
+#auth-guest:hover{color:var(--accent2);text-decoration:underline}
 #auth-err{font-size:11px;color:var(--danger);text-align:center;min-height:16px;margin-top:8px}
 </style>
 </head>
@@ -322,6 +325,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
         onkeydown="if(event.key==='Enter')doAuth()"/>
     </div>
     <button id="auth-submit" onclick="doAuth()">进 入</button>
+    <button id="auth-guest" onclick="continueAsGuest()">先体验，稍后登录</button>
     <div id="auth-err"></div>
   </div>
 </div>
@@ -1212,6 +1216,7 @@ async function _onLoginSuccess(token,username,silent){
   const initial=username.charAt(0).toUpperCase();
   document.getElementById('sb-avatar').textContent=initial;
   document.getElementById('sb-name').textContent=username;
+  document.getElementById('sb-logout-btn').textContent='退出';
   // 自动打开侧边栏
   if(!_sidebarOpen) toggleSidebar();
   await loadSessions();
@@ -1220,7 +1225,20 @@ async function _onLoginSuccess(token,username,silent){
   if(!silent) console.log('[Auth] 登录成功:',username);
 }
 
+function continueAsGuest(){
+  _authToken=''; _currentUser='游客'; _currentDbSession='';
+  document.getElementById('auth-modal').classList.add('hidden');
+  document.getElementById('sb-avatar').textContent='游';
+  document.getElementById('sb-name').textContent='游客模式';
+  document.getElementById('sb-logout-btn').textContent='登录';
+}
+
 async function doLogout(){
+  if(!_authToken){
+    document.getElementById('auth-modal').classList.remove('hidden');
+    setTimeout(()=>document.getElementById('auth-username').focus(),300);
+    return;
+  }
   if(!confirm('确定退出登录？')) return;
   try{
     await fetch('/api/auth/logout',{method:'POST',headers:{'X-Auth-Token':_authToken}});
@@ -1231,6 +1249,7 @@ async function doLogout(){
     '<div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>';
   document.getElementById('sb-avatar').textContent='?';
   document.getElementById('sb-name').textContent='未登录';
+  document.getElementById('sb-logout-btn').textContent='退出';
   if(_sidebarOpen) toggleSidebar();
   document.getElementById('auth-modal').classList.remove('hidden');
   document.getElementById('auth-username').value='';
