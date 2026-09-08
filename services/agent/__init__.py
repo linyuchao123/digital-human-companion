@@ -2,7 +2,7 @@
 
 from .emotion import EmotionAnalyzer
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever, NullKnowledgeRetriever
-from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore
+from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore, SQLiteMemoryStore
 from .providers import (
     CompanionProvider,
     CompanionProviderError,
@@ -49,6 +49,7 @@ __all__ = [
     "MemoryStore",
     "NullKnowledgeRetriever",
     "NullMemoryStore",
+    "SQLiteMemoryStore",
     "OpenAICompatibleCompanionProvider",
     "OpenAICompatibleConfig",
     "RiskLevel",
