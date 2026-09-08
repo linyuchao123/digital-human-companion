@@ -206,13 +206,31 @@ html,body{height:100%;overflow:hidden;
 .di-row{display:flex;justify-content:space-between;font-size:10px}
 .di-label{color:var(--text2)}.di-val{color:var(--accent3);font-weight:600;font-family:monospace}
 
+/* ══ 智能体开发者面板 ══ */
+#agent-debug{position:fixed;top:56px;left:16px;z-index:150;width:320px;max-height:calc(100vh - 136px);
+  display:none;overflow:auto;padding:14px;
+  background:rgba(20,30,55,.82);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+  border:1px solid rgba(150,190,255,.28);border-radius:var(--r-lg);
+  box-shadow:0 12px 40px rgba(30,50,100,.24);color:#eaf1ff}
+#agent-debug.show{display:block}
+.ad-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.ad-title{font-size:12px;font-weight:700;flex:1}
+.ad-badge{font-size:9px;padding:2px 7px;border-radius:8px;background:rgba(52,200,122,.18);color:#72e6a8}
+.ad-empty{font-size:11px;color:rgba(220,232,255,.62);line-height:1.6}
+.ad-section{margin-top:10px}
+.ad-label{font-size:9px;color:rgba(180,205,255,.62);letter-spacing:.08em;margin-bottom:5px}
+.ad-path{display:flex;flex-wrap:wrap;gap:5px}
+.ad-node{font:10px/1.4 monospace;padding:3px 7px;border-radius:8px;background:rgba(79,142,247,.18);color:#a9c8ff}
+.ad-value{font:10px/1.6 monospace;word-break:break-all;color:#d9e6ff}
+.ad-risk-high{color:#ff9a9a}.ad-risk-low{color:#72e6a8}
+
 /* ══ 情感主题 ══ */
 body.emo-happy #bg{background:linear-gradient(180deg,#c8f0e0 0%,#d8f5ea 30%,#eefff6 65%,#f5f5e8 100%)}
 body.emo-sad #bg{background:linear-gradient(180deg,#b8c8e0 0%,#ccd5e8 30%,#dde3f0 65%,#eceef5 100%)}
 body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e5e2f5 65%,#f0eff8 100%)}
 
 @media(max-width:900px){#chat-panel{width:260px}#bottom-bar{width:90vw;min-width:300px}}
-@media(max-width:600px){#chat-panel{width:calc(100vw - 32px)}#bottom-bar{width:calc(100vw - 32px)}}
+@media(max-width:600px){#chat-panel{width:calc(100vw - 32px)}#bottom-bar{width:calc(100vw - 32px)}#agent-debug{width:calc(100vw - 32px)}}
 
 /* ══ 左侧历史对话栏 ══ */
 #sidebar{position:fixed;left:0;top:0;width:240px;height:100%;z-index:30;
@@ -361,6 +379,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <button id="disconnect-btn" onclick="disconnectAll()">🔌 断开连接</button>
   <div class="spacer"></div>
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
+<button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()" title="显示智能体节点、风控与形象指令">🧭 开发者模式</button>
 <button class="tb-chip" onclick="window.open('/vision','_blank')" title="打开视觉人脸检测监控页面">👁 人脸检测</button>
 <button class="tb-chip" onclick="window.open('/rag','_blank')" title="打开心理学知识库管理页面">📚 知识库</button>
 </div>
@@ -389,6 +408,15 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <div class="di-row"><span class="di-label">驱动延迟</span><span class="di-val" id="di-latency">--</span></div>
   <div class="di-row"><span class="di-label">表情强度</span><span class="di-val" id="di-expr">--</span></div>
 </div>
+
+<!-- ══ 智能体开发者面板 ══ -->
+<aside id="agent-debug" aria-live="polite">
+  <div class="ad-head">
+    <div class="ad-title">🧭 智能体工作流</div>
+    <span class="ad-badge">本地调试</span>
+  </div>
+  <div id="agent-debug-content" class="ad-empty">发送消息后，这里会显示工作流节点、安全分诊和数字人动作指令。</div>
+</aside>
 
 <!-- ══ 指示器 ══ -->
 <div id="speaking-indicator">
@@ -473,6 +501,7 @@ let pixiApp=null, live2dModel=null;
 let wsParamsBuffer = {};
 let driveFrameCount=0, connected=false;
 let isPlayingMotion=false;
+let developerMode=false;
 
 /* ═══════════ 粒子 ═══════════ */
 (function(){
@@ -491,6 +520,61 @@ function switchTab(tab){
   document.getElementById('tab-read').classList.toggle('active',tab==='read');
   document.getElementById('chat-panel-wrap').classList.toggle('hide',tab!=='chat');
   document.getElementById('read-panel').classList.toggle('show',tab==='read');
+}
+
+function toggleDeveloperMode(){
+  developerMode=!developerMode;
+  document.getElementById('developer-btn').classList.toggle('on',developerMode);
+  document.getElementById('agent-debug').classList.toggle('show',developerMode);
+}
+
+function renderAgentTrace(result){
+  const root=document.getElementById('agent-debug-content');
+  root.className='';
+  root.replaceChildren();
+
+  const addSection=(label,value,className='ad-value')=>{
+    const section=document.createElement('div');section.className='ad-section';
+    const title=document.createElement('div');title.className='ad-label';title.textContent=label;
+    const content=document.createElement('div');content.className=className;content.textContent=value;
+    section.append(title,content);root.appendChild(section);
+  };
+
+  const pathSection=document.createElement('div');pathSection.className='ad-section';
+  const pathTitle=document.createElement('div');pathTitle.className='ad-label';pathTitle.textContent='执行路径';
+  const path=document.createElement('div');path.className='ad-path';
+  (result.execution_path||[]).forEach((node,index)=>{
+    const item=document.createElement('span');item.className='ad-node';
+    item.textContent=`${index+1}. ${node}`;path.appendChild(item);
+  });
+  pathSection.append(pathTitle,path);root.appendChild(pathSection);
+
+  const risk=result.safety?.risk_level||'unknown';
+  addSection('安全分诊',`${risk}${result.safety?.reason?' · '+result.safety.reason:''}`,
+    `ad-value ${risk==='high'?'ad-risk-high':'ad-risk-low'}`);
+  addSection('形象指令',JSON.stringify(result.avatar||{}));
+  addSection('追踪 ID',result.trace_id||'--');
+}
+
+async function sendThroughAgentWorkflow(text){
+  showThinking(true);
+  try{
+    const response=await fetch(`${API_URL}/api/agent/chat`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text,session_id:_currentDbSession||null})
+    });
+    const result=await response.json();
+    if(!response.ok) throw new Error(result.detail||'智能体工作流调用失败');
+    renderAgentTrace(result);
+    addBubble('ai',result.response,`风险: ${result.safety.risk_level}`);
+    updateEmotion(result.avatar?.emotion);
+    if(ttsEnabled) speakText(result.response);
+    if(result.avatar?.motion&&result.avatar.motion!=='Idle') setTimeout(()=>playMotion(result.avatar.motion),200);
+  }catch(error){
+    addBubble('ai',`开发者模式调用失败：${error.message}`,'系统错误');
+  }finally{
+    showThinking(false);
+  }
 }
 
 /* ═══════════ 连接总控 ═══════════ */
@@ -1134,7 +1218,8 @@ function sendText(){
   const input=document.getElementById('text-input');
   const text=input.value.trim();if(!text) return;
   input.value='';addBubble('user',text);
-  chatSend({type:'text_input',text});
+  if(developerMode) sendThroughAgentWorkflow(text);
+  else chatSend({type:'text_input',text});
 }
 
 /* ═══════════ 窗口自适应 ═══════════ */
