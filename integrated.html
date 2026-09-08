@@ -548,7 +548,9 @@ function renderAgentTrace(result){
   const path=document.createElement('div');path.className='ad-path';
   (result.execution_path||[]).forEach((node,index)=>{
     const item=document.createElement('span');item.className='ad-node';
-    item.textContent=`${index+1}. ${node}`;path.appendChild(item);
+    const elapsed=result.node_timings_ms?.[node];
+    item.textContent=`${index+1}. ${node}${elapsed===undefined?'':` · ${elapsed}ms`}`;
+    path.appendChild(item);
   });
   pathSection.append(pathTitle,path);root.appendChild(pathSection);
 
@@ -556,6 +558,8 @@ function renderAgentTrace(result){
   addSection('安全分诊',`${risk}${result.safety?.reason?' · '+result.safety.reason:''}`,
     `ad-value ${risk==='high'?'ad-risk-high':'ad-risk-low'}`);
   addSection('模型 Provider',providerLabel);
+  const totalMs=Object.values(result.node_timings_ms||{}).reduce((sum,value)=>sum+Number(value),0);
+  addSection('节点总耗时',`${totalMs.toFixed(2)} ms`);
   addSection('形象指令',JSON.stringify(result.avatar||{}));
   addSection('追踪 ID',result.trace_id||'--');
 }
