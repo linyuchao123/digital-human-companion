@@ -559,6 +559,14 @@ function renderAgentTrace(result){
     `ad-value ${risk==='high'?'ad-risk-high':'ad-risk-low'}`);
   const emotion=result.emotion||{};
   addSection('情绪理解',`${emotion.label||'平静'} · ${emotion.emotion||'Neutral'} · V ${emotion.valence??0} / A ${emotion.arousal??0}`);
+  const knowledge=result.knowledge||[];
+  addSection('知识检索',knowledge.length
+    ? knowledge.map((item,index)=>`${index+1}. ${item.source} · ${(item.score*100).toFixed(0)}%\n${item.content}`).join('\n')
+    : '未调用或没有匹配知识');
+  const tools=result.tool_calls||[];
+  addSection('工具调用',tools.length
+    ? tools.map(item=>`${item.name} · ${item.status} · ${item.elapsed_ms??0}ms`).join('\n')
+    : '无');
   addSection('模型 Provider',providerLabel);
   const totalMs=Object.values(result.node_timings_ms||{}).reduce((sum,value)=>sum+Number(value),0);
   addSection('节点总耗时',`${totalMs.toFixed(2)} ms`);
