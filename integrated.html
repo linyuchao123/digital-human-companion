@@ -413,7 +413,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <aside id="agent-debug" aria-live="polite">
   <div class="ad-head">
     <div class="ad-title">🧭 智能体工作流</div>
-    <span class="ad-badge">本地调试</span>
+    <span class="ad-badge" id="agent-provider-badge">等待运行</span>
   </div>
   <div id="agent-debug-content" class="ad-empty">发送消息后，这里会显示工作流节点、安全分诊和数字人动作指令。</div>
 </aside>
@@ -530,6 +530,9 @@ function toggleDeveloperMode(){
 
 function renderAgentTrace(result){
   const root=document.getElementById('agent-debug-content');
+  const providerLabels={offline:'离线模型',cloud_with_fallback:'云端模型 · 可降级'};
+  const providerLabel=providerLabels[result.provider]||result.provider||'未知模型';
+  document.getElementById('agent-provider-badge').textContent=providerLabel;
   root.className='';
   root.replaceChildren();
 
@@ -552,6 +555,7 @@ function renderAgentTrace(result){
   const risk=result.safety?.risk_level||'unknown';
   addSection('安全分诊',`${risk}${result.safety?.reason?' · '+result.safety.reason:''}`,
     `ad-value ${risk==='high'?'ad-risk-high':'ad-risk-low'}`);
+  addSection('模型 Provider',providerLabel);
   addSection('形象指令',JSON.stringify(result.avatar||{}));
   addSection('追踪 ID',result.trace_id||'--');
 }
