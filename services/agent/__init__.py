@@ -10,6 +10,7 @@ from .state import (
     SafetyDecision,
     ToolCallRecord,
 )
+from .safety import SafetyTriage
 
 __all__ = [
     "AgentEvent",
@@ -19,5 +20,6 @@ __all__ = [
     "ChatMessage",
     "RiskLevel",
     "SafetyDecision",
+    "SafetyTriage",
     "ToolCallRecord",
 ]

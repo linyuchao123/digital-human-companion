@@ -2,7 +2,14 @@ import unittest
 
 from pydantic import ValidationError
 
-from services.agent import AgentEvent, AgentEventType, AvatarCommand, RiskLevel, SafetyDecision
+from services.agent import (
+    AgentEvent,
+    AgentEventType,
+    AvatarCommand,
+    RiskLevel,
+    SafetyDecision,
+    SafetyTriage,
+)
 
 
 class AgentStateModelTests(unittest.TestCase):
@@ -34,6 +41,21 @@ class AgentStateModelTests(unittest.TestCase):
 
         self.assertTrue(decision.requires_safe_response)
         self.assertFalse(decision.allow_memory_write)
+
+    def test_safety_triage_blocks_high_risk_text_before_agent_execution(self):
+        decision = SafetyTriage().evaluate("我已经不想活了")
+
+        self.assertEqual(decision.risk_level, RiskLevel.HIGH)
+        self.assertTrue(decision.requires_safe_response)
+        self.assertFalse(decision.allow_memory_write)
+        self.assertFalse(decision.allow_web_search)
+
+    def test_safety_triage_allows_normal_companion_chat(self):
+        decision = SafetyTriage().evaluate("今天工作有点累，想和你聊聊")
+
+        self.assertEqual(decision.risk_level, RiskLevel.LOW)
+        self.assertFalse(decision.requires_safe_response)
+        self.assertTrue(decision.allow_memory_write)
 
 
 if __name__ == "__main__":
