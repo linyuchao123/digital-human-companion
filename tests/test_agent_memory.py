@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from services.agent import InMemoryMemoryStore, NullMemoryStore, SQLiteMemoryStore
-from services.agent.memory import extract_memory_candidate
+from services.agent.memory import extract_forget_query, extract_memory_candidate
 
 
 class MemoryExtractionTests(unittest.TestCase):
@@ -35,6 +35,11 @@ class MemoryExtractionTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIsNone(extract_memory_candidate(text))
 
+    def test_extracts_specific_forget_query_but_rejects_delete_all(self):
+        self.assertEqual(extract_forget_query("请忘掉我喜欢跑步"), "我喜欢跑步")
+        self.assertEqual(extract_forget_query("删除关于睡前音乐的记忆"), "睡前音乐")
+        self.assertIsNone(extract_forget_query("忘掉所有记忆"))
+
 
 class MemoryStoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_memory_is_isolated_by_user(self):
@@ -57,6 +62,17 @@ class MemoryStoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(deleted, 2)
         self.assertEqual(await store.search(7, "研究生考试"), [])
+
+    async def test_user_can_forget_only_matching_memories(self):
+        store = InMemoryMemoryStore()
+        await store.remember(7, "我喜欢跑步", "preference")
+        await store.remember(7, "我喜欢睡前听轻音乐", "preference")
+
+        deleted = await store.forget_matching(7, "我喜欢跑步")
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual(await store.search(7, "跑步"), [])
+        self.assertEqual(len(await store.search(7, "睡前音乐")), 1)
 
     async def test_null_store_never_returns_memory(self):
         self.assertEqual(await NullMemoryStore().search(1, "任意内容"), [])
@@ -97,6 +113,18 @@ class SQLiteMemoryStoreTests(unittest.IsolatedAsyncioTestCase):
         await self.store.remember(3, "正在准备面试", "goal")
 
         self.assertEqual(await self.store.search(4, "准备面试"), [])
+
+    async def test_sqlite_forget_matching_only_deletes_owned_match(self):
+        await self.store.remember(3, "我喜欢跑步", "preference")
+        await self.store.remember(3, "我喜欢游泳", "preference")
+        await self.store.remember(4, "我喜欢跑步", "preference")
+
+        deleted = await self.store.forget_matching(3, "我喜欢跑步")
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual(await self.store.search(3, "跑步"), [])
+        self.assertEqual(len(await self.store.search(3, "游泳")), 1)
+        self.assertEqual(len(await self.store.search(4, "跑步")), 1)
 
 
 if __name__ == "__main__":

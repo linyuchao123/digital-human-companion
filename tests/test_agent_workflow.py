@@ -27,6 +27,9 @@ class FailingMemoryStore:
     async def forget_all(self, user_id):
         raise OSError("memory database unavailable")
 
+    async def forget_matching(self, user_id, query, limit=20):
+        raise OSError("memory database unavailable")
+
 
 class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_normal_chat_runs_through_companion_and_avatar_nodes(self):
@@ -204,6 +207,43 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["errors"], [
             "memory_retriever:OSError", "memory_writer:OSError"
         ])
+
+    async def test_authenticated_user_can_forget_matching_memory(self):
+        store = InMemoryMemoryStore()
+        await store.remember(12, "我喜欢跑步", "preference")
+        await store.remember(12, "我喜欢游泳", "preference")
+        workflow = DigitalXinyuWorkflow(provider=RecordingProvider(), memory_store=store)
+
+        result = await workflow.run(
+            user_text="请忘掉我喜欢跑步",
+            trace_id="trace-forget-memory",
+            session_id="session-forget-memory",
+            user_id=12,
+            memory_consent=True,
+        )
+
+        self.assertIn("memory_forgetter", result["execution_path"])
+        self.assertNotIn("companion", result["execution_path"])
+        self.assertIn("已忘掉", result["final_response"])
+        self.assertEqual(result["tool_calls"][0].name, "long_term_memory_delete")
+        self.assertEqual(await store.search(12, "跑步"), [])
+        self.assertEqual(len(await store.search(12, "游泳")), 1)
+
+    async def test_delete_all_memory_phrase_requires_panel_confirmation(self):
+        store = InMemoryMemoryStore()
+        await store.remember(13, "我喜欢跑步", "preference")
+        workflow = DigitalXinyuWorkflow(provider=RecordingProvider(), memory_store=store)
+
+        result = await workflow.run(
+            user_text="清空所有记忆",
+            trace_id="trace-delete-all-memory",
+            session_id="session-delete-all-memory",
+            user_id=13,
+            memory_consent=True,
+        )
+
+        self.assertIn("长期记忆”面板", result["final_response"])
+        self.assertEqual(len(await store.search(13, "跑步")), 1)
 
 
 if __name__ == "__main__":

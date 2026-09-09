@@ -7,7 +7,12 @@ from langgraph.graph import END, START, StateGraph
 
 from .emotion import EmotionAnalyzer
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
-from .memory import MemoryStore, NullMemoryStore, extract_memory_candidate
+from .memory import (
+    MemoryStore,
+    NullMemoryStore,
+    extract_forget_query,
+    extract_memory_candidate,
+)
 from .providers import CompanionProvider, FakeCompanionProvider
 from .safety import SafetyTriage
 from .state import AgentState, AvatarCommand, ChatMessage, ToolCallRecord
@@ -47,6 +52,7 @@ class DigitalXinyuWorkflow:
         graph.add_node("knowledge_retriever", self._retrieve_knowledge)
         graph.add_node("memory_retriever", self._retrieve_memories)
         graph.add_node("memory_writer", self._write_memory)
+        graph.add_node("memory_forgetter", self._forget_memory)
         graph.add_node("companion", self._generate_companion_response)
         graph.add_node("avatar_director", self._direct_avatar)
 
@@ -64,6 +70,7 @@ class DigitalXinyuWorkflow:
             {
                 "knowledge_retriever": "knowledge_retriever",
                 "memory_retriever": "memory_retriever",
+                "memory_forgetter": "memory_forgetter",
                 "companion": "companion",
                 "avatar_director": "avatar_director",
             },
@@ -80,6 +87,7 @@ class DigitalXinyuWorkflow:
             {"memory_writer": "memory_writer", "avatar_director": "avatar_director"},
         )
         graph.add_edge("memory_writer", "avatar_director")
+        graph.add_edge("memory_forgetter", "avatar_director")
         graph.add_edge("avatar_director", END)
         return graph
 
@@ -133,7 +141,15 @@ class DigitalXinyuWorkflow:
         started_at = perf_counter()
         text = state.get("user_text", "")
         emotional_keywords = ("难过", "累", "焦虑", "孤独", "压力", "害怕")
-        intent = "emotional_support" if any(word in text for word in emotional_keywords) else "chat"
+        forget_keywords = ("忘掉", "忘记", "不要再记得", "删除关于")
+        if any(word in text for word in forget_keywords) or (
+            "清空" in text and "记忆" in text
+        ):
+            intent = "memory_forget"
+        else:
+            intent = "emotional_support" if any(
+                word in text for word in emotional_keywords
+            ) else "chat"
         return self._complete_node(
             state,
             "intent_router",
@@ -154,9 +170,14 @@ class DigitalXinyuWorkflow:
     @staticmethod
     def _select_response_route(
         state: AgentState,
-    ) -> Literal["knowledge_retriever", "memory_retriever", "companion", "avatar_director"]:
+    ) -> Literal[
+        "knowledge_retriever", "memory_retriever", "memory_forgetter",
+        "companion", "avatar_director"
+    ]:
         if state["safety"].requires_safe_response:
             return "avatar_director"
+        if state.get("intent") == "memory_forget":
+            return "memory_forgetter"
         if state.get("memory_consent") and state.get("user_id") is not None:
             return "memory_retriever"
         if state.get("intent") == "emotional_support":
@@ -244,6 +265,54 @@ class DigitalXinyuWorkflow:
                     error_code=error_code,
                 ),
             ],
+        )
+
+    async def _forget_memory(self, state: AgentState) -> dict[str, Any]:
+        started_at = perf_counter()
+        user_text = state["user_text"]
+        query = extract_forget_query(user_text)
+        tool_calls = list(state.get("tool_calls", []))
+        errors = list(state.get("errors", []))
+        if state.get("user_id") is None or not state.get("memory_consent"):
+            response = "请先登录并开启长期记忆，我才能为你删除指定记忆。"
+        elif query is None:
+            response = "为避免误删，我不会通过一句话清空全部记忆。请在“长期记忆”面板中确认操作。"
+        else:
+            try:
+                deleted = await self._memory_store.forget_matching(
+                    state["user_id"], query
+                )
+                response = (
+                    f"好的，已忘掉与“{query}”相关的 {deleted} 条记忆。"
+                    if deleted else f"我没有找到与“{query}”相关的长期记忆。"
+                )
+                status = "completed"
+                error_code = None
+            except Exception as exc:
+                response = "记忆服务暂时不可用，这次没有删除任何内容，请稍后再试。"
+                status = "failed"
+                error_code = type(exc).__name__
+                errors.append(f"memory_forgetter:{error_code}")
+            tool_calls.append(ToolCallRecord(
+                name="long_term_memory_delete",
+                reason="用户明确要求忘记指定内容",
+                status=status,
+                elapsed_ms=round((perf_counter() - started_at) * 1000, 3),
+                error_code=error_code,
+            ))
+        messages = [
+            *state.get("messages", []),
+            ChatMessage(role="user", content=user_text),
+            ChatMessage(role="assistant", content=response),
+        ][-MAX_CONTEXT_MESSAGES:]
+        return self._complete_node(
+            state,
+            "memory_forgetter",
+            started_at,
+            final_response=response,
+            messages=messages,
+            tool_calls=tool_calls,
+            errors=errors,
         )
 
     async def _retrieve_knowledge(self, state: AgentState) -> dict[str, Any]:

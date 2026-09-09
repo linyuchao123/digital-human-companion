@@ -61,6 +61,10 @@ class MemoryStore(Protocol):
         """删除指定用户的全部长期记忆。"""
         ...
 
+    async def forget_matching(self, user_id: int, query: str, limit: int = 20) -> int:
+        """仅删除指定用户与查询相关的长期记忆。"""
+        ...
+
 
 class NullMemoryStore:
     async def search(self, user_id: int, query: str, limit: int = 5) -> Sequence[MemoryRecord]:
@@ -72,6 +76,9 @@ class NullMemoryStore:
         raise RuntimeError("长期记忆存储未启用")
 
     async def forget_all(self, user_id: int) -> int:
+        return 0
+
+    async def forget_matching(self, user_id: int, query: str, limit: int = 20) -> int:
         return 0
 
 
@@ -108,6 +115,21 @@ class InMemoryMemoryStore:
         deleted = len(self._records[user_id])
         self._records.pop(user_id, None)
         return deleted
+
+    async def forget_matching(self, user_id: int, query: str, limit: int = 20) -> int:
+        terms = _bigrams(query)
+        if not terms:
+            return 0
+        threshold = max(1, (len(terms) * 3 + 3) // 4)
+        matches = [
+            record for record in self._records[user_id]
+            if _match_score(record.content, terms) >= threshold
+        ][:limit]
+        matched_ids = {record.id for record in matches}
+        self._records[user_id] = [
+            record for record in self._records[user_id] if record.id not in matched_ids
+        ]
+        return len(matches)
 
 
 class SQLiteMemoryStore:
@@ -175,3 +197,54 @@ class SQLiteMemoryStore:
             return cursor.rowcount
         finally:
             conn.close()
+
+    async def forget_matching(self, user_id: int, query: str, limit: int = 20) -> int:
+        terms = _bigrams(query)
+        if not terms:
+            return 0
+        conn = self._connection_factory()
+        try:
+            rows = conn.execute(
+                "SELECT id,content FROM user_memories WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
+                (user_id,),
+            ).fetchall()
+            threshold = max(1, (len(terms) * 3 + 3) // 4)
+            matched_ids = [
+                row["id"] for row in rows
+                if _match_score(row["content"], terms) >= threshold
+            ][:limit]
+            if not matched_ids:
+                return 0
+            placeholders = ",".join("?" for _ in matched_ids)
+            cursor = conn.execute(
+                f"DELETE FROM user_memories WHERE user_id=? AND id IN ({placeholders})",
+                (user_id, *matched_ids),
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
+
+
+def _bigrams(text: str) -> set[str]:
+    content = "".join(text.strip().split())
+    if not content:
+        return set()
+    return {content[index:index + 2] for index in range(max(1, len(content) - 1))}
+
+
+def _match_score(content: str, terms: set[str]) -> int:
+    return sum(term in content for term in terms)
+
+
+def extract_forget_query(text: str) -> str | None:
+    content = " ".join(text.strip().split())
+    if any(term in content for term in ("全部", "所有", "清空")):
+        return None
+    for marker in ("不要再记得", "删除关于", "忘掉", "忘记"):
+        if marker in content:
+            query = content.split(marker, 1)[1].strip(" ：:，,。.!！")
+            if query.endswith("的记忆"):
+                query = query[:-3].strip()
+            return query if len(query) >= 2 else None
+    return None

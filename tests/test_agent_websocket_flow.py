@@ -97,6 +97,24 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("memory_writer", second_trace["execution_path"])
         self.assertEqual(len(second_trace["memories"]), 1)
 
+        forget_socket = CaptureWebSocket()
+        await integrated_server._trigger_llm(
+            "请忘掉我喜欢睡前听轻音乐", state, forget_socket
+        )
+        forget_trace = next(
+            message for message in forget_socket.messages if message["type"] == "agent_trace"
+        )
+        self.assertIn("memory_forgetter", forget_trace["execution_path"])
+        self.assertEqual(forget_trace["tool_calls"][-1]["name"], "long_term_memory_delete")
+        conn = integrated_server._get_db()
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM user_memories WHERE user_id=?", (12,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
