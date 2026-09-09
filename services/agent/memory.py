@@ -17,6 +17,10 @@ _SENSITIVE_TERMS = (
     "密码", "验证码", "身份证", "银行卡", "信用卡", "家庭住址", "详细地址",
     "手机号", "电话号码", "护照", "病历", "诊断", "抑郁症", "焦虑症",
 )
+_PROMPT_INJECTION_TERMS = (
+    "忽略之前", "忽略以上", "忽略系统", "系统提示词", "system prompt",
+    "开发者指令", "越狱", "解除限制", "不要遵守", "覆盖规则",
+)
 _REJECTION_TERMS = ("不要记", "别记", "不许记", "忘掉", "删除记忆", "清除记忆")
 _CATEGORY_MARKERS = (
     ("preference", ("我喜欢", "我不喜欢", "我偏好", "我习惯", "我最爱", "我讨厌")),
@@ -36,6 +40,9 @@ def extract_memory_candidate(text: str) -> MemoryCandidate | None:
     if any(term in content for term in _REJECTION_TERMS):
         return None
     if any(term in content for term in _SENSITIVE_TERMS):
+        return None
+    normalized = content.lower()
+    if any(term in normalized for term in _PROMPT_INJECTION_TERMS):
         return None
     for category, markers in _CATEGORY_MARKERS:
         if any(marker in content for marker in markers):
