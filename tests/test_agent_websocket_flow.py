@@ -111,9 +111,13 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
             count = conn.execute(
                 "SELECT COUNT(*) FROM user_memories WHERE user_id=?", (12,)
             ).fetchone()[0]
+            run_count = conn.execute(
+                "SELECT COUNT(*) FROM agent_runs WHERE user_id=?", (12,)
+            ).fetchone()[0]
         finally:
             conn.close()
         self.assertEqual(count, 0)
+        self.assertEqual(run_count, 3)
 
 
 if __name__ == "__main__":

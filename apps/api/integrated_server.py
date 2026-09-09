@@ -104,10 +104,25 @@ def _init_db():
                 category TEXT NOT NULL DEFAULT 'context',
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS agent_runs (
+                trace_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                risk_level TEXT NOT NULL,
+                emotion TEXT NOT NULL,
+                execution_path TEXT NOT NULL,
+                tool_calls TEXT NOT NULL,
+                node_timings_ms TEXT NOT NULL,
+                total_latency_ms REAL NOT NULL,
+                created_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_sessions_user ON chat_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
             CREATE INDEX IF NOT EXISTS idx_tokens_user ON auth_tokens(user_id);
             CREATE INDEX IF NOT EXISTS idx_memories_user ON user_memories(user_id);
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id, created_at);
         """)
         conn.commit()
         print("[DB] 数据库初始化完成")
@@ -188,6 +203,41 @@ def _memory_enabled_for_user(user_id: int) -> bool:
         return bool(row["enabled"]) if row else False
     finally:
         conn.close()
+
+
+def _db_save_agent_run(result: dict[str, Any], user_id: int, provider: str) -> None:
+    """保存脱敏运行摘要；不记录用户原文和模型回复。"""
+    try:
+        timings = result.get("node_timings_ms", {})
+        conn = _get_db()
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO agent_runs(
+                       trace_id,session_id,user_id,provider,risk_level,emotion,
+                       execution_path,tool_calls,node_timings_ms,total_latency_ms,created_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    result["trace_id"],
+                    result["session_id"],
+                    user_id,
+                    provider,
+                    result["safety"].risk_level.value,
+                    result["emotion_context"].emotion,
+                    json.dumps(result.get("execution_path", []), ensure_ascii=False),
+                    json.dumps(
+                        [item.model_dump(mode="json") for item in result.get("tool_calls", [])],
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(timings, ensure_ascii=False),
+                    round(sum(float(value) for value in timings.values()), 3),
+                    time.strftime("%Y-%m-%dT%H:%M:%S"),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"[DB] 保存智能体运行摘要失败: {type(exc).__name__}")
 
 # 初始化数据库
 _init_db()
@@ -903,6 +953,31 @@ async def delete_memory(memory_id: str, request: Request):
     finally:
         conn.close()
 
+
+@app.get("/api/agent/runs")
+async def get_agent_runs(request: Request, limit: int = 20):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    safe_limit = min(max(limit, 1), 100)
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            """SELECT trace_id,session_id,provider,risk_level,emotion,
+                      execution_path,tool_calls,node_timings_ms,total_latency_ms,created_at
+               FROM agent_runs WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT ?""",
+            (user_id, safe_limit),
+        ).fetchall()
+        runs = []
+        for row in rows:
+            item = dict(row)
+            for field in ("execution_path", "tool_calls", "node_timings_ms"):
+                item[field] = json.loads(item[field])
+            runs.append(item)
+        return JSONResponse({"runs": runs})
+    finally:
+        conn.close()
+
 @app.get("/api/sessions")
 async def get_sessions(request: Request):
     user_id = _get_user_id_from_request(request)
@@ -1353,9 +1428,13 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             user_id=state.user_id,
             memory_consent=state.memory_consent,
         )
+        result["trace_id"] = trace_id
+        result["session_id"] = session_id
         state.agent_messages = [
             message.model_dump() for message in result.get("messages", [])
         ]
+        if state.user_id is not None:
+            _db_save_agent_run(result, state.user_id, _agent_provider_name)
 
         reply_text = result["final_response"]
         safety = result["safety"]
