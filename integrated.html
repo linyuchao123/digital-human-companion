@@ -216,6 +216,8 @@ html,body{height:100%;overflow:hidden;
 .ad-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .ad-title{font-size:12px;font-weight:700;flex:1}
 .ad-badge{font-size:9px;padding:2px 7px;border-radius:8px;background:rgba(52,200,122,.18);color:#72e6a8}
+.ad-history-btn{height:24px;padding:0 8px;border:1px solid rgba(169,200,255,.25);border-radius:7px;
+  background:rgba(79,142,247,.12);color:#c9ddff;font-size:9px;cursor:pointer}
 .ad-empty{font-size:11px;color:rgba(220,232,255,.62);line-height:1.6}
 .ad-section{margin-top:10px}
 .ad-label{font-size:9px;color:rgba(180,205,255,.62);letter-spacing:.08em;margin-bottom:5px}
@@ -223,6 +225,15 @@ html,body{height:100%;overflow:hidden;
 .ad-node{font:10px/1.4 monospace;padding:3px 7px;border-radius:8px;background:rgba(79,142,247,.18);color:#a9c8ff}
 .ad-value{font:10px/1.6 monospace;word-break:break-all;color:#d9e6ff}
 .ad-risk-high{color:#ff9a9a}.ad-risk-low{color:#72e6a8}
+.ad-runs{display:none;flex-direction:column;gap:8px}
+.ad-runs.show{display:flex}
+.ad-run{padding:9px 10px;border-radius:10px;background:rgba(79,142,247,.1);border:1px solid rgba(169,200,255,.12)}
+.ad-run-head{display:flex;align-items:center;gap:8px;font-size:9px;color:rgba(220,232,255,.65)}
+.ad-run-risk{padding:1px 6px;border-radius:6px;background:rgba(52,200,122,.14);color:#72e6a8}
+.ad-run-risk.high{background:rgba(255,100,100,.14);color:#ff9a9a}
+.ad-run-latency{margin-left:auto;color:#a9c8ff;font-family:monospace}
+.ad-run-path{font:9px/1.55 monospace;color:#d9e6ff;margin-top:6px;word-break:break-word}
+.ad-run-tools{font-size:9px;line-height:1.5;color:rgba(190,212,255,.7);margin-top:4px}
 
 /* ══ 长期记忆管理 ══ */
 #memory-btn{display:none}
@@ -460,8 +471,10 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <div class="ad-head">
     <div class="ad-title">🧭 智能体工作流</div>
     <span class="ad-badge" id="agent-provider-badge">等待运行</span>
+    <button class="ad-history-btn" id="agent-history-btn" onclick="toggleAgentHistory()">最近运行</button>
   </div>
   <div id="agent-debug-content" class="ad-empty">发送消息后，这里会显示工作流节点、安全分诊和数字人动作指令。</div>
+  <div id="agent-runs-history" class="ad-runs"></div>
 </aside>
 
 <!-- ══ 长期记忆管理面板 ══ -->
@@ -580,6 +593,7 @@ let wsParamsBuffer = {};
 let driveFrameCount=0, connected=false;
 let isPlayingMotion=false;
 let developerMode=false;
+let agentHistoryMode=false, latestAgentTrace=null;
 
 /* ═══════════ 粒子 ═══════════ */
 (function(){
@@ -604,6 +618,52 @@ function toggleDeveloperMode(){
   developerMode=!developerMode;
   document.getElementById('developer-btn').classList.toggle('on',developerMode);
   document.getElementById('agent-debug').classList.toggle('show',developerMode);
+}
+
+async function toggleAgentHistory(){
+  agentHistoryMode=!agentHistoryMode;
+  const history=document.getElementById('agent-runs-history');
+  const current=document.getElementById('agent-debug-content');
+  const button=document.getElementById('agent-history-btn');
+  history.classList.toggle('show',agentHistoryMode);
+  current.style.display=agentHistoryMode?'none':'';
+  button.textContent=agentHistoryMode?'返回实时':'最近运行';
+  if(agentHistoryMode) await loadAgentRuns();
+  else if(latestAgentTrace) renderAgentTrace(latestAgentTrace);
+}
+
+async function loadAgentRuns(){
+  const root=document.getElementById('agent-runs-history');
+  root.replaceChildren();
+  if(!_authToken){
+    const empty=document.createElement('div');empty.className='ad-empty';
+    empty.textContent='登录后可查看属于当前账号的脱敏智能体运行记录。';root.appendChild(empty);return;
+  }
+  const loading=document.createElement('div');loading.className='ad-empty';loading.textContent='正在加载运行记录…';
+  root.appendChild(loading);
+  try{
+    const res=await fetch('/api/agent/runs?limit=20',{headers:{'X-Auth-Token':_authToken}});
+    if(!res.ok) throw new Error('加载失败');
+    const data=await res.json();root.replaceChildren();
+    if(!(data.runs||[]).length){
+      const empty=document.createElement('div');empty.className='ad-empty';empty.textContent='暂无运行记录，发送一条消息后再来看看。';
+      root.appendChild(empty);return;
+    }
+    data.runs.forEach(run=>{
+      const card=document.createElement('div');card.className='ad-run';
+      const head=document.createElement('div');head.className='ad-run-head';
+      const date=document.createElement('span');date.textContent=new Date(run.created_at).toLocaleString('zh-CN');
+      const risk=document.createElement('span');risk.className=`ad-run-risk ${run.risk_level==='high'?'high':''}`;
+      risk.textContent=`风险 ${run.risk_level}`;
+      const latency=document.createElement('span');latency.className='ad-run-latency';latency.textContent=`${run.total_latency_ms}ms`;
+      head.append(date,risk,latency);
+      const path=document.createElement('div');path.className='ad-run-path';path.textContent=(run.execution_path||[]).join(' → ');
+      const tools=document.createElement('div');tools.className='ad-run-tools';
+      const toolNames=(run.tool_calls||[]).map(item=>`${item.name}(${item.status})`);
+      tools.textContent=`${run.emotion} · ${toolNames.length?toolNames.join('、'):'无工具调用'} · ${run.trace_id}`;
+      card.append(head,path,tools);root.appendChild(card);
+    });
+  }catch(e){root.replaceChildren();const error=document.createElement('div');error.className='ad-empty';error.textContent='运行记录加载失败，请稍后重试。';root.appendChild(error);}
 }
 
 function toggleMemoryPanel(force){
@@ -709,6 +769,8 @@ function showMemoryToast(message){
 }
 
 function renderAgentTrace(result){
+  latestAgentTrace=result;
+  if(agentHistoryMode) return;
   const root=document.getElementById('agent-debug-content');
   const providerLabels={offline:'离线模型',cloud_with_fallback:'云端模型 · 可降级'};
   const providerLabel=providerLabels[result.provider]||result.provider||'未知模型';
