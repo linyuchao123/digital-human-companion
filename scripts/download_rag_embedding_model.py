@@ -13,13 +13,14 @@ from huggingface_hub import HfApi, snapshot_download
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPOSITORY = "BAAI/bge-small-zh-v1.5"
+DEFAULT_REVISION = "7999e1d3359715c523056ef9478215996d62a620"
 DEFAULT_OUTPUT = PROJECT_ROOT / "models" / "embedding" / "bge-small-zh-v1.5"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="下载数字心屿 RAG 本地嵌入模型")
     parser.add_argument("--repository", default=DEFAULT_REPOSITORY)
-    parser.add_argument("--revision", default="main")
+    parser.add_argument("--revision", default=DEFAULT_REVISION)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     return parser.parse_args()
 
