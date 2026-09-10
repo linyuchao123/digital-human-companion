@@ -49,8 +49,9 @@
 如需评测混合检索，可显式指定已经下载到本机或服务器的语义模型目录：
 
 ```bash
+.venv-model/bin/python scripts/download_rag_embedding_model.py
 .venv-model/bin/python scripts/evaluate_agent_rag.py \
-  --embedding-model /absolute/path/to/sentence-transformers-model
+  --embedding-model models/embedding/bge-small-zh-v1.5
 ```
 
 评测报告中的 `provider` 会标明实际使用的是 `hybrid_with_fallback` 还是
