@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from html import escape
 from time import perf_counter
-from typing import Any, Literal, Sequence
+from typing import Any, Awaitable, Callable, Literal, Sequence
 
 from langgraph.graph import END, START, StateGraph
 
@@ -16,7 +16,14 @@ from .memory import (
 )
 from .providers import CompanionProvider, FakeCompanionProvider
 from .safety import SafetyTriage
-from .state import AgentState, AvatarCommand, ChatMessage, ToolCallRecord
+from .state import (
+    AgentEvent,
+    AgentEventType,
+    AgentState,
+    AvatarCommand,
+    ChatMessage,
+    ToolCallRecord,
+)
 
 
 SAFE_RESPONSE = (
@@ -25,6 +32,7 @@ SAFE_RESPONSE = (
     "请马上联系当地紧急服务或前往最近的急诊机构。"
 )
 MAX_CONTEXT_MESSAGES = 40
+AgentEventSink = Callable[[AgentEvent], Awaitable[None]]
 
 
 class DigitalXinyuWorkflow:
@@ -403,18 +411,17 @@ class DigitalXinyuWorkflow:
             avatar_command=command,
         )
 
-    async def run(
-        self,
+    @staticmethod
+    def _initial_state(
         *,
         user_text: str,
         trace_id: str,
         session_id: str,
-        messages: Sequence[ChatMessage] = (),
-        user_id: int | None = None,
-        memory_consent: bool = False,
-        config: dict[str, Any] | None = None,
+        messages: Sequence[ChatMessage],
+        user_id: int | None,
+        memory_consent: bool,
     ) -> AgentState:
-        initial_state: AgentState = {
+        return {
             "trace_id": trace_id,
             "thread_id": session_id,
             "session_id": session_id,
@@ -431,4 +438,115 @@ class DigitalXinyuWorkflow:
             "retrieved_memories": [],
             "errors": [],
         }
-        return await self.graph.ainvoke(initial_state, config=config)
+
+    @staticmethod
+    def _node_event_data(node: str, state: AgentState) -> dict[str, Any]:
+        """生成可公开的节点摘要，不发送用户原文、回复或记忆内容。"""
+        data: dict[str, Any] = {
+            "elapsed_ms": state.get("node_timings_ms", {}).get(node, 0),
+            "step": len(state.get("execution_path", [])),
+        }
+        if node == "safety_triage" and state.get("safety"):
+            data["risk_level"] = state["safety"].risk_level.value
+            data["guard_triggered"] = state["safety"].requires_safe_response
+        elif node == "intent_router":
+            data["intent"] = state.get("intent", "")
+        elif node == "emotion_analyzer" and state.get("emotion_context"):
+            data["emotion"] = state["emotion_context"].emotion
+            data["emotion_label"] = state["emotion_context"].label
+        elif node in {"knowledge_retriever", "memory_retriever"}:
+            key = (
+                "retrieved_knowledge"
+                if node == "knowledge_retriever"
+                else "retrieved_memories"
+            )
+            data["result_count"] = len(state.get(key, []))
+        elif node in {"memory_writer", "memory_forgetter"}:
+            tool_calls = state.get("tool_calls", [])
+            if tool_calls:
+                data["tool_status"] = tool_calls[-1].status
+        elif node == "avatar_director" and state.get("avatar_command"):
+            data["motion"] = state["avatar_command"].motion
+        return data
+
+    @staticmethod
+    async def _emit_event(
+        event_sink: AgentEventSink,
+        *,
+        event_type: AgentEventType,
+        trace_id: str,
+        session_id: str,
+        node: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        try:
+            await event_sink(AgentEvent(
+                type=event_type,
+                trace_id=trace_id,
+                session_id=session_id,
+                node=node,
+                data=data or {},
+            ))
+        except Exception:
+            # 事件流属于可观测能力，发送失败不能中断安全响应和主对话。
+            return
+
+    async def run(
+        self,
+        *,
+        user_text: str,
+        trace_id: str,
+        session_id: str,
+        messages: Sequence[ChatMessage] = (),
+        user_id: int | None = None,
+        memory_consent: bool = False,
+        config: dict[str, Any] | None = None,
+        event_sink: AgentEventSink | None = None,
+    ) -> AgentState:
+        initial_state = self._initial_state(
+            user_text=user_text,
+            trace_id=trace_id,
+            session_id=session_id,
+            messages=messages,
+            user_id=user_id,
+            memory_consent=memory_consent,
+        )
+        if event_sink is None:
+            return await self.graph.ainvoke(initial_state, config=config)
+
+        await self._emit_event(
+            event_sink,
+            event_type=AgentEventType.RUN_STARTED,
+            trace_id=trace_id,
+            session_id=session_id,
+        )
+        result = dict(initial_state)
+        async for update in self.graph.astream(
+            initial_state,
+            config=config,
+            stream_mode="updates",
+        ):
+            for node, node_update in update.items():
+                result.update(node_update)
+                await self._emit_event(
+                    event_sink,
+                    event_type=AgentEventType.NODE_COMPLETED,
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    node=node,
+                    data=self._node_event_data(node, result),
+                )
+        await self._emit_event(
+            event_sink,
+            event_type=AgentEventType.RUN_COMPLETED,
+            trace_id=trace_id,
+            session_id=session_id,
+            data={
+                "steps": len(result.get("execution_path", [])),
+                "total_latency_ms": round(
+                    sum(result.get("node_timings_ms", {}).values()),
+                    3,
+                ),
+            },
+        )
+        return result

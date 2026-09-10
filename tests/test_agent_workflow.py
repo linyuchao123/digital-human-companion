@@ -272,6 +272,48 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("长期记忆”面板", result["final_response"])
         self.assertEqual(len(await store.search(13, "跑步")), 1)
 
+    async def test_workflow_streams_sanitized_node_events(self):
+        workflow = DigitalXinyuWorkflow()
+        events = []
+
+        async def capture(event):
+            events.append(event)
+
+        result = await workflow.run(
+            user_text="我最近很焦虑，这是不应进入事件的数据",
+            trace_id="trace-stream",
+            session_id="session-stream",
+            event_sink=capture,
+        )
+
+        self.assertEqual(events[0].type.value, "agent.run.started")
+        self.assertEqual(events[-1].type.value, "agent.run.completed")
+        completed_nodes = [event.node for event in events[1:-1]]
+        self.assertEqual(completed_nodes, result["execution_path"])
+        self.assertTrue(all(
+            event.type.value == "agent.node.completed" for event in events[1:-1]
+        ))
+        serialized = "".join(event.model_dump_json() for event in events)
+        self.assertNotIn("不应进入事件的数据", serialized)
+        emotion_event = next(event for event in events if event.node == "emotion_analyzer")
+        self.assertEqual(emotion_event.data["emotion"], "Anxiety")
+
+    async def test_event_sink_failure_does_not_break_response(self):
+        workflow = DigitalXinyuWorkflow()
+
+        async def fail(_event):
+            raise OSError("websocket disconnected")
+
+        result = await workflow.run(
+            user_text="你好",
+            trace_id="trace-event-failure",
+            session_id="session-event-failure",
+            event_sink=fail,
+        )
+
+        self.assertTrue(result["final_response"])
+        self.assertIn("avatar_director", result["execution_path"])
+
 
 if __name__ == "__main__":
     unittest.main()
