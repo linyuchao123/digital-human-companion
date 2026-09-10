@@ -13,7 +13,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from services.agent import BM25KnowledgeRetriever
+from services.agent import create_knowledge_retriever
 from services.agent.rag_evaluation import (
     evaluate_retriever,
     load_retrieval_eval_cases,
@@ -35,16 +35,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--min-hit-rate", type=float, default=0.85)
     parser.add_argument("--min-mrr", type=float, default=0.7)
+    parser.add_argument(
+        "--embedding-model",
+        type=Path,
+        help="可选的本地 Sentence Transformers 模型目录；不可用时降级为 BM25",
+    )
     parser.add_argument("--output-json", type=Path)
     return parser.parse_args()
 
 
 async def run() -> int:
     args = parse_args()
-    retriever = BM25KnowledgeRetriever(args.corpus)
+    retriever, provider = create_knowledge_retriever(
+        args.corpus,
+        embedding_model_path=args.embedding_model,
+    )
     cases = load_retrieval_eval_cases(args.cases)
     report = await evaluate_retriever(retriever, cases, top_k=args.top_k)
     payload = report.to_dict()
+    payload["provider"] = provider
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
