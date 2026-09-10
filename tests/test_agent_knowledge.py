@@ -6,7 +6,9 @@ from pathlib import Path
 from services.agent import (
     BM25KnowledgeRetriever,
     BuiltInKnowledgeRetriever,
+    FallbackKnowledgeRetriever,
     NullKnowledgeRetriever,
+    create_knowledge_retriever,
 )
 
 
@@ -55,6 +57,28 @@ class KnowledgeRetrieverTests(unittest.IsolatedAsyncioTestCase):
 
             with self.assertRaisesRegex(ValueError, "ID 为空或重复"):
                 BM25KnowledgeRetriever(corpus)
+
+    async def test_factory_falls_back_when_corpus_is_missing(self):
+        retriever, mode = create_knowledge_retriever(Path("/missing/knowledge.json"))
+
+        results = await retriever.retrieve("我最近很焦虑")
+
+        self.assertEqual(mode, "builtin_fallback")
+        self.assertGreaterEqual(len(results), 1)
+
+    async def test_fallback_retriever_recovers_from_primary_failure(self):
+        class FailingRetriever:
+            async def retrieve(self, query, top_k=3):
+                raise OSError("index unavailable")
+
+        retriever = FallbackKnowledgeRetriever(
+            FailingRetriever(),
+            BuiltInKnowledgeRetriever(),
+        )
+
+        results = await retriever.retrieve("我最近很焦虑")
+
+        self.assertGreaterEqual(len(results), 1)
 
     async def test_null_retriever_always_returns_empty_result(self):
         results = await NullKnowledgeRetriever().retrieve("任意问题")

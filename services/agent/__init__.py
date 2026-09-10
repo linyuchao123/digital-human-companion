@@ -4,8 +4,10 @@ from .emotion import EmotionAnalyzer
 from .knowledge import (
     BM25KnowledgeRetriever,
     BuiltInKnowledgeRetriever,
+    FallbackKnowledgeRetriever,
     KnowledgeRetriever,
     NullKnowledgeRetriever,
+    create_knowledge_retriever,
 )
 from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore, SQLiteMemoryStore
 from .providers import (
@@ -48,6 +50,7 @@ __all__ = [
     "FallbackCompanionProvider",
     "BuiltInKnowledgeRetriever",
     "BM25KnowledgeRetriever",
+    "FallbackKnowledgeRetriever",
     "KnowledgeRetriever",
     "KnowledgeSnippet",
     "InMemoryMemoryStore",
@@ -63,4 +66,5 @@ __all__ = [
     "SafetyTriage",
     "ToolCallRecord",
     "create_companion_provider",
+    "create_knowledge_retriever",
 ]

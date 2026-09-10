@@ -141,6 +141,27 @@ class BM25KnowledgeRetriever:
         ]
 
 
+class FallbackKnowledgeRetriever:
+    """主检索器无结果或异常时回退，避免知识服务阻断陪伴对话。"""
+
+    def __init__(
+        self,
+        primary: KnowledgeRetriever,
+        fallback: KnowledgeRetriever,
+    ) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    async def retrieve(self, query: str, top_k: int = 3) -> Sequence[KnowledgeSnippet]:
+        try:
+            results = await self._primary.retrieve(query, top_k)
+        except Exception:
+            results = []
+        if results:
+            return results
+        return await self._fallback.retrieve(query, top_k)
+
+
 @dataclass(frozen=True)
 class _BuiltInEntry:
     keywords: tuple[str, ...]
@@ -177,3 +198,15 @@ class BuiltInKnowledgeRetriever:
                     score=min(1, hit_count / len(entry.keywords)),
                 ))
         return sorted(matches, key=lambda item: item.score, reverse=True)[:top_k]
+
+
+def create_knowledge_retriever(
+    corpus_path: Path,
+) -> tuple[KnowledgeRetriever, str]:
+    """创建本地知识检索器，语料不可用时保留内置降级能力。"""
+    fallback = BuiltInKnowledgeRetriever()
+    try:
+        primary = BM25KnowledgeRetriever(corpus_path)
+    except (OSError, ValueError):
+        return fallback, "builtin_fallback"
+    return FallbackKnowledgeRetriever(primary, fallback), "bm25_with_fallback"
