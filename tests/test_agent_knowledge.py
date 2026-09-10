@@ -58,6 +58,13 @@ class KnowledgeRetrieverTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(results, [])
 
+    async def test_bm25_retriever_recalls_colloquial_crisis_expression(self):
+        retriever = BM25KnowledgeRetriever(self._corpus_path())
+
+        results = await retriever.retrieve("我不想活了，继续下去没有意义", top_k=1)
+
+        self.assertEqual(results[0].document_id, "who-immediate-danger")
+
     async def test_bm25_retriever_rejects_duplicate_document_ids(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             corpus = Path(temp_dir) / "knowledge.json"

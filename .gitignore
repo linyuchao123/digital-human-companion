@@ -20,6 +20,7 @@ node_modules/
 *.zip.filepart
 
 # 大文件/模型文件（超过100MB）
+models/embedding/
 *.pt
 *.pth
 *.pth.tar

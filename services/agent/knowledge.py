@@ -34,6 +34,7 @@ class _IndexedDocument:
     content: str
     source: str
     source_url: str | None
+    semantic_text: str
     tokens: Counter[str]
     length: int
 
@@ -67,6 +68,9 @@ class BM25KnowledgeRetriever:
             )
             for document in self._documents[:safe_limit]
         ]
+
+    def list_semantic_texts(self) -> list[str]:
+        return [document.semantic_text for document in self._documents]
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
@@ -109,7 +113,8 @@ class BM25KnowledgeRetriever:
             if not isinstance(keywords, list):
                 raise ValueError(f"心理知识语料第 {index + 1} 条 keywords 必须是数组")
             seen_ids.add(document_id)
-            tokens = cls._tokenize(" ".join((content, *map(str, keywords))))
+            semantic_text = " ".join((content, *map(str, keywords)))
+            tokens = cls._tokenize(semantic_text)
             if not tokens:
                 raise ValueError(f"心理知识语料第 {index + 1} 条无法建立索引")
             documents.append(_IndexedDocument(
@@ -117,6 +122,7 @@ class BM25KnowledgeRetriever:
                 content=content,
                 source=source,
                 source_url=source_url,
+                semantic_text=semantic_text,
                 tokens=Counter(tokens),
                 length=len(tokens),
             ))
@@ -179,8 +185,8 @@ class HybridKnowledgeRetriever:
         lexical: BM25KnowledgeRetriever,
         encoder: EmbeddingEncoder,
         *,
-        lexical_weight: float = 0.45,
-        semantic_weight: float = 0.55,
+        lexical_weight: float = 0.2,
+        semantic_weight: float = 0.8,
         minimum_semantic_score: float = 0.3,
     ) -> None:
         if lexical_weight < 0 or semantic_weight < 0:
@@ -199,7 +205,7 @@ class HybridKnowledgeRetriever:
         self._document_embeddings = self._encode_documents()
 
     def _encode_documents(self) -> list[list[float]]:
-        vectors = self._encoder.encode([item.content for item in self._documents])
+        vectors = self._encoder.encode(self._lexical.list_semantic_texts())
         if len(vectors) != len(self._documents):
             raise ValueError("向量模型返回的文档数量不匹配")
         normalized = [self._normalize(vector) for vector in vectors]
@@ -222,10 +228,15 @@ class HybridKnowledgeRetriever:
             await self._lexical.retrieve(query, top_k=self._lexical.document_count)
         )
         try:
-            query_vectors = self._encoder.encode([query])
-            if len(query_vectors) != 1:
-                raise ValueError("向量模型未返回单条查询向量")
-            query_vector = self._normalize(query_vectors[0])
+            encode_query = getattr(self._encoder, "encode_query", None)
+            if encode_query is None:
+                query_vectors = self._encoder.encode([query])
+                if len(query_vectors) != 1:
+                    raise ValueError("向量模型未返回单条查询向量")
+                raw_query_vector = query_vectors[0]
+            else:
+                raw_query_vector = encode_query(query)
+            query_vector = self._normalize(raw_query_vector)
             if self._document_embeddings and len(query_vector) != len(
                 self._document_embeddings[0]
             ):
@@ -238,22 +249,33 @@ class HybridKnowledgeRetriever:
             for item in lexical_results
             if item.document_id is not None
         }
-        ranked: list[tuple[float, KnowledgeSnippet]] = []
-        for document, vector in zip(
-            self._documents,
-            self._document_embeddings,
-            strict=True,
-        ):
-            semantic_score = max(0.0, sum(
+        semantic_scores = [
+            max(0.0, sum(
                 query_value * document_value
                 for query_value, document_value in zip(query_vector, vector, strict=True)
             ))
+            for vector in self._document_embeddings
+        ]
+        semantic_minimum = min(semantic_scores, default=0.0)
+        semantic_maximum = max(semantic_scores, default=0.0)
+        semantic_range = semantic_maximum - semantic_minimum
+        ranked: list[tuple[float, KnowledgeSnippet]] = []
+        for document, semantic_score in zip(
+            self._documents,
+            semantic_scores,
+            strict=True,
+        ):
             lexical_score = lexical_scores.get(document.document_id, 0.0)
             if lexical_score <= 0 and semantic_score < self._minimum_semantic_score:
                 continue
+            normalized_semantic_score = (
+                (semantic_score - semantic_minimum) / semantic_range
+                if semantic_range > 0
+                else 0.0
+            )
             combined_score = (
                 self._lexical_weight * lexical_score
-                + self._semantic_weight * semantic_score
+                + self._semantic_weight * normalized_semantic_score
             )
             ranked.append((combined_score, document))
         ranked.sort(key=lambda item: item[0], reverse=True)
@@ -268,6 +290,8 @@ class HybridKnowledgeRetriever:
 
 class SentenceTransformerEncoder:
     """只加载本地 Sentence Transformers 模型，避免服务启动时隐式联网。"""
+
+    QUERY_INSTRUCTION = "为这个句子生成表示以用于检索相关文章："
 
     def __init__(self, model_path: Path) -> None:
         if not model_path.exists():
@@ -288,6 +312,9 @@ class SentenceTransformerEncoder:
         if hasattr(vectors, "tolist"):
             return vectors.tolist()
         return vectors
+
+    def encode_query(self, text: str) -> Sequence[float]:
+        return self.encode([self.QUERY_INSTRUCTION + text])[0]
 
 
 class FallbackKnowledgeRetriever:

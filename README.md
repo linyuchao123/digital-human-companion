@@ -49,13 +49,29 @@
 如需评测混合检索，可显式指定已经下载到本机或服务器的语义模型目录：
 
 ```bash
+.venv-model/bin/python scripts/download_rag_embedding_model.py
 .venv-model/bin/python scripts/evaluate_agent_rag.py \
-  --embedding-model /absolute/path/to/sentence-transformers-model
+  --embedding-model models/embedding/bge-small-zh-v1.5
 ```
 
 评测报告中的 `provider` 会标明实际使用的是 `hybrid_with_fallback` 还是
 `bm25_with_fallback`，避免把模型缺失后的降级结果误认为语义检索结果。运行服务时使用同一
 目录设置 `RAG_EMBEDDING_MODEL_PATH` 即可启用混合检索；服务不会隐式联网下载模型。
+
+针对“脑内小剧场”“被世界遗忘”等低词面重合的真实口语表达，项目另设语义挑战集。评测
+本地模型时必须同时要求混合提供者，模型加载失败会直接让命令失败：
+
+```bash
+.venv-model/bin/python scripts/evaluate_agent_rag.py \
+  --cases eval/rag/semantic_challenge_cases.json \
+  --embedding-model /absolute/path/to/sentence-transformers-model \
+  --require-provider hybrid_with_fallback
+```
+
+项目当前验证模型为 `BAAI/bge-small-zh-v1.5`，下载脚本固定远端 revision 以保证复现。
+在 9 条口语化挑战样本上，纯 BM25 的 `Hit@3 / MRR@3` 为 `0.778 / 0.593`，混合
+检索提升至 `1.000 / 0.870`；原有 8 条标准集仍保持 `1.000 / 1.000`。模型权重目录
+已被 Git 忽略，仓库只保存下载和评测方法。
 
 知识库浏览和检索测试页面位于 `/rag`。页面默认只读；确需在线维护自定义条目时，
 在服务端环境变量中设置高强度随机 `RAG_ADMIN_TOKEN`，并在管理页面临时输入。令牌不会写入

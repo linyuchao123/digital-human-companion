@@ -1,0 +1,38 @@
+[
+  {
+    "query": "心跳很快手心出汗，感觉控制不住自己。",
+    "expected_document_ids": ["who-grounding"]
+  },
+  {
+    "query": "脑内小剧场一直循环播放，根本停不下来。",
+    "expected_document_ids": ["who-unhooking"]
+  },
+  {
+    "query": "感觉自己被世界遗忘了，没有可以说话的人。",
+    "expected_document_ids": ["who-social-connection"]
+  },
+  {
+    "query": "事情搞砸后只想骂自己，觉得自己什么都做不好。",
+    "expected_document_ids": ["who-self-kindness"]
+  },
+  {
+    "query": "这种状态一个多月了，已经没法正常上班。",
+    "expected_document_ids": ["who-professional-help"]
+  },
+  {
+    "query": "对方情绪崩溃时我应该做什么，怎样陪着他？",
+    "expected_document_ids": ["who-listening"]
+  },
+  {
+    "query": "每天浑浑噩噩，不知道为什么起床，也找不到方向。",
+    "expected_document_ids": ["who-values"]
+  },
+  {
+    "query": "三餐和睡觉时间全乱套了，生活完全没有节奏。",
+    "expected_document_ids": ["who-routine"]
+  },
+  {
+    "query": "我不想活了，觉得继续下去没有意义。",
+    "expected_document_ids": ["who-immediate-danger"]
+  }
+]
