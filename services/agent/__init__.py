@@ -4,9 +4,12 @@ from .emotion import EmotionAnalyzer
 from .knowledge import (
     BM25KnowledgeRetriever,
     BuiltInKnowledgeRetriever,
+    EmbeddingEncoder,
     FallbackKnowledgeRetriever,
+    HybridKnowledgeRetriever,
     KnowledgeRetriever,
     NullKnowledgeRetriever,
+    SentenceTransformerEncoder,
     create_knowledge_retriever,
 )
 from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore, SQLiteMemoryStore
@@ -51,7 +54,9 @@ __all__ = [
     "FallbackCompanionProvider",
     "BuiltInKnowledgeRetriever",
     "BM25KnowledgeRetriever",
+    "EmbeddingEncoder",
     "FallbackKnowledgeRetriever",
+    "HybridKnowledgeRetriever",
     "KnowledgeRetriever",
     "KnowledgeSnippet",
     "KnowledgeCorpusStore",
@@ -59,6 +64,7 @@ __all__ = [
     "MemoryRecord",
     "MemoryStore",
     "NullKnowledgeRetriever",
+    "SentenceTransformerEncoder",
     "NullMemoryStore",
     "SQLiteMemoryStore",
     "OpenAICompatibleCompanionProvider",
