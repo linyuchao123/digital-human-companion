@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="可选的本地 Sentence Transformers 模型目录；不可用时降级为 BM25",
     )
+    parser.add_argument(
+        "--require-provider",
+        choices=("bm25_with_fallback", "hybrid_with_fallback"),
+        help="要求实际使用指定检索提供者，否则评测失败",
+    )
     parser.add_argument("--output-json", type=Path)
     return parser.parse_args()
 
@@ -54,6 +59,10 @@ async def run() -> int:
     report = await evaluate_retriever(retriever, cases, top_k=args.top_k)
     payload = report.to_dict()
     payload["provider"] = provider
+    provider_requirement_met = (
+        args.require_provider is None or provider == args.require_provider
+    )
+    payload["provider_requirement_met"] = provider_requirement_met
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
@@ -64,6 +73,7 @@ async def run() -> int:
     passed = (
         report.hit_rate >= args.min_hit_rate
         and report.mean_reciprocal_rank >= args.min_mrr
+        and provider_requirement_met
     )
     return 0 if passed else 1
 

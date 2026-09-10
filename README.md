@@ -57,6 +57,16 @@
 `bm25_with_fallback`，避免把模型缺失后的降级结果误认为语义检索结果。运行服务时使用同一
 目录设置 `RAG_EMBEDDING_MODEL_PATH` 即可启用混合检索；服务不会隐式联网下载模型。
 
+针对“脑内小剧场”“被世界遗忘”等低词面重合的真实口语表达，项目另设语义挑战集。评测
+本地模型时必须同时要求混合提供者，模型加载失败会直接让命令失败：
+
+```bash
+.venv-model/bin/python scripts/evaluate_agent_rag.py \
+  --cases eval/rag/semantic_challenge_cases.json \
+  --embedding-model /absolute/path/to/sentence-transformers-model \
+  --require-provider hybrid_with_fallback
+```
+
 知识库浏览和检索测试页面位于 `/rag`。页面默认只读；确需在线维护自定义条目时，
 在服务端环境变量中设置高强度随机 `RAG_ADMIN_TOKEN`，并在管理页面临时输入。令牌不会写入
 浏览器存储，内置权威条目也不能通过接口删除。公网部署时还应在反向代理层限制 `/rag` 和
