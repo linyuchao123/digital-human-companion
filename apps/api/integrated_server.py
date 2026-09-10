@@ -1420,6 +1420,13 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         trace_id = str(uuid.uuid4())
         session_id = state.db_session_id or state.session_id
         history = [ChatMessage(**message) for message in state.agent_messages]
+
+        async def send_agent_event(event):
+            await _send(ws, {
+                "type": "agent_event",
+                "event": event.model_dump(mode="json"),
+            })
+
         result = await _get_agent_workflow().run(
             user_text=text,
             trace_id=trace_id,
@@ -1427,6 +1434,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             messages=history,
             user_id=state.user_id,
             memory_consent=state.memory_consent,
+            event_sink=send_agent_event,
         )
         result["trace_id"] = trace_id
         result["session_id"] = session_id

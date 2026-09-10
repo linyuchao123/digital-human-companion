@@ -38,8 +38,24 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
         await integrated_server._trigger_llm("今天工作很累", state, websocket)
 
         message_types = [message["type"] for message in websocket.messages]
-        self.assertEqual(message_types, ["llm_thinking", "agent_trace", "llm_reply"])
-        trace = websocket.messages[1]
+        self.assertEqual(message_types[0], "llm_thinking")
+        self.assertEqual(message_types[-2:], ["agent_trace", "llm_reply"])
+        events = [
+            message["event"]
+            for message in websocket.messages
+            if message["type"] == "agent_event"
+        ]
+        self.assertEqual(events[0]["type"], "agent.run.started")
+        self.assertEqual(events[-1]["type"], "agent.run.completed")
+        completed_nodes = [
+            event["node"]
+            for event in events
+            if event["type"] == "agent.node.completed"
+        ]
+        trace = next(
+            message for message in websocket.messages if message["type"] == "agent_trace"
+        )
+        self.assertEqual(completed_nodes, trace["execution_path"])
         self.assertEqual(trace["provider"], "offline")
         self.assertEqual(
             trace["execution_path"],
