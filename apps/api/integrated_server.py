@@ -1921,7 +1921,7 @@ async def rag_stats():
             "count": retriever.document_count,
             "db_path": _knowledge_corpus_label(),
             "embedding_model": "BM25 中文二元分词（离线）",
-            "mutable": False,
+            "mutable": bool(RAG_ADMIN_TOKEN),
         })
     except (OSError, ValueError) as exc:
         return JSONResponse({
@@ -1929,7 +1929,7 @@ async def rag_stats():
             "count": 0,
             "db_path": _knowledge_corpus_label(),
             "embedding_model": "BM25 中文二元分词（离线）",
-            "mutable": False,
+            "mutable": bool(RAG_ADMIN_TOKEN),
             "error": type(exc).__name__,
         }, status_code=503)
 
@@ -1954,7 +1954,7 @@ async def rag_list(limit: int = 50):
         return JSONResponse({
             "documents": documents,
             "total": retriever.document_count,
-            "mutable": False,
+            "mutable": bool(RAG_ADMIN_TOKEN),
         })
     except (OSError, ValueError) as exc:
         return JSONResponse(

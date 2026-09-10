@@ -33,7 +33,7 @@ class RagApiTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ready")
         self.assertEqual(payload["count"], 10)
         self.assertIn("psychology.json", payload["db_path"])
-        self.assertFalse(payload["mutable"])
+        self.assertTrue(payload["mutable"])
 
     def test_list_returns_sourced_documents(self):
         response = self.client.get("/api/rag/list?limit=2")
@@ -70,6 +70,18 @@ class RagApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_write_is_disabled_when_server_has_no_admin_token(self):
+        integrated_server.RAG_ADMIN_TOKEN = ""
+
+        stats = self.client.get("/api/rag/stats")
+        response = self.client.post(
+            "/api/rag/add",
+            json={"content": "测试知识", "source": "测试来源"},
+        )
+
+        self.assertFalse(stats.json()["mutable"])
+        self.assertEqual(response.status_code, 503)
 
     def test_admin_can_add_and_delete_custom_document(self):
         headers = {"X-RAG-Admin-Token": "test-admin-token"}
