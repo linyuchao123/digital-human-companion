@@ -77,6 +77,32 @@ class KnowledgeRetrieverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mode, "builtin_fallback")
         self.assertGreaterEqual(len(results), 1)
 
+    async def test_factory_enables_hybrid_retrieval_with_injected_encoder(self):
+        class SemanticEncoder:
+            def encode(self, texts):
+                return [[1.0, 0.0] for _ in texts]
+
+        retriever, mode = create_knowledge_retriever(
+            self._corpus_path(),
+            embedding_encoder=SemanticEncoder(),
+        )
+
+        results = await retriever.retrieve("焦虑时怎样回到当下", top_k=1)
+
+        self.assertEqual(mode, "hybrid_with_fallback")
+        self.assertEqual(results[0].document_id, "who-grounding")
+
+    async def test_factory_uses_bm25_when_local_embedding_model_is_missing(self):
+        retriever, mode = create_knowledge_retriever(
+            self._corpus_path(),
+            embedding_model_path=Path("/missing/local-embedding-model"),
+        )
+
+        results = await retriever.retrieve("焦虑时怎样回到当下", top_k=1)
+
+        self.assertEqual(mode, "bm25_with_fallback")
+        self.assertEqual(results[0].document_id, "who-grounding")
+
     async def test_fallback_retriever_recovers_from_primary_failure(self):
         class FailingRetriever:
             async def retrieve(self, query, top_k=3):

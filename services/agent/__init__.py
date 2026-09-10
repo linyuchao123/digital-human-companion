@@ -9,6 +9,7 @@ from .knowledge import (
     HybridKnowledgeRetriever,
     KnowledgeRetriever,
     NullKnowledgeRetriever,
+    SentenceTransformerEncoder,
     create_knowledge_retriever,
 )
 from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore, SQLiteMemoryStore
@@ -63,6 +64,7 @@ __all__ = [
     "MemoryRecord",
     "MemoryStore",
     "NullKnowledgeRetriever",
+    "SentenceTransformerEncoder",
     "NullMemoryStore",
     "SQLiteMemoryStore",
     "OpenAICompatibleCompanionProvider",

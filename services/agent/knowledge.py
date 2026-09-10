@@ -266,6 +266,30 @@ class HybridKnowledgeRetriever:
         ]
 
 
+class SentenceTransformerEncoder:
+    """只加载本地 Sentence Transformers 模型，避免服务启动时隐式联网。"""
+
+    def __init__(self, model_path: Path) -> None:
+        if not model_path.exists():
+            raise FileNotFoundError(f"本地嵌入模型不存在: {model_path}")
+        from sentence_transformers import SentenceTransformer
+
+        self._model = SentenceTransformer(
+            str(model_path),
+            local_files_only=True,
+        )
+
+    def encode(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
+        vectors = self._model.encode(
+            list(texts),
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        if hasattr(vectors, "tolist"):
+            return vectors.tolist()
+        return vectors
+
+
 class FallbackKnowledgeRetriever:
     """主检索器无结果或异常时回退，避免知识服务阻断陪伴对话。"""
 
@@ -327,11 +351,26 @@ class BuiltInKnowledgeRetriever:
 
 def create_knowledge_retriever(
     corpus_path: Path,
+    *,
+    embedding_model_path: Path | None = None,
+    embedding_encoder: EmbeddingEncoder | None = None,
 ) -> tuple[KnowledgeRetriever, str]:
     """创建本地知识检索器，语料不可用时保留内置降级能力。"""
     fallback = BuiltInKnowledgeRetriever()
     try:
-        primary = BM25KnowledgeRetriever(corpus_path)
+        lexical = BM25KnowledgeRetriever(corpus_path)
     except (OSError, ValueError):
         return fallback, "builtin_fallback"
-    return FallbackKnowledgeRetriever(primary, fallback), "bm25_with_fallback"
+    encoder = embedding_encoder
+    if encoder is None and embedding_model_path is not None:
+        try:
+            encoder = SentenceTransformerEncoder(embedding_model_path)
+        except (ImportError, OSError, RuntimeError, ValueError):
+            encoder = None
+    if encoder is not None:
+        try:
+            primary: KnowledgeRetriever = HybridKnowledgeRetriever(lexical, encoder)
+            return FallbackKnowledgeRetriever(primary, fallback), "hybrid_with_fallback"
+        except (OSError, RuntimeError, TypeError, ValueError):
+            pass
+    return FallbackKnowledgeRetriever(lexical, fallback), "bm25_with_fallback"

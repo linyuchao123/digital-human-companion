@@ -512,6 +512,7 @@ QWEN_BASE_URL = os.environ.get(
     "LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 ).rstrip("/")
 QWEN_MODEL = os.environ.get("LLM_MODEL", "qwen-plus").strip() or "qwen-plus"
+RAG_EMBEDDING_MODEL_PATH = os.environ.get("RAG_EMBEDDING_MODEL_PATH", "").strip()
 _session_histories: Dict[str, list] = {}
 
 _SYSTEM_PROMPT = """你是一位专业的心理陪护助手，名叫小安，外表是温柔的动漫女孩形象。
@@ -734,7 +735,12 @@ def _get_agent_workflow():
         )
         knowledge_retriever, _agent_knowledge_provider_name = (
             create_knowledge_retriever(
-                ROOT / "data" / "knowledge" / "psychology.json"
+                ROOT / "data" / "knowledge" / "psychology.json",
+                embedding_model_path=(
+                    Path(RAG_EMBEDDING_MODEL_PATH).expanduser()
+                    if RAG_EMBEDDING_MODEL_PATH
+                    else None
+                ),
             )
         )
         _agent_workflow = DigitalXinyuWorkflow(
