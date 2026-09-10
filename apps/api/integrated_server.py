@@ -658,13 +658,6 @@ if SHIZUKU_DIR.exists():
 else:
     print("[IntegratedServer] 警告: shizuku 目录未找到")
 
-@app.on_event("startup")
-async def _on_startup():
-    """应用启动时在后台线程初始化 RAG"""
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(_executor, _init_rag)
-    print("[IntegratedServer] 后台 RAG 初始化已启动")
-
 INTEGRATED_HTML = ROOT / "integrated.html"
 VISION_DEMO_HTML = ROOT / "vision_demo.html"
 
@@ -1885,38 +1878,64 @@ async def get_video_task(task_id: str):
 # RAG 知识库管理 API
 # ══════════════════════════════════════════════════════════════
 
+KNOWLEDGE_CORPUS_PATH = ROOT / "data" / "knowledge" / "psychology.json"
+
+
+def _load_bm25_knowledge():
+    from services.agent import BM25KnowledgeRetriever
+
+    return BM25KnowledgeRetriever(KNOWLEDGE_CORPUS_PATH)
+
 @app.get("/api/rag/stats")
 async def rag_stats():
     """获取知识库统计信息"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"status": "uninitialized", "count": 0,
-                             "db_path": "", "embedding_model": "TF-IDF本地"})
-    stats = _rag_engine.get_stats()
-    stats["embedding_model"] = "TF-IDF本地（离线）"
-    return JSONResponse(stats)
+    try:
+        retriever = _load_bm25_knowledge()
+        return JSONResponse({
+            "status": "ready",
+            "count": retriever.document_count,
+            "db_path": str(KNOWLEDGE_CORPUS_PATH.relative_to(ROOT)),
+            "embedding_model": "BM25 中文二元分词（离线）",
+            "mutable": False,
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse({
+            "status": "invalid",
+            "count": 0,
+            "db_path": str(KNOWLEDGE_CORPUS_PATH.relative_to(ROOT)),
+            "embedding_model": "BM25 中文二元分词（离线）",
+            "mutable": False,
+            "error": type(exc).__name__,
+        }, status_code=503)
 
 
 @app.get("/api/rag/list")
 async def rag_list(limit: int = 50):
     """列出知识库所有文档"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"documents": [], "total": 0})
     try:
-        coll = _rag_engine._collection
-        if coll is None:
-            return JSONResponse({"documents": [], "total": 0})
-        total = coll.count()
-        result = coll.get(limit=limit, include=["documents", "metadatas"])
-        docs = []
-        for i, doc_id in enumerate(result.get("ids", [])):
-            docs.append({
-                "id": doc_id,
-                "content": result["documents"][i] if result.get("documents") else "",
-                "metadata": result["metadatas"][i] if result.get("metadatas") else {},
-            })
-        return JSONResponse({"documents": docs, "total": total})
-    except Exception as e:
-        return JSONResponse({"documents": [], "total": 0, "error": str(e)})
+        retriever = _load_bm25_knowledge()
+        documents = [
+            {
+                "id": item.document_id,
+                "content": item.content,
+                "metadata": {
+                    "category": "curated",
+                    "source": item.source,
+                    "source_url": item.source_url,
+                },
+            }
+            for item in retriever.list_documents(limit)
+        ]
+        return JSONResponse({
+            "documents": documents,
+            "total": retriever.document_count,
+            "mutable": False,
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"documents": [], "total": 0, "error": type(exc).__name__},
+            status_code=503,
+        )
 
 
 @app.post("/api/rag/add")
@@ -1957,18 +1976,40 @@ async def rag_delete(doc_id: str):
 @app.post("/api/rag/search")
 async def rag_search(request: Request):
     """检索测试"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"results": [], "message": "RAG未初始化"})
     try:
         body = await request.json()
         query = body.get("query", "").strip()
-        top_k = int(body.get("top_k", 3))
+        top_k = min(max(int(body.get("top_k", 3)), 1), 20)
         if not query:
-            return JSONResponse({"results": [], "message": "查询不能为空"})
-        results = _rag_engine.retrieve(query, top_k=top_k)
-        return JSONResponse({"results": results, "query": query})
-    except Exception as e:
-        return JSONResponse({"results": [], "message": str(e)})
+            return JSONResponse(
+                {"results": [], "message": "查询不能为空"},
+                status_code=400,
+            )
+        retriever = _load_bm25_knowledge()
+        matches = await retriever.retrieve(query, top_k=top_k)
+        results = [
+            {
+                "id": item.document_id,
+                "document": item.content,
+                "metadata": {
+                    "source": item.source,
+                    "source_url": item.source_url,
+                    "category": "curated",
+                },
+                "similarity": item.score,
+            }
+            for item in matches
+        ]
+        return JSONResponse({
+            "results": results,
+            "query": query,
+            "provider": "bm25",
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"results": [], "message": type(exc).__name__},
+            status_code=503,
+        )
 
 
 @app.get("/rag")

@@ -40,6 +40,10 @@ class KnowledgeRetrieverTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(results[0].source_url.startswith("https://www.who.int/"))
         self.assertEqual(results[0].score, 1.0)
         self.assertGreaterEqual(results[0].score, results[1].score)
+        self.assertEqual(
+            len({item.document_id for item in results}),
+            len(results),
+        )
 
     async def test_bm25_retriever_returns_empty_for_unrelated_query(self):
         corpus = Path(__file__).resolve().parents[1] / "data" / "knowledge" / "psychology.json"
