@@ -46,8 +46,10 @@ class EmotionContext(BaseModel):
 
 
 class KnowledgeSnippet(BaseModel):
+    document_id: str | None = Field(default=None, max_length=120)
     content: str = Field(min_length=1, max_length=1200)
     source: str = Field(min_length=1, max_length=200)
+    source_url: str | None = Field(default=None, max_length=500)
     score: float = Field(default=0, ge=0, le=1)
 
 

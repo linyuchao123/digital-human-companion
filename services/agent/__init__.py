@@ -1,7 +1,14 @@
 """数字心屿智能体工作流公共协议。"""
 
 from .emotion import EmotionAnalyzer
-from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever, NullKnowledgeRetriever
+from .knowledge import (
+    BM25KnowledgeRetriever,
+    BuiltInKnowledgeRetriever,
+    FallbackKnowledgeRetriever,
+    KnowledgeRetriever,
+    NullKnowledgeRetriever,
+    create_knowledge_retriever,
+)
 from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore, SQLiteMemoryStore
 from .providers import (
     CompanionProvider,
@@ -42,6 +49,8 @@ __all__ = [
     "FakeCompanionProvider",
     "FallbackCompanionProvider",
     "BuiltInKnowledgeRetriever",
+    "BM25KnowledgeRetriever",
+    "FallbackKnowledgeRetriever",
     "KnowledgeRetriever",
     "KnowledgeSnippet",
     "InMemoryMemoryStore",
@@ -57,4 +66,5 @@ __all__ = [
     "SafetyTriage",
     "ToolCallRecord",
     "create_companion_provider",
+    "create_knowledge_retriever",
 ]

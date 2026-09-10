@@ -35,6 +35,7 @@ class AgentChatApiTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["session_id"], "demo-session")
         self.assertEqual(payload["provider"], "offline")
+        self.assertEqual(payload["knowledge_provider"], "bm25_with_fallback")
         self.assertEqual(payload["safety"]["risk_level"], "low")
         self.assertEqual(payload["avatar"]["motion"], "Respond")
         self.assertEqual(payload["emotion"]["emotion"], "Neutral")

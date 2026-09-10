@@ -720,15 +720,17 @@ class MemorySettingsRequest(BaseModel):
 
 _agent_workflow = None
 _agent_provider_name = "offline"
+_agent_knowledge_provider_name = "uninitialized"
 
 
 def _get_agent_workflow():
-    global _agent_provider_name, _agent_workflow
+    global _agent_knowledge_provider_name, _agent_provider_name, _agent_workflow
     if _agent_workflow is None:
         from services.agent import (
             DigitalXinyuWorkflow,
             SQLiteMemoryStore,
             create_companion_provider,
+            create_knowledge_retriever,
         )
 
         provider, _agent_provider_name = create_companion_provider(
@@ -736,8 +738,14 @@ def _get_agent_workflow():
             base_url=QWEN_BASE_URL,
             model=QWEN_MODEL,
         )
+        knowledge_retriever, _agent_knowledge_provider_name = (
+            create_knowledge_retriever(
+                ROOT / "data" / "knowledge" / "psychology.json"
+            )
+        )
         _agent_workflow = DigitalXinyuWorkflow(
             provider=provider,
+            knowledge_retriever=knowledge_retriever,
             memory_store=SQLiteMemoryStore(_get_db),
         )
     return _agent_workflow
@@ -758,6 +766,7 @@ async def agent_chat(payload: AgentChatRequest):
             "trace_id": trace_id,
             "session_id": session_id,
             "provider": _agent_provider_name,
+            "knowledge_provider": _agent_knowledge_provider_name,
             "response": result["final_response"],
             "safety": result["safety"].model_dump(mode="json"),
             "emotion": result["emotion_context"].model_dump(mode="json"),
@@ -1476,6 +1485,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "trace_id": trace_id,
             "session_id": session_id,
             "provider": _agent_provider_name,
+            "knowledge_provider": _agent_knowledge_provider_name,
             "safety": safety.model_dump(mode="json"),
             "emotion": emotion.model_dump(mode="json"),
             "knowledge": [

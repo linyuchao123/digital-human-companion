@@ -229,6 +229,11 @@ html,body{height:100%;overflow:hidden;
   background:rgba(79,142,247,.1)}
 @keyframes ad-node-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .ad-value{font:10px/1.6 monospace;word-break:break-all;color:#d9e6ff}
+.ad-knowledge-list{display:flex;flex-direction:column;gap:7px}
+.ad-knowledge-item{padding:7px 8px;border-radius:8px;background:rgba(79,142,247,.1)}
+.ad-knowledge-source{display:block;font-size:9px;color:#8dbbff;text-decoration:none;margin-bottom:3px}
+a.ad-knowledge-source:hover{text-decoration:underline;color:#b9d4ff}
+.ad-knowledge-content{font-size:10px;line-height:1.55;color:#d9e6ff}
 .ad-risk-high{color:#ff9a9a}.ad-risk-low{color:#72e6a8}
 .ad-runs{display:none;flex-direction:column;gap:8px}
 .ad-runs.show{display:flex}
@@ -808,9 +813,23 @@ function renderAgentTrace(result){
   const emotion=result.emotion||{};
   addSection('情绪理解',`${emotion.label||'平静'} · ${emotion.emotion||'Neutral'} · V ${emotion.valence??0} / A ${emotion.arousal??0}`);
   const knowledge=result.knowledge||[];
-  addSection('知识检索',knowledge.length
-    ? knowledge.map((item,index)=>`${index+1}. ${item.source} · ${(item.score*100).toFixed(0)}%\n${item.content}`).join('\n')
-    : '未调用或没有匹配知识');
+  if(knowledge.length){
+    const section=document.createElement('div');section.className='ad-section';
+    const title=document.createElement('div');title.className='ad-label';title.textContent='知识检索与引用';
+    const list=document.createElement('div');list.className='ad-knowledge-list';
+    knowledge.forEach((entry,index)=>{
+      const item=document.createElement('div');item.className='ad-knowledge-item';
+      const safeUrl=typeof entry.source_url==='string'&&entry.source_url.startsWith('https://');
+      const source=document.createElement(safeUrl?'a':'span');source.className='ad-knowledge-source';
+      source.textContent=`${index+1}. ${entry.source} · ${(entry.score*100).toFixed(0)}%`;
+      if(safeUrl){source.href=entry.source_url;source.target='_blank';source.rel='noopener noreferrer';}
+      const content=document.createElement('div');content.className='ad-knowledge-content';
+      content.textContent=entry.content;item.append(source,content);list.appendChild(item);
+    });
+    section.append(title,list);root.appendChild(section);
+  }else{
+    addSection('知识检索与引用','未调用或没有匹配知识');
+  }
   const memories=result.memories||[];
   const memoryCalled=(result.execution_path||[]).includes('memory_retriever');
   addSection('长期记忆检索',memories.length
@@ -833,6 +852,11 @@ function renderAgentTrace(result){
     }
   }
   addSection('模型 Provider',providerLabel);
+  const knowledgeProviderLabels={
+    bm25_with_fallback:'本地 BM25 · 内置降级',builtin_fallback:'内置知识降级'
+  };
+  addSection('知识检索器',knowledgeProviderLabels[result.knowledge_provider]
+    ||result.knowledge_provider||'未知');
   const totalMs=Object.values(result.node_timings_ms||{}).reduce((sum,value)=>sum+Number(value),0);
   addSection('节点总耗时',`${totalMs.toFixed(2)} ms`);
   addSection('形象指令',JSON.stringify(result.avatar||{}));

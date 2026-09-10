@@ -24,6 +24,7 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
         integrated_server.QWEN_API_KEY = ""
         integrated_server._agent_workflow = None
         integrated_server._agent_provider_name = "offline"
+        integrated_server._agent_knowledge_provider_name = "uninitialized"
 
     def tearDown(self):
         integrated_server.QWEN_API_KEY = self.original_api_key
@@ -57,6 +58,7 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(completed_nodes, trace["execution_path"])
         self.assertEqual(trace["provider"], "offline")
+        self.assertEqual(trace["knowledge_provider"], "bm25_with_fallback")
         self.assertEqual(
             trace["execution_path"],
             [
