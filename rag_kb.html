@@ -164,7 +164,7 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
   <div id="page-header">
     <span class="big-icon">🧠</span>
     <h1>心理知识库</h1>
-    <p>基于本地 BM25 的可追溯知识库，为数字人小安提供心理教育知识支持</p>
+    <p>支持 BM25 与本地语义模型融合的可追溯知识库，为数字人小安提供心理教育知识支持</p>
   </div>
 
   <!-- 统计卡片 -->
@@ -347,7 +347,7 @@ async function loadStats(){
     document.getElementById('sc-path').textContent = d.db_path || '—';
     document.getElementById('sc-count').textContent = d.count !== undefined ? d.count : '—';
     document.getElementById('sc-status').textContent = d.status === 'ready' ? '✅ 就绪' : '⏳ 初始化中';
-    document.getElementById('sc-model').textContent = d.embedding_model || 'TF-IDF 本地';
+    document.getElementById('sc-model').textContent = d.embedding_model || 'bm25_with_fallback';
     document.getElementById('browse-count').textContent = (d.count || 0) + ' 条';
     ragWriteEnabled=Boolean(d.mutable);
     const addButton=document.getElementById('add-btn');

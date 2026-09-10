@@ -725,7 +725,6 @@ def _get_agent_workflow():
             DigitalXinyuWorkflow,
             SQLiteMemoryStore,
             create_companion_provider,
-            create_knowledge_retriever,
         )
 
         provider, _agent_provider_name = create_companion_provider(
@@ -734,14 +733,7 @@ def _get_agent_workflow():
             model=QWEN_MODEL,
         )
         knowledge_retriever, _agent_knowledge_provider_name = (
-            create_knowledge_retriever(
-                ROOT / "data" / "knowledge" / "psychology.json",
-                embedding_model_path=(
-                    Path(RAG_EMBEDDING_MODEL_PATH).expanduser()
-                    if RAG_EMBEDDING_MODEL_PATH
-                    else None
-                ),
-            )
+            _get_rag_search_retriever()
         )
         _agent_workflow = DigitalXinyuWorkflow(
             provider=provider,
@@ -1887,12 +1879,37 @@ async def get_video_task(task_id: str):
 
 KNOWLEDGE_CORPUS_PATH = ROOT / "data" / "knowledge" / "psychology.json"
 RAG_ADMIN_TOKEN = os.environ.get("RAG_ADMIN_TOKEN", "").strip()
+_rag_search_retriever = None
+_rag_search_provider = "uninitialized"
 
 
 def _load_bm25_knowledge():
     from services.agent import BM25KnowledgeRetriever
 
     return BM25KnowledgeRetriever(KNOWLEDGE_CORPUS_PATH)
+
+
+def _get_rag_search_retriever():
+    global _rag_search_provider, _rag_search_retriever
+    if _rag_search_retriever is None:
+        from services.agent import create_knowledge_retriever
+
+        _rag_search_retriever, _rag_search_provider = create_knowledge_retriever(
+            KNOWLEDGE_CORPUS_PATH,
+            embedding_model_path=(
+                Path(RAG_EMBEDDING_MODEL_PATH).expanduser()
+                if RAG_EMBEDDING_MODEL_PATH
+                else None
+            ),
+        )
+    return _rag_search_retriever, _rag_search_provider
+
+
+def _invalidate_rag_caches() -> None:
+    global _agent_workflow, _rag_search_provider, _rag_search_retriever
+    _agent_workflow = None
+    _rag_search_retriever = None
+    _rag_search_provider = "uninitialized"
 
 
 def _knowledge_corpus_label() -> str:
@@ -1922,11 +1939,12 @@ async def rag_stats():
     """获取知识库统计信息"""
     try:
         retriever = _load_bm25_knowledge()
+        _, search_provider = _get_rag_search_retriever()
         return JSONResponse({
             "status": "ready",
             "count": retriever.document_count,
             "db_path": _knowledge_corpus_label(),
-            "embedding_model": "BM25 中文二元分词（离线）",
+            "embedding_model": search_provider,
             "mutable": bool(RAG_ADMIN_TOKEN),
         })
     except (OSError, ValueError) as exc:
@@ -2004,8 +2022,7 @@ async def rag_add(request: Request):
             source_url=source_url,
             keywords=keywords,
         )
-        global _agent_workflow
-        _agent_workflow = None
+        _invalidate_rag_caches()
         total = _load_bm25_knowledge().document_count
         return JSONResponse({
             "success": True,
@@ -2040,8 +2057,7 @@ async def rag_delete(doc_id: str, request: Request):
                 {"success": False, "message": "知识条目不存在"},
                 status_code=404,
             )
-        global _agent_workflow
-        _agent_workflow = None
+        _invalidate_rag_caches()
         return JSONResponse({"success": True, "message": "删除成功"})
     except PermissionError as exc:
         return JSONResponse(
@@ -2067,7 +2083,7 @@ async def rag_search(request: Request):
                 {"results": [], "message": "查询不能为空"},
                 status_code=400,
             )
-        retriever = _load_bm25_knowledge()
+        retriever, provider = _get_rag_search_retriever()
         matches = await retriever.retrieve(query, top_k=top_k)
         results = [
             {
@@ -2085,7 +2101,7 @@ async def rag_search(request: Request):
         return JSONResponse({
             "results": results,
             "query": query,
-            "provider": "bm25",
+            "provider": provider,
         })
     except (OSError, ValueError) as exc:
         return JSONResponse(

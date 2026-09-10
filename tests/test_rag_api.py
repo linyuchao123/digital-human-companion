@@ -12,17 +12,22 @@ class RagApiTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.original_corpus_path = integrated_server.KNOWLEDGE_CORPUS_PATH
         self.original_admin_token = integrated_server.RAG_ADMIN_TOKEN
+        self.original_embedding_model_path = integrated_server.RAG_EMBEDDING_MODEL_PATH
         source = Path(__file__).resolve().parents[1] / "data" / "knowledge" / "psychology.json"
         self.corpus_path = Path(self.temp_dir.name) / "psychology.json"
         self.corpus_path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         integrated_server.KNOWLEDGE_CORPUS_PATH = self.corpus_path
         integrated_server.RAG_ADMIN_TOKEN = "test-admin-token"
+        integrated_server.RAG_EMBEDDING_MODEL_PATH = ""
+        integrated_server._invalidate_rag_caches()
         self.client = TestClient(integrated_server.app)
 
     def tearDown(self):
         self.client.close()
         integrated_server.KNOWLEDGE_CORPUS_PATH = self.original_corpus_path
         integrated_server.RAG_ADMIN_TOKEN = self.original_admin_token
+        integrated_server.RAG_EMBEDDING_MODEL_PATH = self.original_embedding_model_path
+        integrated_server._invalidate_rag_caches()
         self.temp_dir.cleanup()
 
     def test_stats_reports_versioned_bm25_corpus(self):
@@ -46,7 +51,7 @@ class RagApiTests(unittest.TestCase):
             payload["documents"][0]["metadata"]["source_url"].startswith("https://")
         )
 
-    def test_search_uses_same_bm25_index_as_agent(self):
+    def test_search_uses_same_retriever_as_agent(self):
         response = self.client.post(
             "/api/rag/search",
             json={"query": "焦虑紧张时怎样回到当下", "top_k": 3},
@@ -54,7 +59,7 @@ class RagApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["provider"], "bm25")
+        self.assertEqual(payload["provider"], "bm25_with_fallback")
         self.assertEqual(payload["results"][0]["id"], "who-grounding")
         self.assertEqual(payload["results"][0]["similarity"], 1.0)
 
