@@ -148,7 +148,7 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
 <div id="topbar">
   <div class="logo"><span class="icon">🧠</span>心理知识库</div>
   <span style="color:#d0d7e8">|</span>
-  <span style="font-size:12px;color:#8a96b0">RAG 向量知识库管理</span>
+  <span style="font-size:12px;color:#8a96b0">RAG 检索知识库管理</span>
   <div class="spacer"></div>
   <div id="kb-status">
     <div class="status-dot" id="status-dot"></div>
@@ -164,7 +164,7 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
   <div id="page-header">
     <span class="big-icon">🧠</span>
     <h1>心理知识库</h1>
-    <p>基于 RAG 的向量知识库管理系统，为数字人小安提供专业心理学知识支持</p>
+    <p>基于本地 BM25 的可追溯知识库，为数字人小安提供心理教育知识支持</p>
   </div>
 
   <!-- 统计卡片 -->
@@ -172,7 +172,7 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
     <div class="stat-card">
       <div class="sc-label">📁 索引存储路径</div>
       <div class="sc-val" id="sc-path" style="font-size:12px;word-break:break-all">加载中...</div>
-      <div class="sc-sub">ChromaDB 本地持久化</div>
+      <div class="sc-sub">版本化 JSON 语料</div>
     </div>
     <div class="stat-card" style="text-align:center">
       <div class="sc-label">📊 当前知识条数</div>
@@ -180,9 +180,9 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
       <div class="sc-sub" id="sc-status">初始化中...</div>
     </div>
     <div class="stat-card" style="text-align:right">
-      <div class="sc-label">🔢 向量化模型</div>
+      <div class="sc-label">🔢 检索模型</div>
       <div class="sc-val" id="sc-model" style="font-size:13px">加载中...</div>
-      <div class="sc-sub">Embedding 模型</div>
+      <div class="sc-sub">完全离线可运行</div>
     </div>
   </div>
 
@@ -196,6 +196,11 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
 
     <!-- ── 文本录入 ── -->
     <div class="tab-panel show" id="panel-add">
+      <div class="form-group">
+        <label class="form-label">管理员令牌</label>
+        <input type="password" class="form-input" id="admin-token"
+          autocomplete="off" placeholder="由服务端 RAG_ADMIN_TOKEN 配置；不会保存在浏览器中"/>
+      </div>
       <div class="form-row">
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">来源标识（可选）</label>
@@ -204,6 +209,16 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">知识分类</label>
           <input type="text" class="form-input" id="add-category" placeholder="anxiety / sleep / CBT / custom"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">来源链接（可选，仅支持 HTTPS）</label>
+          <input type="url" class="form-input" id="add-source-url" placeholder="https://..."/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">检索关键词（逗号分隔）</label>
+          <input type="text" class="form-input" id="add-keywords" placeholder="焦虑, 呼吸, 放松"/>
         </div>
       </div>
       <div class="form-group" style="margin:0 0 6px">
@@ -283,7 +298,8 @@ textarea.form-input{height:auto;padding:10px 12px;resize:vertical;line-height:1.
 </div><!-- /main -->
 
 <script>
-const API = 'http://localhost:8800';
+const API = location.origin;
+let ragWriteEnabled = false;
 
 // ── 标签页 ────────────────────────────────────────
 const TABS = ['add','browse','search'];
@@ -333,6 +349,13 @@ async function loadStats(){
     document.getElementById('sc-status').textContent = d.status === 'ready' ? '✅ 就绪' : '⏳ 初始化中';
     document.getElementById('sc-model').textContent = d.embedding_model || 'TF-IDF 本地';
     document.getElementById('browse-count').textContent = (d.count || 0) + ' 条';
+    ragWriteEnabled=Boolean(d.mutable);
+    const addButton=document.getElementById('add-btn');
+    addButton.disabled=!ragWriteEnabled;
+    if(!ragWriteEnabled){
+      showNotice(document.getElementById('add-notice'),'info',
+        '当前为只读模式。需要在服务端配置 RAG_ADMIN_TOKEN 后重启服务。');
+    }
   }catch(e){
     document.getElementById('status-txt').textContent = '后端未启动';
     document.getElementById('status-dot').className = 'status-dot err';
@@ -352,9 +375,14 @@ async function addKnowledge(){
   const content  = document.getElementById('add-content').value.trim();
   const category = document.getElementById('add-category').value.trim() || 'custom';
   const source   = document.getElementById('add-source').value.trim()   || '手动录入';
+  const sourceUrl=document.getElementById('add-source-url').value.trim();
+  const keywords=document.getElementById('add-keywords').value.split(',').map(v=>v.trim()).filter(Boolean);
+  const adminToken=document.getElementById('admin-token').value;
   const notice   = document.getElementById('add-notice');
   const btn      = document.getElementById('add-btn');
 
+  if(!ragWriteEnabled){showNotice(notice,'error','⚠️ 服务端当前未启用知识库写入');return;}
+  if(!adminToken){showNotice(notice,'error','⚠️ 请输入管理员令牌');return;}
   if(!content){ showNotice(notice,'error','⚠️ 请先填写知识内容'); return; }
 
   btn.disabled = true; btn.textContent = '⏳ 写入中...';
@@ -362,14 +390,16 @@ async function addKnowledge(){
 
   try{
     const r = await fetch(API+'/api/rag/add',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({content, category, source})
+      method:'POST', headers:{'Content-Type':'application/json','X-RAG-Admin-Token':adminToken},
+      body: JSON.stringify({content, category, source,source_url:sourceUrl||null,keywords})
     });
     const d = await r.json();
     if(d.success){
       showNotice(notice,'success','✅ 写入成功！当前知识库共 '+d.total+' 条');
       document.getElementById('add-content').value = '';
       document.getElementById('add-source').value = '';
+      document.getElementById('add-source-url').value = '';
+      document.getElementById('add-keywords').value = '';
       loadStats();
     } else {
       showNotice(notice,'error','❌ 写入失败: '+d.message);
@@ -411,14 +441,14 @@ function buildDocCard(doc){
   const needExpand = content.length > 120;
   div.innerHTML = `
     <div class="dc-head">
-      <span class="dc-category">${catLabel(cat)}</span>
-      <span class="dc-source">来源: ${src}</span>
-      <span class="dc-id" title="${doc.id}">ID: ${shortId}</span>
+      <span class="dc-category">${escHtml(catLabel(cat))}</span>
+      <span class="dc-source">来源: ${escHtml(src)}</span>
+      <span class="dc-id" title="${escHtml(doc.id)}">ID: ${escHtml(shortId)}</span>
     </div>
     <div class="dc-content" id="content-${doc.id}">${escHtml(content)}</div>
     <div class="dc-actions">
       ${needExpand?`<button class="expand-btn" id="expbtn-${doc.id}" onclick="toggleExpand('${doc.id}')">展开全文 ▼</button>`:''}
-      <button class="btn btn-danger" onclick="deleteDoc('${doc.id}')">🗑 删除</button>
+      ${ragWriteEnabled&&doc.id.startsWith('custom-')?`<button class="btn btn-danger" onclick="deleteDoc('${doc.id}')">🗑 删除</button>`:''}
     </div>`;
   return div;
 }
@@ -440,8 +470,12 @@ function toggleExpand(id){
 
 async function deleteDoc(id){
   if(!confirm('确定删除这条知识？删除后无法恢复。')) return;
+  const adminToken=document.getElementById('admin-token').value;
+  if(!adminToken){alert('请先在文本录入页填写管理员令牌');return;}
   try{
-    const r = await fetch(API+'/api/rag/delete/'+encodeURIComponent(id),{method:'DELETE'});
+    const r = await fetch(API+'/api/rag/delete/'+encodeURIComponent(id),{
+      method:'DELETE',headers:{'X-RAG-Admin-Token':adminToken}
+    });
     const d = await r.json();
     if(d.success){
       document.getElementById('doc-'+id)?.remove();
@@ -489,7 +523,7 @@ function buildResultCard(res, idx){
   div.innerHTML = `
     <div class="rc-meta">
       <span class="result-card rc-score">#${idx+1}</span>
-      <span class="dc-category">${catLabel(cat)}</span>
+      <span class="dc-category">${escHtml(catLabel(cat))}</span>
       <span style="font-size:11px;color:#8a96b0;margin-left:auto">相似度: <strong style="color:#3b5bdb">${(sim*100).toFixed(1)}%</strong></span>
     </div>
     <div class="result-score-bar"><div class="result-score-fill" style="width:${pct}%"></div></div>

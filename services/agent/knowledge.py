@@ -45,6 +45,23 @@ class BM25KnowledgeRetriever:
             sum(document.length for document in self._documents) / len(self._documents)
         )
 
+    @property
+    def document_count(self) -> int:
+        return len(self._documents)
+
+    def list_documents(self, limit: int = 50) -> list[KnowledgeSnippet]:
+        safe_limit = min(max(limit, 1), 500)
+        return [
+            KnowledgeSnippet(
+                document_id=document.document_id,
+                content=document.content,
+                source=document.source,
+                source_url=document.source_url,
+                score=0,
+            )
+            for document in self._documents[:safe_limit]
+        ]
+
     @staticmethod
     def _tokenize(text: str) -> list[str]:
         normalized = text.strip().lower()

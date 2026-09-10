@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hmac
 import io
 import json
 import os
@@ -657,13 +658,6 @@ if SHIZUKU_DIR.exists():
     print(f"[IntegratedServer] Live2D资产挂载: {SHIZUKU_DIR}")
 else:
     print("[IntegratedServer] 警告: shizuku 目录未找到")
-
-@app.on_event("startup")
-async def _on_startup():
-    """应用启动时在后台线程初始化 RAG"""
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(_executor, _init_rag)
-    print("[IntegratedServer] 后台 RAG 初始化已启动")
 
 INTEGRATED_HTML = ROOT / "integrated.html"
 VISION_DEMO_HTML = ROOT / "vision_demo.html"
@@ -1885,90 +1879,213 @@ async def get_video_task(task_id: str):
 # RAG 知识库管理 API
 # ══════════════════════════════════════════════════════════════
 
+KNOWLEDGE_CORPUS_PATH = ROOT / "data" / "knowledge" / "psychology.json"
+RAG_ADMIN_TOKEN = os.environ.get("RAG_ADMIN_TOKEN", "").strip()
+
+
+def _load_bm25_knowledge():
+    from services.agent import BM25KnowledgeRetriever
+
+    return BM25KnowledgeRetriever(KNOWLEDGE_CORPUS_PATH)
+
+
+def _knowledge_corpus_label() -> str:
+    """返回不暴露项目外绝对路径的语料标识。"""
+    try:
+        return str(KNOWLEDGE_CORPUS_PATH.relative_to(ROOT))
+    except ValueError:
+        return KNOWLEDGE_CORPUS_PATH.name
+
+
+def _verify_rag_admin(request: Request) -> JSONResponse | None:
+    if not RAG_ADMIN_TOKEN:
+        return JSONResponse(
+            {"success": False, "message": "服务端未启用知识库写入"},
+            status_code=503,
+        )
+    supplied = request.headers.get("X-RAG-Admin-Token", "")
+    if not supplied or not hmac.compare_digest(supplied, RAG_ADMIN_TOKEN):
+        return JSONResponse(
+            {"success": False, "message": "管理员凭证无效"},
+            status_code=403,
+        )
+    return None
+
 @app.get("/api/rag/stats")
 async def rag_stats():
     """获取知识库统计信息"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"status": "uninitialized", "count": 0,
-                             "db_path": "", "embedding_model": "TF-IDF本地"})
-    stats = _rag_engine.get_stats()
-    stats["embedding_model"] = "TF-IDF本地（离线）"
-    return JSONResponse(stats)
+    try:
+        retriever = _load_bm25_knowledge()
+        return JSONResponse({
+            "status": "ready",
+            "count": retriever.document_count,
+            "db_path": _knowledge_corpus_label(),
+            "embedding_model": "BM25 中文二元分词（离线）",
+            "mutable": bool(RAG_ADMIN_TOKEN),
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse({
+            "status": "invalid",
+            "count": 0,
+            "db_path": _knowledge_corpus_label(),
+            "embedding_model": "BM25 中文二元分词（离线）",
+            "mutable": bool(RAG_ADMIN_TOKEN),
+            "error": type(exc).__name__,
+        }, status_code=503)
 
 
 @app.get("/api/rag/list")
 async def rag_list(limit: int = 50):
     """列出知识库所有文档"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"documents": [], "total": 0})
     try:
-        coll = _rag_engine._collection
-        if coll is None:
-            return JSONResponse({"documents": [], "total": 0})
-        total = coll.count()
-        result = coll.get(limit=limit, include=["documents", "metadatas"])
-        docs = []
-        for i, doc_id in enumerate(result.get("ids", [])):
-            docs.append({
-                "id": doc_id,
-                "content": result["documents"][i] if result.get("documents") else "",
-                "metadata": result["metadatas"][i] if result.get("metadatas") else {},
-            })
-        return JSONResponse({"documents": docs, "total": total})
-    except Exception as e:
-        return JSONResponse({"documents": [], "total": 0, "error": str(e)})
+        retriever = _load_bm25_knowledge()
+        documents = [
+            {
+                "id": item.document_id,
+                "content": item.content,
+                "metadata": {
+                    "category": "curated",
+                    "source": item.source,
+                    "source_url": item.source_url,
+                },
+            }
+            for item in retriever.list_documents(limit)
+        ]
+        return JSONResponse({
+            "documents": documents,
+            "total": retriever.document_count,
+            "mutable": bool(RAG_ADMIN_TOKEN),
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"documents": [], "total": 0, "error": type(exc).__name__},
+            status_code=503,
+        )
 
 
 @app.post("/api/rag/add")
 async def rag_add(request: Request):
     """新增知识条目"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"success": False, "message": "RAG未初始化"}, status_code=503)
+    denied = _verify_rag_admin(request)
+    if denied is not None:
+        return denied
     try:
+        from services.agent import KnowledgeCorpusStore
+
         body = await request.json()
-        content = body.get("content", "").strip()
+        content = body.get("content", "")
         category = body.get("category", "custom")
         source = body.get("source", "手动录入")
-        if not content:
-            return JSONResponse({"success": False, "message": "内容不能为空"}, status_code=400)
-        _rag_engine.add_documents(
-            documents=[content],
-            metadatas=[{"category": category, "source": source}]
+        source_url = body.get("source_url")
+        keywords = body.get("keywords", [])
+        if (
+            not isinstance(content, str)
+            or not isinstance(category, str)
+            or not isinstance(source, str)
+            or (source_url is not None and not isinstance(source_url, str))
+            or not isinstance(keywords, list)
+            or not all(isinstance(item, str) for item in keywords)
+        ):
+            return JSONResponse(
+                {"success": False, "message": "知识条目字段类型不正确"},
+                status_code=400,
+            )
+        store = KnowledgeCorpusStore(KNOWLEDGE_CORPUS_PATH)
+        document_id = store.add(
+            content=content,
+            category=category,
+            source=source,
+            source_url=source_url,
+            keywords=keywords,
         )
-        stats = _rag_engine.get_stats()
-        return JSONResponse({"success": True, "message": "添加成功",
-                             "total": stats.get("count", 0)})
-    except Exception as e:
-        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+        global _agent_workflow
+        _agent_workflow = None
+        total = _load_bm25_knowledge().document_count
+        return JSONResponse({
+            "success": True,
+            "message": "添加成功",
+            "id": document_id,
+            "total": total,
+        })
+    except ValueError as exc:
+        return JSONResponse(
+            {"success": False, "message": str(exc)},
+            status_code=400,
+        )
+    except OSError as exc:
+        return JSONResponse(
+            {"success": False, "message": type(exc).__name__},
+            status_code=500,
+        )
 
 
 @app.delete("/api/rag/delete/{doc_id}")
-async def rag_delete(doc_id: str):
+async def rag_delete(doc_id: str, request: Request):
     """删除知识条目"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"success": False, "message": "RAG未初始化"}, status_code=503)
+    denied = _verify_rag_admin(request)
+    if denied is not None:
+        return denied
     try:
-        _rag_engine._collection.delete(ids=[doc_id])
+        from services.agent import KnowledgeCorpusStore
+
+        deleted = KnowledgeCorpusStore(KNOWLEDGE_CORPUS_PATH).delete_custom(doc_id)
+        if not deleted:
+            return JSONResponse(
+                {"success": False, "message": "知识条目不存在"},
+                status_code=404,
+            )
+        global _agent_workflow
+        _agent_workflow = None
         return JSONResponse({"success": True, "message": "删除成功"})
-    except Exception as e:
-        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+    except PermissionError as exc:
+        return JSONResponse(
+            {"success": False, "message": str(exc)},
+            status_code=403,
+        )
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"success": False, "message": type(exc).__name__},
+            status_code=500,
+        )
 
 
 @app.post("/api/rag/search")
 async def rag_search(request: Request):
     """检索测试"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"results": [], "message": "RAG未初始化"})
     try:
         body = await request.json()
         query = body.get("query", "").strip()
-        top_k = int(body.get("top_k", 3))
+        top_k = min(max(int(body.get("top_k", 3)), 1), 20)
         if not query:
-            return JSONResponse({"results": [], "message": "查询不能为空"})
-        results = _rag_engine.retrieve(query, top_k=top_k)
-        return JSONResponse({"results": results, "query": query})
-    except Exception as e:
-        return JSONResponse({"results": [], "message": str(e)})
+            return JSONResponse(
+                {"results": [], "message": "查询不能为空"},
+                status_code=400,
+            )
+        retriever = _load_bm25_knowledge()
+        matches = await retriever.retrieve(query, top_k=top_k)
+        results = [
+            {
+                "id": item.document_id,
+                "document": item.content,
+                "metadata": {
+                    "source": item.source,
+                    "source_url": item.source_url,
+                    "category": "curated",
+                },
+                "similarity": item.score,
+            }
+            for item in matches
+        ]
+        return JSONResponse({
+            "results": results,
+            "query": query,
+            "provider": "bm25",
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"results": [], "message": type(exc).__name__},
+            status_code=503,
+        )
 
 
 @app.get("/rag")
