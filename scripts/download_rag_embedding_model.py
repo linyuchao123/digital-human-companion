@@ -34,6 +34,7 @@ def main() -> int:
         repo_id=args.repository,
         revision=resolved_revision,
         local_dir=destination,
+        ignore_patterns=("*.bin",),
     )
     metadata = {
         "repository": args.repository,
