@@ -701,14 +701,20 @@ async def vision_demo():
 
 @app.get("/api/status")
 async def api_status():
+    from services.avatar.model_assets import inspect_face_driver_checkpoint
+
+    checkpoint_status = inspect_face_driver_checkpoint()
     return JSONResponse({
         "status": "running",
         "modules": {
             "vision_mediapipe": HAS_MEDIAPIPE,
             "asr_funasr": HAS_ASR,
-            "driver_model": HAS_DRIVER,
+            "driver_model": HAS_DRIVER and checkpoint_status.ready,
             "qwen_api": bool(QWEN_API_KEY),
             "agent_provider": "cloud_with_fallback" if QWEN_API_KEY else "offline",
+        },
+        "model_assets": {
+            "face_driver": checkpoint_status.to_public_dict(),
         },
         "port": 8800,
     })
