@@ -1190,7 +1190,7 @@ function handleChatMessage(msg){
       if(ttsEnabled) speakText(cleanText);
       if(msg.motion&&msg.motion!=='Idle') setTimeout(()=>playMotion(msg.motion),200);
       break;
-    case 'status':updateModuleStatus(msg.modules);break;
+    case 'status':updateModuleStatus(msg.modules,msg.driver_model);break;
     case 'reset_ack':document.getElementById('chat-area').innerHTML='';break;
     case 'session_title':{
       // 后端自动生成会话标题后推送，更新侧边栏
@@ -1212,13 +1212,24 @@ function updateOverallStatus(){
   const anyOk=driveWsReady||chatWsReady;
   setStatus(anyOk?'ok':'warn',parts.join(' '));
 }
-function updateModuleStatus(modules){
+function updateModuleStatus(modules,driverModel){
   const parts=[];
   if(driveWsReady) parts.push('驱动:✓');
   else parts.push('驱动:✗');
+  if(driverModel?.ready){
+    parts.push(`模型:正式✓ E${driverModel.epoch??'?'}`);
+  }else{
+    parts.push('模型:降级');
+  }
   parts.push('LLM:'+(modules.llm?'✓':'✗'));
   if(modules.asr) parts.push('ASR:✓');
   setStatus((driveWsReady||modules.llm)?'ok':'warn',parts.join(' '));
+  const capsule=document.getElementById('status-capsule');
+  if(capsule&&driverModel){
+    capsule.title=driverModel.ready
+      ?`${driverModel.message} · ${driverModel.device||'未知设备'}`
+      :driverModel.message;
+  }
 }
 function setStatus(cls,text){
   document.getElementById('status-dot').className=cls||'';

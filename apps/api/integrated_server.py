@@ -336,6 +336,27 @@ def _load_face_driver():
         print(f"[Driver] 模型加载失败: {e}")
         return None
 
+
+def _driver_runtime_payload(reaction_model) -> Dict[str, Any]:
+    """构建前端可展示的正式模型运行状态。"""
+    if reaction_model is None:
+        return {
+            "ready": False,
+            "mode": "fallback",
+            "epoch": None,
+            "device": None,
+            "message": "正式模型未加载，使用规则驱动",
+        }
+    metadata = reaction_model.metadata
+    return {
+        "ready": True,
+        "mode": "official",
+        "epoch": metadata.epoch,
+        "device": metadata.device,
+        "message": f"正式模型已加载（第 {metadata.epoch} 轮）",
+    }
+
+
 def _infer_live2d_params(
     reaction_model, emotion_seq: np.ndarray, intensity: float
 ) -> Optional[Dict[str, float]]:
@@ -1187,16 +1208,18 @@ async def ws_main(websocket: WebSocket):
 
     # 预加载驱动模型（异步，不阻塞握手）
     async def preload_driver():
+        md = None
         if HAS_DRIVER:
             async with _face_driver_lock:
                 md = await loop.run_in_executor(_executor, _load_face_driver)
-            state.model_device = md
-            await _send(websocket, {"type": "status",
-                "modules": {
-                    "vision": HAS_MEDIAPIPE, "asr": HAS_ASR,
-                    "driver": md is not None, "llm": bool(QWEN_API_KEY)
-                }
-            })
+        state.model_device = md
+        await _send(websocket, {"type": "status",
+            "modules": {
+                "vision": HAS_MEDIAPIPE, "asr": HAS_ASR,
+                "driver": md is not None, "llm": bool(QWEN_API_KEY)
+            },
+            "driver_model": _driver_runtime_payload(md),
+        })
 
     asyncio.create_task(preload_driver())
 
