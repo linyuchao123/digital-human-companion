@@ -368,7 +368,8 @@ class DigitalXinyuWorkflow:
             ))
         if knowledge:
             context = "\n".join(
-                f"[{index}] {item.content}（来源：{item.source}）"
+                f"[{index}] {item.content}（来源：{item.source}"
+                f"{f'，链接：{item.source_url}' if item.source_url else ''}）"
                 for index, item in enumerate(knowledge, 1)
             )
             provider_messages.insert(0, ChatMessage(

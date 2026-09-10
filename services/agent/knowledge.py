@@ -24,8 +24,10 @@ class NullKnowledgeRetriever:
 
 @dataclass(frozen=True)
 class _IndexedDocument:
+    document_id: str
     content: str
     source: str
+    source_url: str | None
     tokens: Counter[str]
     length: int
 
@@ -75,6 +77,7 @@ class BM25KnowledgeRetriever:
             document_id = str(item.get("id", "")).strip()
             content = str(item.get("content", "")).strip()
             source = str(item.get("source", "")).strip()
+            source_url = str(item.get("source_url", "")).strip() or None
             keywords = item.get("keywords", [])
             if not document_id or document_id in seen_ids:
                 raise ValueError(f"心理知识语料第 {index + 1} 条 ID 为空或重复")
@@ -87,8 +90,10 @@ class BM25KnowledgeRetriever:
             if not tokens:
                 raise ValueError(f"心理知识语料第 {index + 1} 条无法建立索引")
             documents.append(_IndexedDocument(
+                document_id=document_id,
                 content=content,
                 source=source,
+                source_url=source_url,
                 tokens=Counter(tokens),
                 length=len(tokens),
             ))
@@ -133,8 +138,10 @@ class BM25KnowledgeRetriever:
         maximum = positive[0][0]
         return [
             KnowledgeSnippet(
+                document_id=document.document_id,
                 content=document.content,
                 source=document.source,
+                source_url=document.source_url,
                 score=min(1.0, score / maximum),
             )
             for score, document in positive[:top_k]

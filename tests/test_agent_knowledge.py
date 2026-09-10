@@ -36,6 +36,8 @@ class KnowledgeRetrieverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 2)
         self.assertIn("接触", results[0].content)
         self.assertIn("WHO", results[0].source)
+        self.assertEqual(results[0].document_id, "who-grounding")
+        self.assertTrue(results[0].source_url.startswith("https://www.who.int/"))
         self.assertEqual(results[0].score, 1.0)
         self.assertGreaterEqual(results[0].score, results[1].score)
 
