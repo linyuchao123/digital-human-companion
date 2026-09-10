@@ -281,43 +281,17 @@ def _init_rag():
 # 模块懒加载（允许部分模块缺失时降级运行）
 # ══════════════════════════════════════════════════════════════
 
-# 1. FaceBehaviorModel（数字人面部行为驱动）
+# 1. 正式情感反应 Transformer（数字人面部行为驱动）
 _face_driver = None
 _face_driver_lock = asyncio.Lock()
 HAS_DRIVER = False
 try:
-    import torch
-    import torch.nn as nn
-
-    class FaceBehaviorModel(nn.Module):
-        def __init__(self, input_dim=25, hidden_dim=512, num_layers=6,
-                     num_candidates=10, dropout=0.2):
-            super().__init__()
-            self.num_candidates = num_candidates
-            self.encoder = nn.Sequential(
-                nn.Linear(input_dim, hidden_dim), nn.LayerNorm(hidden_dim),
-                nn.ReLU(), nn.Dropout(dropout)
-            )
-            encoder_layer = nn.TransformerEncoderLayer(
-                d_model=hidden_dim, nhead=8, dim_feedforward=hidden_dim * 4,
-                dropout=dropout, batch_first=True
-            )
-            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-            self.decoders = nn.ModuleList([
-                nn.Sequential(
-                    nn.Linear(hidden_dim, hidden_dim // 2), nn.LayerNorm(hidden_dim // 2),
-                    nn.ReLU(), nn.Dropout(dropout), nn.Linear(hidden_dim // 2, input_dim)
-                ) for _ in range(num_candidates)
-            ])
-
-        def forward(self, x):
-            h = self.encoder(x)
-            h = self.transformer(h)
-            outputs = [dec(h) for dec in self.decoders]
-            return torch.stack(outputs, dim=1)
-
+    from services.avatar.emotion_reaction_model import EmotionReactionModel, torch
     HAS_DRIVER = True
-    print("[IntegratedServer] FaceBehaviorModel 定义成功")
+    if torch is None:
+        HAS_DRIVER = False
+        raise ImportError("PyTorch 未安装")
+    print("[IntegratedServer] 正式情感反应模型运行时可用")
 except Exception as e:
     print(f"[IntegratedServer] torch不可用，驱动模型降级: {e}")
 
@@ -345,41 +319,35 @@ LIVE2D_PARAMS = {
 
 def _load_face_driver():
     """同步加载驱动模型，在线程池中执行"""
+    global _face_driver
     if not HAS_DRIVER:
         return None
-    model_path = ROOT / "digital_human_engine" / "checkpoints_v2" / "best_model.pt"
-    if not model_path.exists():
-        print(f"[Driver] 模型文件不存在: {model_path}")
-        return None
+    if _face_driver is not None:
+        return _face_driver
     try:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = FaceBehaviorModel().to(device)
-        ckpt = torch.load(str(model_path), map_location=device, weights_only=False)
-        model.load_state_dict(ckpt['model_state_dict'])
-        model.eval()
-        print(f"[Driver] 模型加载成功，设备: {device}")
-        return (model, device)
+        _face_driver = EmotionReactionModel()
+        metadata = _face_driver.metadata
+        print(
+            f"[Driver] 正式模型加载成功，epoch={metadata.epoch}, "
+            f"val_loss={metadata.val_loss:.4f}, 设备={metadata.device}"
+        )
+        return _face_driver
     except Exception as e:
         print(f"[Driver] 模型加载失败: {e}")
         return None
 
-def _infer_live2d_params(model_device, feature_seq: np.ndarray) -> Dict[str, float]:
-    """推理Live2D参数，在线程池中执行"""
-    model, device = model_device
+def _infer_live2d_params(
+    reaction_model, emotion_seq: np.ndarray, intensity: float
+) -> Optional[Dict[str, float]]:
+    """用正式模型预测倾听者情绪，并映射为 Live2D 参数。"""
     try:
-        with torch.no_grad():
-            t = torch.FloatTensor(feature_seq).unsqueeze(0).to(device)  # [1,T,25]
-            pred = model(t)  # [1,K,T,25]
-            p = pred[0, 0, -1].cpu().numpy()  # [25]
-        param_names = list(LIVE2D_PARAMS.keys())
-        result = {}
-        for i, name in enumerate(param_names):
-            lo, hi = LIVE2D_PARAMS[name]
-            raw = float(np.clip(p[i % len(p)], -1, 1))
-            result[name] = round((raw + 1) / 2 * (hi - lo) + lo, 3)
-        return result
+        prediction = reaction_model.predict(emotion_seq, num_candidates=1, seed=42)
+        emotion_25 = prediction[0, -1]
+        params = _emo25_to_live2d(emotion_25, intensity=intensity)
+        return _live2d_to_dict(params)
     except Exception as e:
-        return _default_live2d_params()
+        print(f"[Driver] 正式模型推理失败: {type(e).__name__}: {e}")
+        return None
 
 def _default_live2d_params() -> Dict[str, float]:
     """返回默认静止姿态参数"""
@@ -1170,6 +1138,8 @@ class SessionState:
         self.current_arousal: float = 0.0
         self.emotion_intensity: float = 0.3   # 表情强度（0~1）
         self.emotion_decay: float = 0.0        # 情感衰减计时
+        self.model_emotion_signature: Optional[tuple] = None
+        self.model_emotion_params: Optional[Dict[str, float]] = None
         # 待触发的动作
         self.pending_motion: Optional[str] = None
         # 智能体短期上下文；登录用户在安全校验后从数据库恢复。
@@ -1218,7 +1188,8 @@ async def ws_main(websocket: WebSocket):
     # 预加载驱动模型（异步，不阻塞握手）
     async def preload_driver():
         if HAS_DRIVER:
-            md = await loop.run_in_executor(_executor, _load_face_driver)
+            async with _face_driver_lock:
+                md = await loop.run_in_executor(_executor, _load_face_driver)
             state.model_device = md
             await _send(websocket, {"type": "status",
                 "modules": {
@@ -1617,15 +1588,50 @@ async def _drive_loop(ws: WebSocket, state: SessionState, loop):
 
 async def _compute_live2d_params(state: SessionState, loop) -> Dict[str, float]:
     """计算当前帧的Live2D参数"""
-    if state.model_device is None or len(state.feature_buffer) < state.seq_len:
-        # 模型未就绪时：使用简单规则映射
-        return _features_to_params_simple(state)
+    base_params = _features_to_params_simple(state)
+    if state.model_device is None or not HAS_EMOTION_MAP:
+        return base_params
 
-    seq = np.array(state.feature_buffer[-state.seq_len:], dtype=np.float32)
-    params = await loop.run_in_executor(
-        _executor, _infer_live2d_params, state.model_device, seq
+    signature = (
+        state.current_emotion,
+        round(state.current_valence, 3),
+        round(state.current_arousal, 3),
+        round(state.emotion_intensity, 3),
     )
-    return params
+    if signature != state.model_emotion_signature:
+        emotion_25 = _build_emotion_25d(
+            state.current_emotion,
+            state.current_valence,
+            state.current_arousal,
+        )
+        sequence = np.repeat(emotion_25[None, :], state.seq_len, axis=0)
+        predicted = await loop.run_in_executor(
+            _executor,
+            _infer_live2d_params,
+            state.model_device,
+            sequence,
+            state.emotion_intensity,
+        )
+        if predicted is not None:
+            state.model_emotion_params = predicted
+            state.model_emotion_signature = signature
+
+    # 正式模型负责倾听表情；摄像头跟踪、口型和呼吸仍保留实时规则驱动。
+    blend_keys = {
+        'PARAM_BROW_L_Y', 'PARAM_BROW_R_Y',
+        'PARAM_BROW_L_ANGLE', 'PARAM_BROW_R_ANGLE',
+        'PARAM_EYE_BALL_FORM', 'PARAM_MOUTH_FORM', 'PARAM_TERE',
+    }
+    if state.model_emotion_params:
+        for key in blend_keys:
+            if key in base_params and key in state.model_emotion_params:
+                alpha = 0.55
+                base_params[key] = round(
+                    base_params[key] * (1 - alpha)
+                    + state.model_emotion_params[key] * alpha,
+                    3,
+                )
+    return base_params
 
 
 def _build_emotion_25d(emotion: str, valence: float, arousal: float) -> np.ndarray:

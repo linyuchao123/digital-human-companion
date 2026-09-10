@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+import threading
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -139,6 +140,7 @@ class EmotionReactionModel:
                 device=str(self.device),
                 use_audio=bool(config.get("use_audio", True)),
             )
+            self._inference_lock = threading.Lock()
         except EmotionReactionModelError:
             raise
         except Exception as exc:
@@ -173,9 +175,9 @@ class EmotionReactionModel:
         )
         has_audio_tensor = torch.zeros(1, dtype=torch.bool, device=self.device)
 
-        if seed is not None:
-            torch.manual_seed(seed)
-        with torch.inference_mode():
+        with self._inference_lock, torch.inference_mode():
+            if seed is not None:
+                torch.manual_seed(seed)
             prediction = self.model.generate(
                 audio_tensor,
                 emotion_tensor,
