@@ -1,0 +1,34 @@
+[
+  {
+    "query": "焦虑紧张的时候怎样让自己回到当下？",
+    "expected_document_ids": ["who-grounding"]
+  },
+  {
+    "query": "脑子里总是反复担忧，想法停不下来怎么办？",
+    "expected_document_ids": ["who-unhooking"]
+  },
+  {
+    "query": "我很孤独，想慢慢和别人重新建立联系。",
+    "expected_document_ids": ["who-social-connection"]
+  },
+  {
+    "query": "失败以后我一直责怪自己，觉得自己很没用。",
+    "expected_document_ids": ["who-self-kindness"]
+  },
+  {
+    "query": "情绪持续影响工作和睡眠，我是否应该找心理咨询？",
+    "expected_document_ids": ["who-professional-help"]
+  },
+  {
+    "query": "朋友最近很难过，我应该怎样倾听和安慰？",
+    "expected_document_ids": ["who-listening"]
+  },
+  {
+    "query": "最近很迷茫也没有动力，怎样找到一个小目标？",
+    "expected_document_ids": ["who-values"]
+  },
+  {
+    "query": "生活节奏很混乱，压力大时如何恢复规律？",
+    "expected_document_ids": ["who-routine"]
+  }
+]
