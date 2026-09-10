@@ -1,0 +1,62 @@
+[
+  {
+    "id": "who-grounding",
+    "keywords": ["焦虑", "紧张", "压力", "慌张", "接地练习"],
+    "content": "情绪强烈时，可以先注意脚与地面的接触、放慢呼吸，再依次说出眼前能看到、听到和触碰到的事物，把注意力带回当下。如果不适持续或影响生活，应寻求专业帮助。",
+    "source": "WHO《Doing What Matters in Times of Stress》"
+  },
+  {
+    "id": "who-unhooking",
+    "keywords": ["反复想", "负面想法", "担忧", "停不下来", "解离想法"],
+    "content": "当担忧反复出现时，可以先在心里为它命名，例如“我注意到自己正在担心”，再把注意力放回当前正在做的事情。目标不是强行消除想法，而是减少被它牵着走。",
+    "source": "WHO《Doing What Matters in Times of Stress》"
+  },
+  {
+    "id": "who-values",
+    "keywords": ["迷茫", "没有动力", "目标", "价值", "行动"],
+    "content": "感到迷茫时，可以先确认自己重视的人或事情，再选择一个很小、当天能够完成的行动。小行动不需要立刻改变情绪，但能帮助生活重新朝重视的方向移动。",
+    "source": "WHO《Doing What Matters in Times of Stress》"
+  },
+  {
+    "id": "who-self-kindness",
+    "keywords": ["自责", "否定自己", "失败", "没用", "自我关怀"],
+    "content": "遭遇挫折时，可以尝试像安慰一位朋友那样对自己说话，承认此刻确实很难，并选择一个照顾自己的小行动。善待自己不等于忽视问题。",
+    "source": "WHO《Doing What Matters in Times of Stress》"
+  },
+  {
+    "id": "who-making-room",
+    "keywords": ["难过", "悲伤", "痛苦", "压抑", "接受情绪"],
+    "content": "面对难受的情绪，可以先允许它暂时存在，注意它在身体中的感觉，并给这种体验留出一点空间。无需逼迫自己马上振作；若持续难以承受，可以联系可信任的人或专业人员。",
+    "source": "WHO《Doing What Matters in Times of Stress》"
+  },
+  {
+    "id": "who-social-connection",
+    "keywords": ["孤独", "孤单", "没人陪", "社交", "支持"],
+    "content": "孤独时，可以从低压力的连接开始，例如给一位可信任的人发消息、参加熟悉的社区活动，或约定一次短时间通话。稳定的社会连接有助于心理健康。",
+    "source": "WHO《Mental health: strengthening our response》"
+  },
+  {
+    "id": "who-routine",
+    "keywords": ["生活混乱", "作息", "压力", "日常", "规律"],
+    "content": "压力较大时，尽量维持可预测的日常节奏，例如固定起床、进餐、活动和休息时间。先恢复一两个最容易做到的环节，比一次改变全部生活更可行。",
+    "source": "WHO《Doing What Matters in Times of Stress》"
+  },
+  {
+    "id": "who-listening",
+    "keywords": ["倾听", "陪伴", "朋友难过", "怎么安慰", "共情"],
+    "content": "陪伴情绪低落的人时，可以耐心倾听、承认对方的感受，并询问此刻需要怎样的帮助。避免急着评判、诊断或用“想开点”否定感受。",
+    "source": "WHO《Psychological first aid: Guide for field workers》"
+  },
+  {
+    "id": "who-professional-help",
+    "keywords": ["影响生活", "持续难受", "心理咨询", "专业帮助", "就医"],
+    "content": "如果情绪困扰持续存在，已经明显影响睡眠、学习、工作或人际生活，可以考虑联系正规医疗机构或合格的心理健康专业人员进行评估。AI 陪伴不能替代专业服务。",
+    "source": "WHO《Mental health: strengthening our response》"
+  },
+  {
+    "id": "who-immediate-danger",
+    "keywords": ["立即危险", "伤害自己", "自杀", "轻生", "危机"],
+    "content": "当一个人可能立即伤害自己或他人时，应尽快联系当地紧急服务，并请可信任的人在安全前提下陪伴，不要只依赖线上或 AI 支持。",
+    "source": "WHO《Suicide》事实清单"
+  }
+]
