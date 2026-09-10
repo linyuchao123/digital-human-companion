@@ -223,6 +223,11 @@ html,body{height:100%;overflow:hidden;
 .ad-label{font-size:9px;color:rgba(180,205,255,.62);letter-spacing:.08em;margin-bottom:5px}
 .ad-path{display:flex;flex-wrap:wrap;gap:5px}
 .ad-node{font:10px/1.4 monospace;padding:3px 7px;border-radius:8px;background:rgba(79,142,247,.18);color:#a9c8ff}
+.ad-node-live{animation:ad-node-in .24s ease-out;background:rgba(52,200,122,.18);color:#8af0b8;
+  border:1px solid rgba(114,230,168,.18)}
+.ad-live-status{font:10px/1.6 monospace;color:#d9e6ff;padding:8px 9px;border-radius:9px;
+  background:rgba(79,142,247,.1)}
+@keyframes ad-node-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .ad-value{font:10px/1.6 monospace;word-break:break-all;color:#d9e6ff}
 .ad-risk-high{color:#ff9a9a}.ad-risk-low{color:#72e6a8}
 .ad-runs{display:none;flex-direction:column;gap:8px}
@@ -594,6 +599,7 @@ let driveFrameCount=0, connected=false;
 let isPlayingMotion=false;
 let developerMode=false;
 let agentHistoryMode=false, latestAgentTrace=null;
+let liveAgentEvents=[];
 
 /* ═══════════ 粒子 ═══════════ */
 (function(){
@@ -831,6 +837,58 @@ function renderAgentTrace(result){
   addSection('节点总耗时',`${totalMs.toFixed(2)} ms`);
   addSection('形象指令',JSON.stringify(result.avatar||{}));
   addSection('追踪 ID',result.trace_id||'--');
+}
+
+function renderAgentEvent(event){
+  if(!event||!event.type) return;
+  const root=document.getElementById('agent-debug-content');
+  const badge=document.getElementById('agent-provider-badge');
+  const nodeLabels={
+    safety_triage:'安全分诊',safe_response:'安全响应',intent_router:'意图路由',
+    emotion_analyzer:'情绪分析',knowledge_retriever:'知识检索',
+    memory_retriever:'记忆检索',memory_writer:'记忆写入',
+    memory_forgetter:'记忆删除',companion:'陪伴回复',avatar_director:'数字人导演'
+  };
+  if(event.type==='agent.run.started'){
+    liveAgentEvents=[];latestAgentTrace=null;
+    badge.textContent='运行中';
+    root.className='';root.replaceChildren();
+    const status=document.createElement('div');status.id='agent-live-status';
+    status.className='ad-live-status';status.textContent='工作流已启动，正在执行安全分诊…';
+    const section=document.createElement('div');section.className='ad-section';
+    const title=document.createElement('div');title.className='ad-label';title.textContent='实时执行路径';
+    const path=document.createElement('div');path.id='agent-live-path';path.className='ad-path';
+    section.append(title,path);root.append(status,section);
+    return;
+  }
+  if(event.type==='agent.node.completed'){
+    liveAgentEvents.push(event);
+    const path=document.getElementById('agent-live-path');
+    const status=document.getElementById('agent-live-status');
+    if(path){
+      const item=document.createElement('span');item.className='ad-node ad-node-live';
+      const elapsed=Number(event.data?.elapsed_ms||0).toFixed(2);
+      item.textContent=`${liveAgentEvents.length}. ${nodeLabels[event.node]||event.node} · ${elapsed}ms`;
+      path.appendChild(item);
+    }
+    if(status){
+      const details=[];
+      if(event.data?.risk_level) details.push(`风险 ${event.data.risk_level}`);
+      if(event.data?.emotion_label) details.push(`情绪 ${event.data.emotion_label}`);
+      if(event.data?.result_count!==undefined) details.push(`命中 ${event.data.result_count} 条`);
+      if(event.data?.motion) details.push(`动作 ${event.data.motion}`);
+      status.textContent=`${nodeLabels[event.node]||event.node} 已完成${details.length?' · '+details.join(' · '):''}`;
+    }
+    return;
+  }
+  if(event.type==='agent.run.completed'){
+    badge.textContent='生成完成';
+    const status=document.getElementById('agent-live-status');
+    if(status){
+      const latency=Number(event.data?.total_latency_ms||0).toFixed(2);
+      status.textContent=`工作流完成 · ${event.data?.steps||liveAgentEvents.length} 个节点 · ${latency}ms`;
+    }
+  }
 }
 
 /* ═══════════ 连接总控 ═══════════ */
@@ -1179,6 +1237,9 @@ function handleChatMessage(msg){
       if(msg.is_final&&msg.text) addBubble('user',msg.text);
       break;
     case 'llm_thinking':showThinking(true);break;
+    case 'agent_event':
+      renderAgentEvent(msg.event);
+      break;
     case 'agent_trace':
       renderAgentTrace(msg);
       break;
