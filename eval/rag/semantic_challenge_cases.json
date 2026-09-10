@@ -8,7 +8,11 @@
     "expected_document_ids": ["who-unhooking"]
   },
   {
-    "query": "感觉自己被世界遗忘了，没有可以说话的人。",
+    "query": "感觉自己被世界遗忘了，没有可以说话的人",
+    "expected_document_ids": ["who-social-connection"]
+  },
+  {
+    "query": "周围很热闹但我像个局外人，怎么也融不进去。",
     "expected_document_ids": ["who-social-connection"]
   },
   {
@@ -34,5 +38,9 @@
   {
     "query": "我不想活了，觉得继续下去没有意义。",
     "expected_document_ids": ["who-immediate-danger"]
+  },
+  {
+    "query": "胸口发紧呼吸很急，脑子一片空白。",
+    "expected_document_ids": ["who-grounding"]
   }
 ]
