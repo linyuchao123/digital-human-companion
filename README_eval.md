@@ -10,6 +10,39 @@
 参赛队可以自行实现评测代码，但不得自行修改上述评测协议。
 
 
+## 本项目评测流程
+
+正式生成前先执行资产预检：
+
+```bash
+.venv-model/bin/python scripts/check_avatar_eval_assets.py
+```
+
+只有输出中的 `ready` 为 `true`，才可以生成完整官方预测：
+
+```bash
+.venv-model/bin/python digital_human_engine/train.jioaben/inference_eval.py \
+  --device auto
+```
+
+生成过程会增量写入 `prediction_emotion.partial.npy`，并在
+`prediction_emotion.progress.json` 记录下一个样本位置。任务中断后使用相同参数并追加
+`--resume` 即可继续，全部完成后才会生成正式的 `prediction_emotion.npy`。
+
+在开发环境中可运行一条小规模冒烟验证：
+
+```bash
+.venv-model/bin/python digital_human_engine/train.jioaben/inference_eval.py \
+  --device cpu \
+  --max-samples 1 \
+  --num-candidates 1 \
+  --allow-incomplete-assets \
+  --output-path /tmp/digital-human-smoke.npy
+```
+
+该模式的样本数和候选数不满足官方协议，输出只用于验证模型能否完成真实推理，不能用于计算或对外展示正式指标。旧脚本遇到空标签时会静默补零；当前实现会直接停止，以免产生失真的评测结果。
+
+
 ##  评测输入格式
 
 参赛队提交给评测脚本的核心文件为：
@@ -197,4 +230,3 @@ FRSyn = mean(|offset(n, k)|)
 数值方向：
 
 - 越小越好
-

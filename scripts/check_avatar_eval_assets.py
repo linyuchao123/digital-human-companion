@@ -25,7 +25,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--index-csv",
         type=Path,
-        default=PROJECT_ROOT / "数字人面部行为驱动模型验证脚本" / "person_specific_val.csv",
+        default=(
+            PROJECT_ROOT
+            / "数字人面部行为驱动模型验证脚本"
+            / "person_specific_val.csv"
+        ),
     )
     parser.add_argument(
         "--neighbor-matrix",
