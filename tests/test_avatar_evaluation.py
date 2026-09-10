@@ -8,6 +8,7 @@ import numpy as np
 from services.avatar.evaluation import (
     emotion_csv_path,
     inspect_evaluation_assets,
+    inspect_prediction_file,
     load_evaluation_samples,
 )
 
@@ -97,6 +98,35 @@ class AvatarEvaluationTests(unittest.TestCase):
         self.assertEqual(len(report.invalid_files), 2)
         self.assertTrue(all("文件为空" in item for item in report.invalid_files))
         self.assertEqual(report.to_summary_dict()["invalid_file_count"], 2)
+
+    def test_prediction_file_validation_accepts_official_shape(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "prediction.npy"
+            np.save(path, np.zeros((2, 1, 4, 25), dtype=np.float32))
+
+            report = inspect_prediction_file(
+                path,
+                expected_shape=(2, 1, 4, 25),
+            )
+
+        self.assertTrue(report.ready)
+        self.assertEqual(report.minimum, 0.0)
+        self.assertEqual(report.maximum, 0.0)
+
+    def test_prediction_file_validation_rejects_non_finite_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "prediction.npy"
+            value = np.zeros((2, 1, 4, 25), dtype=np.float32)
+            value[1, 0, 0, 0] = np.nan
+            np.save(path, value)
+
+            report = inspect_prediction_file(
+                path,
+                expected_shape=(2, 1, 4, 25),
+            )
+
+        self.assertFalse(report.ready)
+        self.assertIn("第 1 条", report.errors[0])
 
 
 if __name__ == "__main__":

@@ -60,6 +60,21 @@ class EvaluationAssetReport:
         }
 
 
+@dataclass
+class PredictionFileReport:
+    ready: bool = False
+    path: str = ""
+    shape: tuple[int, ...] | None = None
+    dtype: str | None = None
+    size_bytes: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
 def load_evaluation_samples(index_csv: Path) -> list[EvaluationSample]:
     """按官方要求将每一对样本展开为正向和反向两个样本。"""
     with index_csv.open("r", encoding="utf-8-sig", newline="") as file:
@@ -183,4 +198,46 @@ def inspect_evaluation_assets(
     report.ready = not (
         report.errors or report.missing_files or report.invalid_files
     ) and (report.checkpoint_ready or not require_checkpoint)
+    return report
+
+
+def inspect_prediction_file(
+    path: Path,
+    *,
+    expected_shape: tuple[int, int, int, int] = (1086, 10, 750, 25),
+) -> PredictionFileReport:
+    """以 mmap 方式检查大体积官方预测文件，避免再复制一份到内存。"""
+    report = PredictionFileReport(path=str(path))
+    if not path.is_file():
+        report.errors.append(f"预测文件不存在: {path}")
+        return report
+    report.size_bytes = path.stat().st_size
+    try:
+        prediction = np.load(path, mmap_mode="r", allow_pickle=False)
+    except Exception as exc:
+        report.errors.append(f"预测文件无法读取: {type(exc).__name__}: {exc}")
+        return report
+
+    report.shape = tuple(prediction.shape)
+    report.dtype = str(prediction.dtype)
+    if prediction.shape != expected_shape:
+        report.errors.append(
+            f"预测形状应为 {expected_shape}，实际为 {prediction.shape}"
+        )
+    if prediction.dtype != np.float32:
+        report.errors.append(f"预测类型应为 float32，实际为 {prediction.dtype}")
+
+    minimum = np.inf
+    maximum = -np.inf
+    for sample_index in range(prediction.shape[0] if prediction.ndim else 0):
+        sample = np.asarray(prediction[sample_index])
+        if not np.isfinite(sample).all():
+            report.errors.append(f"预测第 {sample_index} 条包含 NaN 或无穷值")
+            break
+        minimum = min(minimum, float(sample.min()))
+        maximum = max(maximum, float(sample.max()))
+    if minimum != np.inf:
+        report.minimum = minimum
+        report.maximum = maximum
+    report.ready = not report.errors
     return report
