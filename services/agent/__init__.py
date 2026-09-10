@@ -10,6 +10,7 @@ from .knowledge import (
     create_knowledge_retriever,
 )
 from .memory import InMemoryMemoryStore, MemoryStore, NullMemoryStore, SQLiteMemoryStore
+from .knowledge_store import KnowledgeCorpusStore
 from .providers import (
     CompanionProvider,
     CompanionProviderError,
@@ -53,6 +54,7 @@ __all__ = [
     "FallbackKnowledgeRetriever",
     "KnowledgeRetriever",
     "KnowledgeSnippet",
+    "KnowledgeCorpusStore",
     "InMemoryMemoryStore",
     "MemoryRecord",
     "MemoryStore",

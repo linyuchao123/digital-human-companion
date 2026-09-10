@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hmac
 import io
 import json
 import os
@@ -1879,12 +1880,36 @@ async def get_video_task(task_id: str):
 # ══════════════════════════════════════════════════════════════
 
 KNOWLEDGE_CORPUS_PATH = ROOT / "data" / "knowledge" / "psychology.json"
+RAG_ADMIN_TOKEN = os.environ.get("RAG_ADMIN_TOKEN", "").strip()
 
 
 def _load_bm25_knowledge():
     from services.agent import BM25KnowledgeRetriever
 
     return BM25KnowledgeRetriever(KNOWLEDGE_CORPUS_PATH)
+
+
+def _knowledge_corpus_label() -> str:
+    """返回不暴露项目外绝对路径的语料标识。"""
+    try:
+        return str(KNOWLEDGE_CORPUS_PATH.relative_to(ROOT))
+    except ValueError:
+        return KNOWLEDGE_CORPUS_PATH.name
+
+
+def _verify_rag_admin(request: Request) -> JSONResponse | None:
+    if not RAG_ADMIN_TOKEN:
+        return JSONResponse(
+            {"success": False, "message": "服务端未启用知识库写入"},
+            status_code=503,
+        )
+    supplied = request.headers.get("X-RAG-Admin-Token", "")
+    if not supplied or not hmac.compare_digest(supplied, RAG_ADMIN_TOKEN):
+        return JSONResponse(
+            {"success": False, "message": "管理员凭证无效"},
+            status_code=403,
+        )
+    return None
 
 @app.get("/api/rag/stats")
 async def rag_stats():
@@ -1894,7 +1919,7 @@ async def rag_stats():
         return JSONResponse({
             "status": "ready",
             "count": retriever.document_count,
-            "db_path": str(KNOWLEDGE_CORPUS_PATH.relative_to(ROOT)),
+            "db_path": _knowledge_corpus_label(),
             "embedding_model": "BM25 中文二元分词（离线）",
             "mutable": False,
         })
@@ -1902,7 +1927,7 @@ async def rag_stats():
         return JSONResponse({
             "status": "invalid",
             "count": 0,
-            "db_path": str(KNOWLEDGE_CORPUS_PATH.relative_to(ROOT)),
+            "db_path": _knowledge_corpus_label(),
             "embedding_model": "BM25 中文二元分词（离线）",
             "mutable": False,
             "error": type(exc).__name__,
@@ -1941,36 +1966,87 @@ async def rag_list(limit: int = 50):
 @app.post("/api/rag/add")
 async def rag_add(request: Request):
     """新增知识条目"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"success": False, "message": "RAG未初始化"}, status_code=503)
+    denied = _verify_rag_admin(request)
+    if denied is not None:
+        return denied
     try:
+        from services.agent import KnowledgeCorpusStore
+
         body = await request.json()
-        content = body.get("content", "").strip()
+        content = body.get("content", "")
         category = body.get("category", "custom")
         source = body.get("source", "手动录入")
-        if not content:
-            return JSONResponse({"success": False, "message": "内容不能为空"}, status_code=400)
-        _rag_engine.add_documents(
-            documents=[content],
-            metadatas=[{"category": category, "source": source}]
+        source_url = body.get("source_url")
+        keywords = body.get("keywords", [])
+        if (
+            not isinstance(content, str)
+            or not isinstance(category, str)
+            or not isinstance(source, str)
+            or (source_url is not None and not isinstance(source_url, str))
+            or not isinstance(keywords, list)
+            or not all(isinstance(item, str) for item in keywords)
+        ):
+            return JSONResponse(
+                {"success": False, "message": "知识条目字段类型不正确"},
+                status_code=400,
+            )
+        store = KnowledgeCorpusStore(KNOWLEDGE_CORPUS_PATH)
+        document_id = store.add(
+            content=content,
+            category=category,
+            source=source,
+            source_url=source_url,
+            keywords=keywords,
         )
-        stats = _rag_engine.get_stats()
-        return JSONResponse({"success": True, "message": "添加成功",
-                             "total": stats.get("count", 0)})
-    except Exception as e:
-        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+        global _agent_workflow
+        _agent_workflow = None
+        total = _load_bm25_knowledge().document_count
+        return JSONResponse({
+            "success": True,
+            "message": "添加成功",
+            "id": document_id,
+            "total": total,
+        })
+    except ValueError as exc:
+        return JSONResponse(
+            {"success": False, "message": str(exc)},
+            status_code=400,
+        )
+    except OSError as exc:
+        return JSONResponse(
+            {"success": False, "message": type(exc).__name__},
+            status_code=500,
+        )
 
 
 @app.delete("/api/rag/delete/{doc_id}")
-async def rag_delete(doc_id: str):
+async def rag_delete(doc_id: str, request: Request):
     """删除知识条目"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"success": False, "message": "RAG未初始化"}, status_code=503)
+    denied = _verify_rag_admin(request)
+    if denied is not None:
+        return denied
     try:
-        _rag_engine._collection.delete(ids=[doc_id])
+        from services.agent import KnowledgeCorpusStore
+
+        deleted = KnowledgeCorpusStore(KNOWLEDGE_CORPUS_PATH).delete_custom(doc_id)
+        if not deleted:
+            return JSONResponse(
+                {"success": False, "message": "知识条目不存在"},
+                status_code=404,
+            )
+        global _agent_workflow
+        _agent_workflow = None
         return JSONResponse({"success": True, "message": "删除成功"})
-    except Exception as e:
-        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+    except PermissionError as exc:
+        return JSONResponse(
+            {"success": False, "message": str(exc)},
+            status_code=403,
+        )
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"success": False, "message": type(exc).__name__},
+            status_code=500,
+        )
 
 
 @app.post("/api/rag/search")
