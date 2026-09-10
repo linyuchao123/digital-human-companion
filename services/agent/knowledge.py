@@ -17,6 +17,12 @@ class KnowledgeRetriever(Protocol):
         ...
 
 
+class EmbeddingEncoder(Protocol):
+    def encode(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
+        """将文本编码为可比较的稠密向量。"""
+        ...
+
+
 class NullKnowledgeRetriever:
     async def retrieve(self, query: str, top_k: int = 3) -> Sequence[KnowledgeSnippet]:
         return []
@@ -162,6 +168,101 @@ class BM25KnowledgeRetriever:
                 score=min(1.0, score / maximum),
             )
             for score, document in positive[:top_k]
+        ]
+
+
+class HybridKnowledgeRetriever:
+    """融合 BM25 与稠密向量相似度，并在向量推理失败时降级。"""
+
+    def __init__(
+        self,
+        lexical: BM25KnowledgeRetriever,
+        encoder: EmbeddingEncoder,
+        *,
+        lexical_weight: float = 0.45,
+        semantic_weight: float = 0.55,
+        minimum_semantic_score: float = 0.3,
+    ) -> None:
+        if lexical_weight < 0 or semantic_weight < 0:
+            raise ValueError("混合检索权重不能为负数")
+        if lexical_weight + semantic_weight <= 0:
+            raise ValueError("混合检索至少需要一个正权重")
+        if not 0 <= minimum_semantic_score <= 1:
+            raise ValueError("语义相似度阈值必须位于 0 到 1 之间")
+        self._lexical = lexical
+        self._encoder = encoder
+        total_weight = lexical_weight + semantic_weight
+        self._lexical_weight = lexical_weight / total_weight
+        self._semantic_weight = semantic_weight / total_weight
+        self._minimum_semantic_score = minimum_semantic_score
+        self._documents = lexical.list_documents(lexical.document_count)
+        self._document_embeddings = self._encode_documents()
+
+    def _encode_documents(self) -> list[list[float]]:
+        vectors = self._encoder.encode([item.content for item in self._documents])
+        if len(vectors) != len(self._documents):
+            raise ValueError("向量模型返回的文档数量不匹配")
+        normalized = [self._normalize(vector) for vector in vectors]
+        if normalized and any(len(vector) != len(normalized[0]) for vector in normalized):
+            raise ValueError("向量模型返回的维度不一致")
+        return normalized
+
+    @staticmethod
+    def _normalize(vector: Sequence[float]) -> list[float]:
+        values = [float(value) for value in vector]
+        magnitude = math.sqrt(sum(value * value for value in values))
+        if not values or magnitude == 0:
+            raise ValueError("向量模型返回了空向量或零向量")
+        return [value / magnitude for value in values]
+
+    async def retrieve(self, query: str, top_k: int = 3) -> Sequence[KnowledgeSnippet]:
+        if top_k <= 0:
+            return []
+        lexical_results = list(
+            await self._lexical.retrieve(query, top_k=self._lexical.document_count)
+        )
+        try:
+            query_vectors = self._encoder.encode([query])
+            if len(query_vectors) != 1:
+                raise ValueError("向量模型未返回单条查询向量")
+            query_vector = self._normalize(query_vectors[0])
+            if self._document_embeddings and len(query_vector) != len(
+                self._document_embeddings[0]
+            ):
+                raise ValueError("查询向量与文档向量维度不一致")
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return lexical_results[:top_k]
+
+        lexical_scores = {
+            item.document_id: item.score
+            for item in lexical_results
+            if item.document_id is not None
+        }
+        ranked: list[tuple[float, KnowledgeSnippet]] = []
+        for document, vector in zip(
+            self._documents,
+            self._document_embeddings,
+            strict=True,
+        ):
+            semantic_score = max(0.0, sum(
+                query_value * document_value
+                for query_value, document_value in zip(query_vector, vector, strict=True)
+            ))
+            lexical_score = lexical_scores.get(document.document_id, 0.0)
+            if lexical_score <= 0 and semantic_score < self._minimum_semantic_score:
+                continue
+            combined_score = (
+                self._lexical_weight * lexical_score
+                + self._semantic_weight * semantic_score
+            )
+            ranked.append((combined_score, document))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        if not ranked:
+            return []
+        maximum = ranked[0][0]
+        return [
+            document.model_copy(update={"score": min(1.0, score / maximum)})
+            for score, document in ranked[:top_k]
         ]
 
 
