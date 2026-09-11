@@ -9,6 +9,11 @@ build/
 .eggs/
 .venv*/
 
+# 本地环境变量与密钥（示例文件允许提交）
+.env
+.env.*
+!.env.example
+
 # Conda环境
 D:/Anaconda3/
 anaconda3/

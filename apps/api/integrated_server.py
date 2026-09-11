@@ -38,10 +38,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 import numpy as np
 
 from services.tts import MacOSSayProvider, Qwen3TtsProvider, TtsProviderError
+
+load_dotenv(ROOT / ".env", override=False)
 
 # ── 线程池（CPU密集型推理用）──────────────────────────────────
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -515,8 +518,10 @@ def _run_asr(audio_path: str) -> str:
         print(f"[ASR] 识别失败: {e}")
         return ""
 
-# 4. Qwen API
-QWEN_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+# 4. 大模型与语音 API。专用密钥为空时回退到共用 DashScope 密钥。
+DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+QWEN_API_KEY = os.environ.get("LLM_API_KEY", "").strip() or DASHSCOPE_API_KEY
+TTS_API_KEY = os.environ.get("TTS_API_KEY", "").strip() or DASHSCOPE_API_KEY
 TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "auto").strip().lower()
 TTS_DEFAULT_VOICE = os.environ.get("TTS_DEFAULT_VOICE", "").strip()
 TTS_QWEN3_MODEL = os.environ.get("TTS_QWEN3_MODEL", "qwen3-tts-instruct-flash").strip()
@@ -711,8 +716,8 @@ async def api_status():
             "asr_funasr": HAS_ASR,
             "driver_model": HAS_DRIVER and checkpoint_status.ready,
             "qwen_api": bool(QWEN_API_KEY),
-            "tts_cosyvoice": HAS_TTS and bool(QWEN_API_KEY),
-            "tts_qwen3": bool(QWEN_API_KEY),
+            "tts_cosyvoice": HAS_TTS and bool(TTS_API_KEY),
+            "tts_qwen3": bool(TTS_API_KEY),
             "agent_provider": "cloud_with_fallback" if QWEN_API_KEY else "offline",
         },
         "tts": _tts_status_payload(),
@@ -1122,7 +1127,7 @@ async def generate_session_title(session_id: str, request: Request):
 try:
     import dashscope
     from dashscope.audio.tts_v2 import SpeechSynthesizer as _TtsSynthesizer
-    dashscope.api_key = QWEN_API_KEY
+    dashscope.api_key = TTS_API_KEY
     HAS_TTS = True
     print(f"[IntegratedServer] CosyVoice TTS 已加载")
 except ImportError:
@@ -1154,17 +1159,17 @@ def _get_system_tts_provider() -> MacOSSayProvider | None:
 
 
 def _cloud_tts_available() -> bool:
-    return HAS_TTS and bool(QWEN_API_KEY)
+    return HAS_TTS and bool(TTS_API_KEY)
 
 
 def _get_qwen3_tts_provider() -> Qwen3TtsProvider | None:
     global _qwen3_tts_config, _qwen3_tts_provider
-    if not QWEN_API_KEY:
+    if not TTS_API_KEY:
         return None
-    config = (QWEN_API_KEY, TTS_QWEN3_MODEL)
+    config = (TTS_API_KEY, TTS_QWEN3_MODEL)
     if _qwen3_tts_provider is None or _qwen3_tts_config != config:
         _qwen3_tts_provider = Qwen3TtsProvider(
-            api_key=QWEN_API_KEY,
+            api_key=TTS_API_KEY,
             model=TTS_QWEN3_MODEL,
         )
         _qwen3_tts_config = config
@@ -1227,13 +1232,13 @@ def _tts_status_payload() -> Dict[str, Any]:
             "voice_count": len(voices),
             "message": f"服务端语音可用：{len(voices)} 个音色",
         }
-    if TTS_PROVIDER == "qwen3_tts" and not QWEN_API_KEY:
+    if TTS_PROVIDER == "qwen3_tts" and not TTS_API_KEY:
         reason = "credential_missing"
         message = "未配置 DASHSCOPE_API_KEY，使用浏览器语音"
     elif TTS_PROVIDER == "cosyvoice" and not HAS_TTS:
         reason = "dependency_missing"
         message = "未安装 dashscope，使用浏览器语音"
-    elif TTS_PROVIDER == "cosyvoice" and not QWEN_API_KEY:
+    elif TTS_PROVIDER == "cosyvoice" and not TTS_API_KEY:
         reason = "credential_missing"
         message = "未配置 DASHSCOPE_API_KEY，使用浏览器语音"
     elif TTS_PROVIDER not in {"auto", "qwen3_tts", "cosyvoice", "macos_say", "browser"}:

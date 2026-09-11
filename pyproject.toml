@@ -16,6 +16,7 @@ dependencies = [
   "numpy>=1.26,<3.0",
   "pydantic>=2.9,<3.0",
   "pydantic-settings>=2.6,<3.0",
+  "python-dotenv>=1.0,<2.0",
   "python-multipart>=0.0.18,<1.0",
   "uvicorn[standard]>=0.32,<1.0",
   "websockets>=13,<18",
