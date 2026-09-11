@@ -13,6 +13,12 @@ class _FakeSystemProvider:
         return (
             TtsVoice(id="Tingting", name="Tingting", locale="zh_CN", provider="macos_say"),
             TtsVoice(id="Meijia", name="Meijia", locale="zh_TW", provider="macos_say"),
+            TtsVoice(
+                id="Sandy (中文（中国大陆）)",
+                name="Sandy (中文（中国大陆）)",
+                locale="zh_CN",
+                provider="macos_say",
+            ),
         )
 
     def synthesize(self, text, *, voice, rate=185):
@@ -90,7 +96,7 @@ class TtsApiTests(unittest.TestCase):
         payload = response.json()
         self.assertTrue(payload["available"])
         self.assertEqual(payload["default_voice"], "macos_say:Tingting")
-        self.assertEqual(len(payload["voices"]), 2)
+        self.assertEqual(len(payload["voices"]), 3)
         self.assertEqual(response.headers["cache-control"], "no-store")
 
     def test_system_tts_returns_wav_and_provider_headers(self):
@@ -109,6 +115,20 @@ class TtsApiTests(unittest.TestCase):
         self.assertEqual(response.headers["content-type"], "audio/wav")
         self.assertEqual(response.headers["x-tts-provider"], "macos_say")
         self.assertEqual(response.headers["x-tts-voice"], "Meijia")
+
+    def test_system_tts_encodes_chinese_voice_name_in_response_header(self):
+        with (
+            patch.object(integrated_server, "TTS_PROVIDER", "macos_say"),
+            patch.object(integrated_server, "_system_tts_checked", True),
+            patch.object(integrated_server, "_system_tts_provider", _FakeSystemProvider()),
+        ):
+            response = self.client.post(
+                "/api/tts",
+                json={"text": "你好", "voice": "macos_say:Sandy (中文（中国大陆）)"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("%E4%B8%AD%E6%96%87", response.headers["x-tts-voice"])
 
     def test_tts_rejects_voice_outside_server_catalog(self):
         with (
