@@ -78,19 +78,34 @@
 浏览器存储，内置权威条目也不能通过接口删除。公网部署时还应在反向代理层限制 `/rag` 和
 知识库写接口的访问来源，真实令牌不得写入 `.env.example` 或提交到 Git。
 
-### TTS 语音降级策略
+### 多提供者 TTS 与语音降级策略
 
-前端会先读取 `/api/status` 的 `tts` 字段。未安装 `dashscope` 或未配置
-`DASHSCOPE_API_KEY` 时，直接使用浏览器中文语音，不会把正常降级显示成网络错误。启用
-CosyVoice 时安装 cloud 可选依赖并通过服务端环境变量提供密钥：
+前端通过 `/api/tts/voices` 读取服务端音色目录，可在原界面顶部选择音色并记住选择。
+默认 `TTS_PROVIDER=auto`，按以下方式提供语音：
+
+1. 配置 DashScope 时提供 CosyVoice 云端音色；
+2. macOS 开发机同时提供系统安装的中文音色，并由后端生成 24kHz WAV；
+3. 没有可用服务端提供者或合成失败时，最终降级为浏览器中文语音。
+
+macOS 本地开发无需 API Key 即可使用服务端系统语音。部署到 Linux 服务器时没有 `say`
+命令，应配置 CosyVoice，并安装 cloud 可选依赖：
 
 ```bash
 .venv-model/bin/pip install -e '.[cloud]'
 export DASHSCOPE_API_KEY='在部署环境的密钥管理中注入'
 ```
 
+可通过环境变量选择提供者、默认音色及本机语速：
+
+```bash
+export TTS_PROVIDER=auto               # auto / cosyvoice / macos_say / browser
+export TTS_DEFAULT_VOICE=Tingting      # 或 cosyvoice:longxiaochun
+export TTS_RATE=185                    # macOS 系统音色，范围 120-260
+```
+
 TTS 文本通过 `POST /api/tts` 的 JSON 请求体传输，不进入 URL、浏览器历史或默认访问日志；
-接口限制单次 500 字，并对音频及错误响应设置 `Cache-Control: no-store`。
+接口限制单次 500 字。音色必须来自服务端白名单目录，音频及错误响应均设置
+`Cache-Control: no-store`。公网部署时密钥只能由服务端密钥管理注入，不能放进前端或提交到仓库。
 
 ---
 

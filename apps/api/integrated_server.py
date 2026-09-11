@@ -40,6 +40,8 @@ from pydantic import BaseModel, Field
 
 import numpy as np
 
+from services.tts import MacOSSayProvider, TtsProviderError
+
 # ── 线程池（CPU密集型推理用）──────────────────────────────────
 _executor = ThreadPoolExecutor(max_workers=4)
 
@@ -514,6 +516,12 @@ def _run_asr(audio_path: str) -> str:
 
 # 4. Qwen API
 QWEN_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "auto").strip().lower()
+TTS_DEFAULT_VOICE = os.environ.get("TTS_DEFAULT_VOICE", "").strip()
+try:
+    TTS_RATE = min(max(int(os.environ.get("TTS_RATE", "185")), 120), 260)
+except ValueError:
+    TTS_RATE = 185
 QWEN_BASE_URL = os.environ.get(
     "LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 ).rstrip("/")
@@ -1107,7 +1115,7 @@ async def generate_session_title(session_id: str, request: Request):
 
 
 
-# CosyVoice TTS 接口 —— 使用 dashscope SDK
+# 多提供者 TTS：CosyVoice 云端 + macOS 服务端系统音色 + 浏览器最终降级
 try:
     import dashscope
     from dashscope.audio.tts_v2 import SpeechSynthesizer as _TtsSynthesizer
@@ -1116,46 +1124,127 @@ try:
     print(f"[IntegratedServer] CosyVoice TTS 已加载")
 except ImportError:
     HAS_TTS = False
-    print("[IntegratedServer] 警告: dashscope 未安装，TTS不可用")
+    print("[IntegratedServer] 提示: dashscope 未安装，将尝试本地系统语音")
+
+
+_COSYVOICE_VOICES = (
+    {"id": "cosyvoice:longxiaochun", "name": "龙小淳", "locale": "zh-CN", "provider": "cosyvoice"},
+)
+_system_tts_provider: MacOSSayProvider | None = None
+_system_tts_checked = False
+
+
+def _get_system_tts_provider() -> MacOSSayProvider | None:
+    global _system_tts_checked, _system_tts_provider
+    if not _system_tts_checked:
+        _system_tts_checked = True
+        try:
+            _system_tts_provider = MacOSSayProvider()
+            voice_count = len(_system_tts_provider.list_voices())
+            print(f"[IntegratedServer] macOS 系统 TTS 已加载，共 {voice_count} 个中文音色")
+        except TtsProviderError as exc:
+            _system_tts_provider = None
+            print(f"[IntegratedServer] 系统 TTS 不可用: {exc}")
+    return _system_tts_provider
+
+
+def _cloud_tts_available() -> bool:
+    return HAS_TTS and bool(QWEN_API_KEY)
+
+
+def _tts_voice_catalog() -> List[Dict[str, str]]:
+    voices: List[Dict[str, str]] = []
+    if TTS_PROVIDER in {"auto", "cosyvoice"} and _cloud_tts_available():
+        voices.extend(dict(item) for item in _COSYVOICE_VOICES)
+    if TTS_PROVIDER in {"auto", "macos_say"}:
+        provider = _get_system_tts_provider()
+        if provider is not None:
+            voices.extend({
+                "id": f"macos_say:{item.id}",
+                "name": item.name,
+                "locale": item.locale.replace("_", "-"),
+                "provider": item.provider,
+            } for item in provider.list_voices())
+    return voices
+
+
+def _default_tts_voice(voices: List[Dict[str, str]]) -> str | None:
+    ids = {item["id"] for item in voices}
+    if TTS_DEFAULT_VOICE:
+        candidates = (TTS_DEFAULT_VOICE, f"macos_say:{TTS_DEFAULT_VOICE}")
+        for candidate in candidates:
+            if candidate in ids:
+                return candidate
+    for preferred in ("cosyvoice:longxiaochun", "macos_say:Tingting"):
+        if preferred in ids:
+            return preferred
+    return voices[0]["id"] if voices else None
 
 
 def _tts_status_payload() -> Dict[str, Any]:
-    if not HAS_TTS:
+    voices = _tts_voice_catalog()
+    default_voice = _default_tts_voice(voices)
+    if voices:
+        providers = sorted({item["provider"] for item in voices})
         return {
-            "available": False,
-            "provider": "browser_fallback",
-            "reason": "dependency_missing",
-            "message": "服务端未安装 dashscope，使用浏览器语音",
+            "available": True,
+            "provider": " + ".join(providers),
+            "reason": None,
+            "default_voice": default_voice,
+            "voice_count": len(voices),
+            "message": f"服务端语音可用：{len(voices)} 个音色",
         }
-    if not QWEN_API_KEY:
-        return {
-            "available": False,
-            "provider": "browser_fallback",
-            "reason": "credential_missing",
-            "message": "服务端未配置 DASHSCOPE_API_KEY，使用浏览器语音",
-        }
+    if TTS_PROVIDER == "cosyvoice" and not HAS_TTS:
+        reason = "dependency_missing"
+        message = "未安装 dashscope，使用浏览器语音"
+    elif TTS_PROVIDER == "cosyvoice" and not QWEN_API_KEY:
+        reason = "credential_missing"
+        message = "未配置 DASHSCOPE_API_KEY，使用浏览器语音"
+    elif TTS_PROVIDER not in {"auto", "cosyvoice", "macos_say", "browser"}:
+        reason = "invalid_provider"
+        message = "TTS_PROVIDER 配置无效，使用浏览器语音"
+    else:
+        reason = "provider_unavailable"
+        message = "未发现可用的服务端语音，使用浏览器语音"
     return {
-        "available": True,
-        "provider": "cosyvoice-v1",
-        "reason": None,
-        "message": "CosyVoice 云端语音可用",
+        "available": False,
+        "provider": "browser_fallback",
+        "reason": reason,
+        "default_voice": None,
+        "voice_count": 0,
+        "message": message,
     }
 
 class TtsRequest(BaseModel):
     text: str = Field(min_length=1, max_length=500)
+    voice: str | None = Field(default=None, max_length=100)
+    rate: int = Field(default=TTS_RATE, ge=120, le=260)
+
+
+@app.get("/api/tts/voices")
+async def api_tts_voices():
+    voices = _tts_voice_catalog()
+    return JSONResponse({
+        "available": bool(voices),
+        "default_voice": _default_tts_voice(voices),
+        "voices": voices,
+    }, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/tts")
 async def api_tts(payload: TtsRequest):
-    """调用阿里云 CosyVoice TTS 生成音频，返回 audio/mpeg"""
+    """使用选定的安全白名单音色生成服务端音频。"""
     text = payload.text.strip()
     if not text:
         return JSONResponse(
             {"error": "empty_text", "message": "语音文本不能为空"},
             status_code=400,
         )
-    status = _tts_status_payload()
-    if not status["available"]:
+    voices = _tts_voice_catalog()
+    voice_id = payload.voice or _default_tts_voice(voices)
+    voice = next((item for item in voices if item["id"] == voice_id), None)
+    if not voices:
+        status = _tts_status_payload()
         return JSONResponse(
             {
                 "error": "tts_unavailable",
@@ -1166,30 +1255,54 @@ async def api_tts(payload: TtsRequest):
             status_code=503,
             headers={"Cache-Control": "no-store"},
         )
+    if voice is None:
+        return JSONResponse(
+            {"error": "invalid_voice", "message": "请求的音色不在可用目录中"},
+            status_code=400,
+            headers={"Cache-Control": "no-store"},
+        )
     try:
         loop = asyncio.get_event_loop()
-        # SDK 是同步调用，放到线程池运行避免阻塞
-        def _synthesize():
-            synth = _TtsSynthesizer(model="cosyvoice-v1", voice="longxiaochun")
-            return synth.call(text)
-        audio_bytes = await loop.run_in_executor(_executor, _synthesize)
+        provider_name = voice["provider"]
+        raw_voice = voice["id"].split(":", 1)[1]
+        if provider_name == "macos_say":
+            provider = _get_system_tts_provider()
+            if provider is None:
+                raise TtsProviderError("系统语音提供者已不可用")
+            result = await loop.run_in_executor(
+                _executor,
+                lambda: provider.synthesize(text, voice=raw_voice, rate=payload.rate),
+            )
+            audio_bytes = result.content
+            media_type = result.media_type
+        else:
+            def _synthesize_cloud():
+                synth = _TtsSynthesizer(model="cosyvoice-v1", voice=raw_voice)
+                return synth.call(text)
+            audio_bytes = await loop.run_in_executor(_executor, _synthesize_cloud)
+            media_type = "audio/mpeg"
         if not audio_bytes or len(audio_bytes) == 0:
-            print("[TTS] CosyVoice 返回空音频")
+            print(f"[TTS] {provider_name} 返回空音频")
             return JSONResponse({"error": "empty audio"}, status_code=502)
-        print(f"[TTS] CosyVoice 成功，{len(audio_bytes)} 字节")
+        print(f"[TTS] {provider_name}/{raw_voice} 成功，{len(audio_bytes)} 字节")
         return StreamingResponse(
             io.BytesIO(audio_bytes),
-            media_type="audio/mpeg",
+            media_type=media_type,
             headers={
                 "Content-Length": str(len(audio_bytes)),
                 "Cache-Control": "no-store",
+                "X-TTS-Provider": provider_name,
+                "X-TTS-Voice": raw_voice,
             },
         )
     except Exception as e:
-        import traceback
         print(f"[TTS] 异常: {e}")
         traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse(
+            {"error": "tts_failed", "message": "服务端语音合成失败"},
+            status_code=502,
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 # ══════════════════════════════════════════════════════════════

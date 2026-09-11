@@ -57,6 +57,10 @@ html,body{height:100%;overflow:hidden;
   font-size:11px;font-family:inherit;transition:all .2s;display:inline-flex;align-items:center;gap:4px;box-shadow:var(--shadow-sm)}
 .tb-chip:hover{background:rgba(255,255,255,.7);color:var(--text)}
 .tb-chip.on{background:rgba(52,200,122,.15);border-color:rgba(52,200,122,.5);color:#1a9955;font-weight:600}
+.tts-voice-select{height:28px;max-width:150px;padding:0 24px 0 10px;border-radius:14px;
+  border:1px solid rgba(255,255,255,.65);background:rgba(255,255,255,.52);color:var(--text2);
+  font-size:11px;font-family:inherit;outline:none;cursor:pointer;box-shadow:var(--shadow-sm)}
+.tts-voice-select:disabled{opacity:.55;cursor:not-allowed}
 
 /* ══ Live2D 全屏场景 ══ */
 #scene{position:fixed;inset:0;z-index:10}
@@ -445,6 +449,9 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <button id="disconnect-btn" onclick="disconnectAll()">🔌 断开连接</button>
   <div class="spacer"></div>
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
+  <select class="tts-voice-select" id="tts-voice-select" title="选择服务端语音音色" disabled>
+    <option value="">正在读取音色…</option>
+  </select>
 <button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()" title="管理长期记忆授权与已保存内容">🧠 长期记忆</button>
 <button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()" title="显示智能体节点、风控与形象指令">🧭 开发者模式</button>
 <button class="tb-chip" onclick="window.open('/vision','_blank')" title="打开视觉人脸检测监控页面">👁 人脸检测</button>
@@ -1390,6 +1397,7 @@ let _freqData=null;
 let _ttsAbort=null;
 let _useBrowserTTS=false;   // 是否当前使用浏览器TTS降级
 let _ttsCapabilityPromise=null;
+let _ttsVoicesPromise=null;
 
 // 浏览器TTS口型时序状态
 let _lipText='', _lipCharIdx=0, _lipCharTimer=0, _lipOpen=0, _lipOpenDur=0;
@@ -1436,12 +1444,49 @@ function _stopAudio(){
 async function speakText(text){
   if(!ttsEnabled||!text) return;
   _stopAudio();
-  const useCosyVoice=await _canUseServerTTS();
-  const ok=useCosyVoice?await _speakViaCosyVoice(text):false;
+  const useServerTTS=await _canUseServerTTS();
+  const ok=useServerTTS?await _speakViaServerTTS(text):false;
   if(!ok){
     console.info('[TTS] 使用浏览器中文语音');
     _speakViaBrowser(text);
   }
+}
+
+async function _loadTtsVoices(){
+  if(!_ttsVoicesPromise){
+    _ttsVoicesPromise=(async()=>{
+      const select=document.getElementById('tts-voice-select');
+      try{
+        const resp=await fetch('/api/tts/voices',{cache:'no-store'});
+        if(!resp.ok) throw new Error(`voices ${resp.status}`);
+        const payload=await resp.json();
+        const voices=Array.isArray(payload.voices)?payload.voices:[];
+        select.textContent='';
+        if(!voices.length){
+          select.appendChild(new Option('浏览器默认音色',''));
+          select.disabled=true;
+          return payload;
+        }
+        for(const voice of voices){
+          const source=voice.provider==='cosyvoice'?'云端':'本机';
+          select.appendChild(new Option(`${source} · ${voice.name}`,voice.id));
+        }
+        const saved=localStorage.getItem('tts_voice')||'';
+        const selected=voices.some(item=>item.id===saved)?saved:payload.default_voice;
+        if(selected) select.value=selected;
+        select.disabled=false;
+        select.onchange=()=>localStorage.setItem('tts_voice',select.value);
+        return payload;
+      }catch(error){
+        console.warn('[TTS] 音色目录读取失败',error);
+        select.textContent='';
+        select.appendChild(new Option('浏览器默认音色',''));
+        select.disabled=true;
+        return {available:false,voices:[]};
+      }
+    })();
+  }
+  return _ttsVoicesPromise;
 }
 
 async function _canUseServerTTS(){
@@ -1470,14 +1515,17 @@ async function _canUseServerTTS(){
   return _ttsCapabilityPromise;
 }
 
-async function _speakViaCosyVoice(text){
+async function _speakViaServerTTS(text){
   try{
     _ttsAbort=new AbortController();
-    console.log('[TTS] 请求CosyVoice...');
+    const catalog=await _loadTtsVoices();
+    const select=document.getElementById('tts-voice-select');
+    const voice=select&&!select.disabled?select.value:catalog.default_voice;
+    console.log('[TTS] 请求服务端语音...',voice||'默认音色');
     const resp=await fetch('/api/tts',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text}),
+      body:JSON.stringify({text,voice:voice||null}),
       signal:_ttsAbort.signal
     });
     if(!resp.ok){
@@ -1505,11 +1553,11 @@ async function _speakViaCosyVoice(text){
     document.getElementById('speaking-indicator').classList.add('show');
     document.getElementById('thinking-bar').classList.remove('show');
     _audioSrc.start(0);
-    console.log('[TTS] CosyVoice播放中，时长',audioBuf.duration.toFixed(1),'s');
+    console.log('[TTS] 服务端语音播放中，时长',audioBuf.duration.toFixed(1),'s');
     return true;
   }catch(e){
     if(e.name==='AbortError') return true;
-    console.error('[CosyVoice异常]',e);
+    console.error('[服务端TTS异常]',e);
     return false;
   }
 }
@@ -1626,6 +1674,7 @@ window.addEventListener('resize',()=>{
 /* ═══════════ 启动 ═══════════ */
 window.addEventListener('load',()=>{
   window.speechSynthesis&&window.speechSynthesis.getVoices();
+  _loadTtsVoices();
   initAuth();
 });
 
