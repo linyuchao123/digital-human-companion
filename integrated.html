@@ -1389,6 +1389,7 @@ let _mouthSmooth=0;
 let _freqData=null;
 let _ttsAbort=null;
 let _useBrowserTTS=false;   // 是否当前使用浏览器TTS降级
+let _ttsCapabilityPromise=null;
 
 // 浏览器TTS口型时序状态
 let _lipText='', _lipCharIdx=0, _lipCharTimer=0, _lipOpen=0, _lipOpenDur=0;
@@ -1435,11 +1436,38 @@ function _stopAudio(){
 async function speakText(text){
   if(!ttsEnabled||!text) return;
   _stopAudio();
-  const ok=await _speakViaCosyVoice(text);
+  const useCosyVoice=await _canUseServerTTS();
+  const ok=useCosyVoice?await _speakViaCosyVoice(text):false;
   if(!ok){
-    console.warn('[TTS] CosyVoice失败，降级到浏览器TTS');
+    console.info('[TTS] 使用浏览器中文语音');
     _speakViaBrowser(text);
   }
+}
+
+async function _canUseServerTTS(){
+  if(!_ttsCapabilityPromise){
+    _ttsCapabilityPromise=(async()=>{
+      try{
+        const resp=await fetch('/api/status',{cache:'no-store'});
+        if(!resp.ok) throw new Error(`status ${resp.status}`);
+        const payload=await resp.json();
+        const status=payload.tts||{};
+        const available=status.available===true;
+        const button=document.getElementById('tts-btn');
+        if(button) button.title=status.message||(
+          available?'CosyVoice云端语音':'使用浏览器中文语音'
+        );
+        console.info('[TTS]',status.message||'能力状态未知');
+        return available;
+      }catch(error){
+        console.warn('[TTS] 能力状态获取失败，使用浏览器语音',error);
+        const button=document.getElementById('tts-btn');
+        if(button) button.title='服务端状态不可用，使用浏览器中文语音';
+        return false;
+      }
+    })();
+  }
+  return _ttsCapabilityPromise;
 }
 
 async function _speakViaCosyVoice(text){

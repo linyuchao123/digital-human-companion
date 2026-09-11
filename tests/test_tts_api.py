@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -50,6 +51,16 @@ class TtsApiTests(unittest.TestCase):
         response = self.client.post("/api/tts", json={"text": "语" * 501})
 
         self.assertEqual(response.status_code, 422)
+
+    def test_frontend_checks_capability_and_uses_private_post_request(self):
+        html = (
+            Path(__file__).resolve().parents[1] / "integrated.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("await _canUseServerTTS()", html)
+        self.assertIn("fetch('/api/status',{cache:'no-store'})", html)
+        self.assertIn("method:'POST'", html)
+        self.assertNotIn("/api/tts?text=", html)
 
 
 if __name__ == "__main__":
