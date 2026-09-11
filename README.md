@@ -83,9 +83,15 @@
 前端通过 `/api/tts/voices` 读取服务端音色目录，可在原界面顶部选择音色并记住选择。
 默认 `TTS_PROVIDER=auto`，按以下方式提供语音：
 
-1. 配置 DashScope 时提供 CosyVoice 云端音色；
-2. macOS 开发机同时提供系统安装的中文音色，并由后端生成 24kHz WAV；
-3. 没有可用服务端提供者或合成失败时，最终降级为浏览器中文语音。
+1. 配置 DashScope 时优先提供 Qwen3 角色音色：`Chelsie`（二次元少女）、
+   `Momo`（活泼俏皮）、`Cherry`（阳光自然）；
+2. 如已安装对应 SDK，也可继续使用 CosyVoice；
+3. macOS 开发机同时提供系统安装的中文音色，并由后端生成 24kHz WAV；
+4. 没有可用服务端提供者或合成失败时，最终降级为浏览器中文语音。
+
+Qwen3 默认使用 `qwen3-tts-instruct-flash`，服务端会根据角色音色附加表达指令，
+让 Chelsie 更可爱灵动、Momo 更活泼元气、Cherry 更温柔自然。模型与音色兼容范围见
+[阿里云 Qwen-TTS 官方音色列表](https://help.aliyun.com/en/model-studio/qwen-tts-voice-list)。
 
 macOS 本地开发无需 API Key 即可使用服务端系统语音。部署到 Linux 服务器时没有 `say`
 命令，应配置 CosyVoice，并安装 cloud 可选依赖：
@@ -98,8 +104,9 @@ export DASHSCOPE_API_KEY='在部署环境的密钥管理中注入'
 可通过环境变量选择提供者、默认音色及本机语速：
 
 ```bash
-export TTS_PROVIDER=auto               # auto / cosyvoice / macos_say / browser
-export TTS_DEFAULT_VOICE=Tingting      # 或 cosyvoice:longxiaochun
+export TTS_PROVIDER=auto               # auto / qwen3_tts / cosyvoice / macos_say / browser
+export TTS_DEFAULT_VOICE=qwen3_tts:Chelsie
+export TTS_QWEN3_MODEL=qwen3-tts-instruct-flash
 export TTS_RATE=185                    # macOS 系统音色，范围 120-260
 ```
 

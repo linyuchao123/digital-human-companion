@@ -1468,7 +1468,7 @@ async function _loadTtsVoices(){
           return payload;
         }
         for(const voice of voices){
-          const source=voice.provider==='cosyvoice'?'云端':'本机';
+          const source=voice.provider==='macos_say'?'本机':'云端';
           select.appendChild(new Option(`${source} · ${voice.name}`,voice.id));
         }
         const saved=localStorage.getItem('tts_voice')||'';

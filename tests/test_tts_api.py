@@ -24,6 +24,21 @@ class _FakeSystemProvider:
         )
 
 
+class _FakeQwen3Provider:
+    def list_voices(self):
+        return (
+            TtsVoice(id="Chelsie", name="Chelsie · 二次元少女", locale="zh-CN", provider="qwen3_tts"),
+            TtsVoice(id="Momo", name="Momo · 活泼俏皮", locale="zh-CN", provider="qwen3_tts"),
+        )
+
+    def synthesize(self, text, *, voice, rate=185):
+        return SynthesizedAudio(
+            content=b"RIFF" + b"\x00" * 64,
+            media_type="audio/wav",
+            provider="qwen3_tts",
+            voice=voice,
+        )
+
 class TtsApiTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(integrated_server.app)
@@ -108,6 +123,28 @@ class TtsApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "invalid_voice")
+
+    def test_qwen3_character_voice_is_default_and_can_synthesize(self):
+        with (
+            patch.object(integrated_server, "TTS_PROVIDER", "qwen3_tts"),
+            patch.object(
+                integrated_server,
+                "_get_qwen3_tts_provider",
+                return_value=_FakeQwen3Provider(),
+            ),
+        ):
+            catalog_response = self.client.get("/api/tts/voices")
+            audio_response = self.client.post(
+                "/api/tts",
+                json={"text": "你好呀", "voice": "qwen3_tts:Chelsie"},
+            )
+
+        catalog = catalog_response.json()
+        self.assertEqual(catalog["default_voice"], "qwen3_tts:Chelsie")
+        self.assertEqual(catalog["voices"][1]["name"], "Momo · 活泼俏皮")
+        self.assertEqual(audio_response.status_code, 200)
+        self.assertEqual(audio_response.headers["x-tts-provider"], "qwen3_tts")
+        self.assertEqual(audio_response.headers["x-tts-voice"], "Chelsie")
 
     def test_tts_rejects_query_string_get_to_keep_text_out_of_access_logs(self):
         response = self.client.get("/api/tts", params={"text": "私密对话"})
