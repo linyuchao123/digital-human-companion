@@ -67,12 +67,26 @@ class TtsApiTests(unittest.TestCase):
     def test_status_reports_missing_credential_separately(self):
         with (
             patch.object(integrated_server, "HAS_TTS", True),
-            patch.object(integrated_server, "QWEN_API_KEY", ""),
+            patch.object(integrated_server, "TTS_API_KEY", ""),
             patch.object(integrated_server, "TTS_PROVIDER", "cosyvoice"),
         ):
             response = self.client.get("/api/status")
 
         self.assertEqual(response.json()["tts"]["reason"], "credential_missing")
+
+    def test_llm_and_tts_keys_can_be_configured_independently(self):
+        with (
+            patch.object(integrated_server, "QWEN_API_KEY", ""),
+            patch.object(integrated_server, "TTS_API_KEY", "tts-secret"),
+            patch.object(integrated_server, "TTS_PROVIDER", "qwen3_tts"),
+        ):
+            response = self.client.get("/api/status")
+
+        payload = response.json()
+        self.assertFalse(payload["modules"]["qwen_api"])
+        self.assertTrue(payload["modules"]["tts_qwen3"])
+        self.assertEqual(payload["tts"]["default_voice"], "qwen3_tts:Chelsie")
+        self.assertNotIn("tts-secret", str(payload))
 
     def test_unavailable_tts_returns_service_unavailable_with_fallback(self):
         with patch.object(integrated_server, "TTS_PROVIDER", "browser"):
