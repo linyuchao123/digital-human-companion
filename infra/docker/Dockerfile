@@ -24,7 +24,7 @@
 #   评测页：  http://localhost:8801/eval
 # =============================================
 
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 LABEL maintainer="数智心伴团队"
 LABEL description="多模态大模型驱动的AI数字人情感陪护系统"
@@ -46,7 +46,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 # 安装系统依赖（MediaPipe、OpenCV、ffmpeg 需要）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
