@@ -28,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+from urllib.parse import quote
 
 ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT))
@@ -1337,7 +1338,7 @@ async def api_tts(payload: TtsRequest):
                 "Content-Length": str(len(audio_bytes)),
                 "Cache-Control": "no-store",
                 "X-TTS-Provider": provider_name,
-                "X-TTS-Voice": raw_voice,
+                "X-TTS-Voice": quote(raw_voice, safe=" ()"),
             },
         )
     except Exception as e:
