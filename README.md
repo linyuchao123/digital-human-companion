@@ -98,17 +98,24 @@ macOS 本地开发无需 API Key 即可使用服务端系统语音。部署到 L
 
 ```bash
 .venv-model/bin/pip install -e '.[cloud]'
-export DASHSCOPE_API_KEY='在部署环境的密钥管理中注入'
 ```
 
-可通过环境变量选择提供者、默认音色及本机语速：
+本地开发时复制 `.env.example` 为 `.env`，后端启动时会自动加载。LLM 与 TTS 使用同一个
+DashScope Key 时只填写 `DASHSCOPE_API_KEY`；需要相互隔离时，使用 `LLM_API_KEY` 和
+`TTS_API_KEY` 分别覆盖。`.env` 已被 Git 忽略，不能删除对应忽略规则。
 
-```bash
-export TTS_PROVIDER=auto               # auto / qwen3_tts / cosyvoice / macos_say / browser
-export TTS_DEFAULT_VOICE=qwen3_tts:Chelsie
-export TTS_QWEN3_MODEL=qwen3-tts-instruct-flash
-export TTS_RATE=185                    # macOS 系统音色，范围 120-260
+```env
+DASHSCOPE_API_KEY=                     # 共用密钥
+LLM_API_KEY=                           # 可选：大模型专用密钥
+TTS_API_KEY=                           # 可选：语音专用密钥
+TTS_PROVIDER=auto
+TTS_DEFAULT_VOICE=qwen3_tts:Chelsie
+TTS_QWEN3_MODEL=qwen3-tts-instruct-flash
+TTS_RATE=185
 ```
+
+生产服务器不应依赖磁盘 `.env`，应由部署平台的 Secret/环境变量功能注入；系统环境变量的
+优先级高于 `.env`，因此不会被本地文件覆盖。
 
 TTS 文本通过 `POST /api/tts` 的 JSON 请求体传输，不进入 URL、浏览器历史或默认访问日志；
 接口限制单次 500 字。音色必须来自服务端白名单目录，音频及错误响应均设置
