@@ -1446,7 +1446,12 @@ async function _speakViaCosyVoice(text){
   try{
     _ttsAbort=new AbortController();
     console.log('[TTS] 请求CosyVoice...');
-    const resp=await fetch(`/api/tts?text=${encodeURIComponent(text)}`,{signal:_ttsAbort.signal});
+    const resp=await fetch('/api/tts',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text}),
+      signal:_ttsAbort.signal
+    });
     if(!resp.ok){
       console.warn('[TTS] /api/tts返回',resp.status);
       return false;

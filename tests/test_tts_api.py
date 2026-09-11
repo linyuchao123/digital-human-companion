@@ -33,12 +33,23 @@ class TtsApiTests(unittest.TestCase):
 
     def test_unavailable_tts_returns_service_unavailable_with_fallback(self):
         with patch.object(integrated_server, "HAS_TTS", False):
-            response = self.client.get("/api/tts", params={"text": "你好"})
+            response = self.client.post("/api/tts", json={"text": "你好"})
 
         self.assertEqual(response.status_code, 503)
         payload = response.json()
         self.assertEqual(payload["error"], "tts_unavailable")
         self.assertEqual(payload["fallback"], "browser_speech_synthesis")
+        self.assertEqual(response.headers["cache-control"], "no-store")
+
+    def test_tts_rejects_query_string_get_to_keep_text_out_of_access_logs(self):
+        response = self.client.get("/api/tts", params={"text": "私密对话"})
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_tts_rejects_text_over_limit_before_provider_call(self):
+        response = self.client.post("/api/tts", json={"text": "语" * 501})
+
+        self.assertEqual(response.status_code, 422)
 
 
 if __name__ == "__main__":

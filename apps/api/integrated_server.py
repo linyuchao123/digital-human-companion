@@ -1141,9 +1141,19 @@ def _tts_status_payload() -> Dict[str, Any]:
         "message": "CosyVoice 云端语音可用",
     }
 
-@app.get("/api/tts")
-async def api_tts(text: str):
+class TtsRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+@app.post("/api/tts")
+async def api_tts(payload: TtsRequest):
     """调用阿里云 CosyVoice TTS 生成音频，返回 audio/mpeg"""
+    text = payload.text.strip()
+    if not text:
+        return JSONResponse(
+            {"error": "empty_text", "message": "语音文本不能为空"},
+            status_code=400,
+        )
     status = _tts_status_payload()
     if not status["available"]:
         return JSONResponse(
@@ -1154,6 +1164,7 @@ async def api_tts(text: str):
                 "fallback": "browser_speech_synthesis",
             },
             status_code=503,
+            headers={"Cache-Control": "no-store"},
         )
     try:
         loop = asyncio.get_event_loop()
@@ -1169,7 +1180,10 @@ async def api_tts(text: str):
         return StreamingResponse(
             io.BytesIO(audio_bytes),
             media_type="audio/mpeg",
-            headers={"Content-Length": str(len(audio_bytes))}
+            headers={
+                "Content-Length": str(len(audio_bytes)),
+                "Cache-Control": "no-store",
+            },
         )
     except Exception as e:
         import traceback
