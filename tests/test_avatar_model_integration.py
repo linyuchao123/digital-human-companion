@@ -1,8 +1,15 @@
+import asyncio
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
-from apps.api.integrated_server import _driver_runtime_payload, _infer_live2d_params
+from apps.api.integrated_server import (
+    SessionState,
+    _compute_live2d_params,
+    _driver_runtime_payload,
+    _infer_live2d_params,
+)
 
 
 class _FakeReactionModel:
@@ -20,6 +27,7 @@ class AvatarModelIntegrationTests(unittest.TestCase):
         class Metadata:
             epoch = 111
             device = "cpu"
+            device_fallback_reason = "NotImplementedError: MPS unsupported"
 
         class LoadedModel:
             metadata = Metadata()
@@ -30,6 +38,8 @@ class AvatarModelIntegrationTests(unittest.TestCase):
         self.assertTrue(official["ready"])
         self.assertEqual(official["mode"], "official")
         self.assertEqual(official["epoch"], 111)
+        self.assertTrue(official["device_fallback"])
+        self.assertIn("切换 CPU", official["message"])
         self.assertFalse(fallback["ready"])
         self.assertEqual(fallback["mode"], "fallback")
 
@@ -53,6 +63,25 @@ class AvatarModelIntegrationTests(unittest.TestCase):
         )
 
         self.assertIsNone(params)
+
+
+class AvatarModelCircuitBreakerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_session_disables_official_model_after_unrecoverable_failure(self):
+        class BrokenModel:
+            def predict(self, *args, **kwargs):
+                raise RuntimeError("inference failed")
+
+        state = SessionState("test-session")
+        state.model_device = BrokenModel()
+        with patch("apps.api.integrated_server.HAS_EMOTION_MAP", True):
+            params = await _compute_live2d_params(
+                state,
+                asyncio.get_running_loop(),
+            )
+
+        self.assertIsInstance(params, dict)
+        self.assertIsNone(state.model_device)
+        self.assertIsNone(state.model_emotion_params)
 
 
 if __name__ == "__main__":

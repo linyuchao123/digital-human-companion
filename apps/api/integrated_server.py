@@ -349,12 +349,18 @@ def _driver_runtime_payload(reaction_model) -> Dict[str, Any]:
             "message": "正式模型未加载，使用规则驱动",
         }
     metadata = reaction_model.metadata
+    fallback_reason = getattr(metadata, "device_fallback_reason", None)
     return {
         "ready": True,
         "mode": "official",
         "epoch": metadata.epoch,
         "device": metadata.device,
-        "message": f"正式模型已加载（第 {metadata.epoch} 轮）",
+        "device_fallback": bool(fallback_reason),
+        "message": (
+            f"正式模型已加载（第 {metadata.epoch} 轮，MPS 不兼容算子已切换 CPU）"
+            if fallback_reason
+            else f"正式模型已加载（第 {metadata.epoch} 轮）"
+        ),
     }
 
 
@@ -1648,6 +1654,10 @@ async def _compute_live2d_params(state: SessionState, loop) -> Dict[str, float]:
         if predicted is not None:
             state.model_emotion_params = predicted
             state.model_emotion_signature = signature
+        else:
+            # 不可恢复的推理异常只尝试一次，当前会话改用规则驱动，避免 30fps 刷屏。
+            state.model_device = None
+            state.model_emotion_params = None
 
     # 正式模型负责倾听表情；摄像头跟踪、口型和呼吸仍保留实时规则驱动。
     blend_keys = {
