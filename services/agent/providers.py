@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Protocol, Sequence
 
 import httpx
 
@@ -26,6 +26,7 @@ class OpenAICompatibleConfig:
     temperature: float = 0.75
     max_tokens: int = 250
     timeout_seconds: float = 30.0
+    extra_body: dict[str, Any] = field(default_factory=dict)
 
 
 class CompanionProvider(Protocol):
@@ -71,6 +72,7 @@ class OpenAICompatibleCompanionProvider:
             ],
             "temperature": self.config.temperature,
             "max_tokens": self.config.max_tokens,
+            **self.config.extra_body,
         }
         headers = {"Authorization": f"Bearer {self.config.api_key}"}
         try:
@@ -113,15 +115,52 @@ def create_companion_provider(
     api_key: str,
     base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: str = "qwen-plus",
+    provider_name: str = "cloud",
+    fallback_api_key: str = "",
+    fallback_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    fallback_model: str = "qwen-plus",
+    fallback_name: str = "cloud",
+    extra_body: dict[str, Any] | None = None,
 ) -> tuple[CompanionProvider, str]:
-    """根据服务配置选择云端 Provider；没有密钥时使用离线实现。"""
+    """创建主模型、备用模型、离线实现组成的有序降级链。"""
     if not api_key.strip():
-        return FakeCompanionProvider(), "offline"
-    cloud = OpenAICompatibleCompanionProvider(
+        if not fallback_api_key.strip():
+            return FakeCompanionProvider(), "offline"
+        fallback_cloud = OpenAICompatibleCompanionProvider(
+            OpenAICompatibleConfig(
+                api_key=fallback_api_key,
+                base_url=fallback_base_url,
+                model=fallback_model,
+            )
+        )
+        return (
+            FallbackCompanionProvider(fallback_cloud, FakeCompanionProvider()),
+            f"{fallback_name}_with_offline_fallback",
+        )
+    primary_cloud = OpenAICompatibleCompanionProvider(
         OpenAICompatibleConfig(
             api_key=api_key,
             base_url=base_url,
             model=model,
+            extra_body=extra_body or {},
         )
     )
-    return FallbackCompanionProvider(cloud, FakeCompanionProvider()), "cloud_with_fallback"
+    if not fallback_api_key.strip():
+        return (
+            FallbackCompanionProvider(primary_cloud, FakeCompanionProvider()),
+            f"{provider_name}_with_offline_fallback" if provider_name != "cloud" else "cloud_with_fallback",
+        )
+    fallback_cloud = OpenAICompatibleCompanionProvider(
+        OpenAICompatibleConfig(
+            api_key=fallback_api_key,
+            base_url=fallback_base_url,
+            model=fallback_model,
+        )
+    )
+    return (
+        FallbackCompanionProvider(
+            primary_cloud,
+            FallbackCompanionProvider(fallback_cloud, FakeCompanionProvider()),
+        ),
+        f"{provider_name}_with_{fallback_name}_fallback",
+    )
