@@ -40,7 +40,7 @@ from pydantic import BaseModel, Field
 
 import numpy as np
 
-from services.tts import MacOSSayProvider, TtsProviderError
+from services.tts import MacOSSayProvider, Qwen3TtsProvider, TtsProviderError
 
 # ── 线程池（CPU密集型推理用）──────────────────────────────────
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -518,6 +518,7 @@ def _run_asr(audio_path: str) -> str:
 QWEN_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
 TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "auto").strip().lower()
 TTS_DEFAULT_VOICE = os.environ.get("TTS_DEFAULT_VOICE", "").strip()
+TTS_QWEN3_MODEL = os.environ.get("TTS_QWEN3_MODEL", "qwen3-tts-instruct-flash").strip()
 try:
     TTS_RATE = min(max(int(os.environ.get("TTS_RATE", "185")), 120), 260)
 except ValueError:
@@ -710,6 +711,7 @@ async def api_status():
             "driver_model": HAS_DRIVER and checkpoint_status.ready,
             "qwen_api": bool(QWEN_API_KEY),
             "tts_cosyvoice": HAS_TTS and bool(QWEN_API_KEY),
+            "tts_qwen3": bool(QWEN_API_KEY),
             "agent_provider": "cloud_with_fallback" if QWEN_API_KEY else "offline",
         },
         "tts": _tts_status_payload(),
@@ -1132,6 +1134,8 @@ _COSYVOICE_VOICES = (
 )
 _system_tts_provider: MacOSSayProvider | None = None
 _system_tts_checked = False
+_qwen3_tts_provider: Qwen3TtsProvider | None = None
+_qwen3_tts_config: tuple[str, str] | None = None
 
 
 def _get_system_tts_provider() -> MacOSSayProvider | None:
@@ -1152,8 +1156,31 @@ def _cloud_tts_available() -> bool:
     return HAS_TTS and bool(QWEN_API_KEY)
 
 
+def _get_qwen3_tts_provider() -> Qwen3TtsProvider | None:
+    global _qwen3_tts_config, _qwen3_tts_provider
+    if not QWEN_API_KEY:
+        return None
+    config = (QWEN_API_KEY, TTS_QWEN3_MODEL)
+    if _qwen3_tts_provider is None or _qwen3_tts_config != config:
+        _qwen3_tts_provider = Qwen3TtsProvider(
+            api_key=QWEN_API_KEY,
+            model=TTS_QWEN3_MODEL,
+        )
+        _qwen3_tts_config = config
+    return _qwen3_tts_provider
+
+
 def _tts_voice_catalog() -> List[Dict[str, str]]:
     voices: List[Dict[str, str]] = []
+    if TTS_PROVIDER in {"auto", "qwen3_tts"}:
+        provider = _get_qwen3_tts_provider()
+        if provider is not None:
+            voices.extend({
+                "id": f"qwen3_tts:{item.id}",
+                "name": item.name,
+                "locale": item.locale,
+                "provider": item.provider,
+            } for item in provider.list_voices())
     if TTS_PROVIDER in {"auto", "cosyvoice"} and _cloud_tts_available():
         voices.extend(dict(item) for item in _COSYVOICE_VOICES)
     if TTS_PROVIDER in {"auto", "macos_say"}:
@@ -1175,7 +1202,12 @@ def _default_tts_voice(voices: List[Dict[str, str]]) -> str | None:
         for candidate in candidates:
             if candidate in ids:
                 return candidate
-    for preferred in ("cosyvoice:longxiaochun", "macos_say:Tingting"):
+    for preferred in (
+        "qwen3_tts:Chelsie",
+        "qwen3_tts:Momo",
+        "cosyvoice:longxiaochun",
+        "macos_say:Tingting",
+    ):
         if preferred in ids:
             return preferred
     return voices[0]["id"] if voices else None
@@ -1194,13 +1226,16 @@ def _tts_status_payload() -> Dict[str, Any]:
             "voice_count": len(voices),
             "message": f"服务端语音可用：{len(voices)} 个音色",
         }
-    if TTS_PROVIDER == "cosyvoice" and not HAS_TTS:
+    if TTS_PROVIDER == "qwen3_tts" and not QWEN_API_KEY:
+        reason = "credential_missing"
+        message = "未配置 DASHSCOPE_API_KEY，使用浏览器语音"
+    elif TTS_PROVIDER == "cosyvoice" and not HAS_TTS:
         reason = "dependency_missing"
         message = "未安装 dashscope，使用浏览器语音"
     elif TTS_PROVIDER == "cosyvoice" and not QWEN_API_KEY:
         reason = "credential_missing"
         message = "未配置 DASHSCOPE_API_KEY，使用浏览器语音"
-    elif TTS_PROVIDER not in {"auto", "cosyvoice", "macos_say", "browser"}:
+    elif TTS_PROVIDER not in {"auto", "qwen3_tts", "cosyvoice", "macos_say", "browser"}:
         reason = "invalid_provider"
         message = "TTS_PROVIDER 配置无效，使用浏览器语音"
     else:
@@ -1269,6 +1304,16 @@ async def api_tts(payload: TtsRequest):
             provider = _get_system_tts_provider()
             if provider is None:
                 raise TtsProviderError("系统语音提供者已不可用")
+            result = await loop.run_in_executor(
+                _executor,
+                lambda: provider.synthesize(text, voice=raw_voice, rate=payload.rate),
+            )
+            audio_bytes = result.content
+            media_type = result.media_type
+        elif provider_name == "qwen3_tts":
+            provider = _get_qwen3_tts_provider()
+            if provider is None:
+                raise TtsProviderError("Qwen3-TTS 提供者已不可用")
             result = await loop.run_in_executor(
                 _executor,
                 lambda: provider.synthesize(text, voice=raw_voice, rate=payload.rate),
