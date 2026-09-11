@@ -11,8 +11,10 @@ class AgentChatApiTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.original_db_path = integrated_server.DB_PATH
+        self.original_deepseek_api_key = integrated_server.DEEPSEEK_API_KEY
         self.original_api_key = integrated_server.QWEN_API_KEY
         integrated_server.DB_PATH = Path(self.temp_dir.name) / "users.db"
+        integrated_server.DEEPSEEK_API_KEY = ""
         integrated_server.QWEN_API_KEY = ""
         integrated_server._init_db()
         integrated_server._agent_workflow = None
@@ -21,6 +23,7 @@ class AgentChatApiTests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
         integrated_server.DB_PATH = self.original_db_path
+        integrated_server.DEEPSEEK_API_KEY = self.original_deepseek_api_key
         integrated_server.QWEN_API_KEY = self.original_api_key
         integrated_server._agent_workflow = None
         self.temp_dir.cleanup()

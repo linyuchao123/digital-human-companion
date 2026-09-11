@@ -18,15 +18,18 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.original_db_path = integrated_server.DB_PATH
+        self.original_deepseek_api_key = integrated_server.DEEPSEEK_API_KEY
         self.original_api_key = integrated_server.QWEN_API_KEY
         integrated_server.DB_PATH = Path(self.temp_dir.name) / "users.db"
         integrated_server._init_db()
+        integrated_server.DEEPSEEK_API_KEY = ""
         integrated_server.QWEN_API_KEY = ""
         integrated_server._agent_workflow = None
         integrated_server._agent_provider_name = "offline"
         integrated_server._agent_knowledge_provider_name = "uninitialized"
 
     def tearDown(self):
+        integrated_server.DEEPSEEK_API_KEY = self.original_deepseek_api_key
         integrated_server.QWEN_API_KEY = self.original_api_key
         integrated_server.DB_PATH = self.original_db_path
         integrated_server._agent_workflow = None

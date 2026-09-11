@@ -48,6 +48,12 @@ class LlmConfigurationTests(unittest.TestCase):
 
         self.assertEqual(provider_name, "offline")
 
+    def test_status_reports_the_current_server_port(self):
+        response = self.client.get("/api/status")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["port"], 80)
+
 
 if __name__ == "__main__":
     unittest.main()

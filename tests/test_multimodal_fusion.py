@@ -6,6 +6,7 @@
 
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 
 import numpy as np
@@ -14,8 +15,11 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from services.multimodal_fusion.fusion_engine import FusionEngine, FusionConfig
-from services.multimodal_fusion.mp4_processor import MP4Processor, MP4ProcessorConfig
+try:
+    from services.multimodal_fusion.fusion_engine import FusionEngine, FusionConfig
+    from services.multimodal_fusion.mp4_processor import MP4Processor, MP4ProcessorConfig
+except ModuleNotFoundError as exc:
+    raise unittest.SkipTest(f"多模态模块可选依赖未安装: {exc.name}") from exc
 from packages.common.protocols import (
     PerceptionToLLM, TurnInfo, AsrInfo, EmotionSignals,
     EmotionSignal, VisionInfo, VisionFeatures, VisionFaceFeatures,

@@ -6,16 +6,23 @@
 
 import sys
 import time
+import unittest
 from pathlib import Path
 
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError as exc:
+    raise unittest.SkipTest("视觉模块可选依赖未安装: cv2") from exc
 import numpy as np
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from services.vision.inference.mediapipe_face import VisionExtractor, VisionConfig
+try:
+    from services.vision.inference.mediapipe_face import VisionExtractor, VisionConfig
+except ModuleNotFoundError as exc:
+    raise unittest.SkipTest(f"视觉模块可选依赖未安装: {exc.name}") from exc
 
 
 def test_with_webcam():
