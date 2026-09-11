@@ -6,7 +6,7 @@ import importlib.util
 import os
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -40,6 +40,18 @@ class EmotionReactionMetadata:
     parameter_count: int
     device: str
     use_audio: bool
+    device_fallback_reason: str | None = None
+
+
+def is_unsupported_mps_error(device_type: str, error: Exception) -> bool:
+    """仅识别可安全切换到 CPU 重试的 MPS 算子缺失异常。"""
+    if device_type != "mps" or not isinstance(error, NotImplementedError):
+        return False
+    message = str(error).lower()
+    return "mps" in message and (
+        "not currently implemented" in message
+        or "not currently supported" in message
+    )
 
 
 def validate_emotion_sequence(sequence: np.ndarray) -> np.ndarray:
@@ -148,6 +160,42 @@ class EmotionReactionModel:
                 f"正式情感反应模型加载失败: {type(exc).__name__}: {exc}"
             ) from exc
 
+    def _generate_normalized(
+        self,
+        normalized: np.ndarray,
+        *,
+        num_candidates: int,
+        seed: int | None,
+    ):
+        emotion_tensor = torch.from_numpy(normalized).unsqueeze(0).to(self.device)
+        audio_tensor = torch.zeros(
+            1, normalized.shape[0], 768, dtype=torch.float32, device=self.device
+        )
+        mask_tensor = torch.ones(
+            1, normalized.shape[0], dtype=torch.bool, device=self.device
+        )
+        has_audio_tensor = torch.zeros(1, dtype=torch.bool, device=self.device)
+        if seed is not None:
+            torch.manual_seed(seed)
+        return self.model.generate(
+            audio_tensor,
+            emotion_tensor,
+            mask=mask_tensor,
+            has_audio=has_audio_tensor,
+            num_candidates=num_candidates,
+        )
+
+    def _fallback_to_cpu(self, error: Exception) -> None:
+        self.device = torch.device("cpu")
+        self.model = self.model.to(self.device)
+        self.model.eval()
+        self.metadata = replace(
+            self.metadata,
+            device="cpu",
+            device_fallback_reason=f"{type(error).__name__}: {error}",
+        )
+        print("[Driver] MPS 算子不可用，正式模型已自动切换到 CPU")
+
     def predict(
         self,
         speaker_emotion: np.ndarray,
@@ -166,25 +214,22 @@ class EmotionReactionModel:
             / (speaker_stats["std"] + 1e-8)
         ).astype(np.float32)
 
-        emotion_tensor = torch.from_numpy(normalized).unsqueeze(0).to(self.device)
-        audio_tensor = torch.zeros(
-            1, sequence.shape[0], 768, dtype=torch.float32, device=self.device
-        )
-        mask_tensor = torch.ones(
-            1, sequence.shape[0], dtype=torch.bool, device=self.device
-        )
-        has_audio_tensor = torch.zeros(1, dtype=torch.bool, device=self.device)
-
         with self._inference_lock, torch.inference_mode():
-            if seed is not None:
-                torch.manual_seed(seed)
-            prediction = self.model.generate(
-                audio_tensor,
-                emotion_tensor,
-                mask=mask_tensor,
-                has_audio=has_audio_tensor,
-                num_candidates=num_candidates,
-            )
+            try:
+                prediction = self._generate_normalized(
+                    normalized,
+                    num_candidates=num_candidates,
+                    seed=seed,
+                )
+            except Exception as exc:
+                if not is_unsupported_mps_error(self.device.type, exc):
+                    raise
+                self._fallback_to_cpu(exc)
+                prediction = self._generate_normalized(
+                    normalized,
+                    num_candidates=num_candidates,
+                    seed=seed,
+                )
 
         result = prediction.detach().cpu().numpy()[0]
         result = (
