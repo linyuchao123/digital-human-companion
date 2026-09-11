@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""测试ASR听觉模块"""
+"""手动检查 ASR 听觉模块，不参与自动化单元测试发现。"""
 from services.asr.audio_pipeline import AudioPipeline
 from pathlib import Path
 import sys
