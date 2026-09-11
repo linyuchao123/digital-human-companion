@@ -701,8 +701,10 @@ async def api_status():
             "asr_funasr": HAS_ASR,
             "driver_model": HAS_DRIVER and checkpoint_status.ready,
             "qwen_api": bool(QWEN_API_KEY),
+            "tts_cosyvoice": HAS_TTS and bool(QWEN_API_KEY),
             "agent_provider": "cloud_with_fallback" if QWEN_API_KEY else "offline",
         },
+        "tts": _tts_status_payload(),
         "model_assets": {
             "face_driver": checkpoint_status.to_public_dict(),
         },
@@ -1116,11 +1118,54 @@ except ImportError:
     HAS_TTS = False
     print("[IntegratedServer] 警告: dashscope 未安装，TTS不可用")
 
-@app.get("/api/tts")
-async def api_tts(text: str):
+
+def _tts_status_payload() -> Dict[str, Any]:
+    if not HAS_TTS:
+        return {
+            "available": False,
+            "provider": "browser_fallback",
+            "reason": "dependency_missing",
+            "message": "服务端未安装 dashscope，使用浏览器语音",
+        }
+    if not QWEN_API_KEY:
+        return {
+            "available": False,
+            "provider": "browser_fallback",
+            "reason": "credential_missing",
+            "message": "服务端未配置 DASHSCOPE_API_KEY，使用浏览器语音",
+        }
+    return {
+        "available": True,
+        "provider": "cosyvoice-v1",
+        "reason": None,
+        "message": "CosyVoice 云端语音可用",
+    }
+
+class TtsRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+@app.post("/api/tts")
+async def api_tts(payload: TtsRequest):
     """调用阿里云 CosyVoice TTS 生成音频，返回 audio/mpeg"""
-    if not HAS_TTS or not QWEN_API_KEY or not text:
-        return JSONResponse({"error": "TTS not available"}, status_code=400)
+    text = payload.text.strip()
+    if not text:
+        return JSONResponse(
+            {"error": "empty_text", "message": "语音文本不能为空"},
+            status_code=400,
+        )
+    status = _tts_status_payload()
+    if not status["available"]:
+        return JSONResponse(
+            {
+                "error": "tts_unavailable",
+                "reason": status["reason"],
+                "message": status["message"],
+                "fallback": "browser_speech_synthesis",
+            },
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
     try:
         loop = asyncio.get_event_loop()
         # SDK 是同步调用，放到线程池运行避免阻塞
@@ -1135,7 +1180,10 @@ async def api_tts(text: str):
         return StreamingResponse(
             io.BytesIO(audio_bytes),
             media_type="audio/mpeg",
-            headers={"Content-Length": str(len(audio_bytes))}
+            headers={
+                "Content-Length": str(len(audio_bytes)),
+                "Cache-Control": "no-store",
+            },
         )
     except Exception as e:
         import traceback
