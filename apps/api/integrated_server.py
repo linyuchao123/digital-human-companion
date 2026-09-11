@@ -724,7 +724,7 @@ async def vision_demo():
     return HTMLResponse("<h1>vision_demo.html 未找到</h1>", status_code=404)
 
 @app.get("/api/status")
-async def api_status():
+async def api_status(request: Request):
     from services.avatar.model_assets import inspect_face_driver_checkpoint
 
     checkpoint_status = inspect_face_driver_checkpoint()
@@ -744,7 +744,7 @@ async def api_status():
         "model_assets": {
             "face_driver": checkpoint_status.to_public_dict(),
         },
-        "port": 8800,
+        "port": request.scope.get("server", (None, None))[1],
     })
 
 
