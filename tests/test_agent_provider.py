@@ -60,6 +60,29 @@ class OpenAICompatibleCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured["payload"]["model"], "qwen-test")
         self.assertEqual(captured["payload"]["messages"][-1]["content"], "我有点孤独")
 
+    async def test_provider_adds_provider_specific_request_fields(self):
+        captured = {}
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            captured["payload"] = json.loads(request.content)
+            return httpx.Response(200, json={"choices": [{"message": {"content": "我在。"}}]})
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handle_request),
+            base_url="https://api.deepseek.com",
+        ) as client:
+            provider = OpenAICompatibleCompanionProvider(
+                OpenAICompatibleConfig(
+                    api_key="test-key",
+                    model="deepseek-v4-flash",
+                    extra_body={"thinking": {"type": "disabled"}},
+                ),
+                client=client,
+            )
+            await provider.generate([ChatMessage(role="user", content="你好")])
+
+        self.assertEqual(captured["payload"]["thinking"], {"type": "disabled"})
+
     async def test_provider_wraps_invalid_cloud_response(self):
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})),
@@ -97,6 +120,31 @@ class OpenAICompatibleCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(provider, FallbackCompanionProvider)
         self.assertEqual(name, "cloud_with_fallback")
+
+    def test_factory_builds_named_primary_and_secondary_cloud_chain(self):
+        provider, name = create_companion_provider(
+            api_key="deepseek-key",
+            base_url="https://api.deepseek.com",
+            model="deepseek-v4-flash",
+            provider_name="deepseek",
+            fallback_api_key="qwen-key",
+            fallback_name="qwen",
+        )
+
+        self.assertIsInstance(provider, FallbackCompanionProvider)
+        self.assertIsInstance(provider._fallback, FallbackCompanionProvider)
+        self.assertEqual(name, "deepseek_with_qwen_fallback")
+
+    def test_factory_uses_secondary_cloud_when_primary_key_is_missing(self):
+        provider, name = create_companion_provider(
+            api_key="",
+            provider_name="deepseek",
+            fallback_api_key="qwen-key",
+            fallback_name="qwen",
+        )
+
+        self.assertIsInstance(provider, FallbackCompanionProvider)
+        self.assertEqual(name, "qwen_with_offline_fallback")
 
 
 if __name__ == "__main__":

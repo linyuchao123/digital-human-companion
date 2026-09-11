@@ -520,7 +520,11 @@ def _run_asr(audio_path: str) -> str:
 
 # 4. 大模型与语音 API。专用密钥为空时回退到共用 DashScope 密钥。
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
-QWEN_API_KEY = os.environ.get("LLM_API_KEY", "").strip() or DASHSCOPE_API_KEY
+DEEPSEEK_API_KEY = (
+    os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    or os.environ.get("LLM_API_KEY", "").strip()
+)
+QWEN_API_KEY = os.environ.get("QWEN_API_KEY", "").strip() or DASHSCOPE_API_KEY
 TTS_API_KEY = os.environ.get("TTS_API_KEY", "").strip() or DASHSCOPE_API_KEY
 TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "auto").strip().lower()
 TTS_DEFAULT_VOICE = os.environ.get("TTS_DEFAULT_VOICE", "").strip()
@@ -529,10 +533,25 @@ try:
     TTS_RATE = min(max(int(os.environ.get("TTS_RATE", "185")), 120), 260)
 except ValueError:
     TTS_RATE = 185
-QWEN_BASE_URL = os.environ.get(
-    "LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+DEEPSEEK_BASE_URL = os.environ.get(
+    "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
 ).rstrip("/")
-QWEN_MODEL = os.environ.get("LLM_MODEL", "qwen-plus").strip() or "qwen-plus"
+DEEPSEEK_MODEL = (
+    os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
+    or "deepseek-v4-flash"
+)
+QWEN_BASE_URL = os.environ.get(
+    "QWEN_BASE_URL",
+    os.environ.get(
+        "LLM_BASE_URL",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    ),
+).rstrip("/")
+QWEN_MODEL = (
+    os.environ.get("QWEN_MODEL", "").strip()
+    or os.environ.get("LLM_MODEL", "").strip()
+    or "qwen-plus"
+)
 RAG_EMBEDDING_MODEL_PATH = os.environ.get("RAG_EMBEDDING_MODEL_PATH", "").strip()
 _session_histories: Dict[str, list] = {}
 
@@ -715,10 +734,11 @@ async def api_status():
             "vision_mediapipe": HAS_MEDIAPIPE,
             "asr_funasr": HAS_ASR,
             "driver_model": HAS_DRIVER and checkpoint_status.ready,
+            "deepseek_api": bool(DEEPSEEK_API_KEY),
             "qwen_api": bool(QWEN_API_KEY),
             "tts_cosyvoice": HAS_TTS and bool(TTS_API_KEY),
             "tts_qwen3": bool(TTS_API_KEY),
-            "agent_provider": "cloud_with_fallback" if QWEN_API_KEY else "offline",
+            "agent_provider": _configured_agent_provider_name(),
         },
         "tts": _tts_status_payload(),
         "model_assets": {
@@ -742,6 +762,16 @@ _agent_provider_name = "offline"
 _agent_knowledge_provider_name = "uninitialized"
 
 
+def _configured_agent_provider_name() -> str:
+    if DEEPSEEK_API_KEY and QWEN_API_KEY:
+        return "deepseek_with_qwen_fallback"
+    if DEEPSEEK_API_KEY:
+        return "deepseek_with_offline_fallback"
+    if QWEN_API_KEY:
+        return "qwen_with_offline_fallback"
+    return "offline"
+
+
 def _get_agent_workflow():
     global _agent_knowledge_provider_name, _agent_provider_name, _agent_workflow
     if _agent_workflow is None:
@@ -752,9 +782,15 @@ def _get_agent_workflow():
         )
 
         provider, _agent_provider_name = create_companion_provider(
-            api_key=QWEN_API_KEY,
-            base_url=QWEN_BASE_URL,
-            model=QWEN_MODEL,
+            api_key=DEEPSEEK_API_KEY,
+            base_url=DEEPSEEK_BASE_URL,
+            model=DEEPSEEK_MODEL,
+            provider_name="deepseek",
+            fallback_api_key=QWEN_API_KEY,
+            fallback_base_url=QWEN_BASE_URL,
+            fallback_model=QWEN_MODEL,
+            fallback_name="qwen",
+            extra_body={"thinking": {"type": "disabled"}},
         )
         knowledge_retriever, _agent_knowledge_provider_name = (
             _get_rag_search_retriever()
@@ -1435,7 +1471,8 @@ async def ws_main(websocket: WebSocket):
         await _send(websocket, {"type": "status",
             "modules": {
                 "vision": HAS_MEDIAPIPE, "asr": HAS_ASR,
-                "driver": md is not None, "llm": bool(QWEN_API_KEY)
+                "driver": md is not None,
+                "llm": bool(DEEPSEEK_API_KEY or QWEN_API_KEY),
             },
             "driver_model": _driver_runtime_payload(md),
         })

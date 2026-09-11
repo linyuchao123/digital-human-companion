@@ -100,14 +100,19 @@ macOS 本地开发无需 API Key 即可使用服务端系统语音。部署到 L
 .venv-model/bin/pip install -e '.[cloud]'
 ```
 
-本地开发时复制 `.env.example` 为 `.env`，后端启动时会自动加载。LLM 与 TTS 使用同一个
-DashScope Key 时只填写 `DASHSCOPE_API_KEY`；需要相互隔离时，使用 `LLM_API_KEY` 和
-`TTS_API_KEY` 分别覆盖。`.env` 已被 Git 忽略，不能删除对应忽略规则。
+本地开发时复制 `.env.example` 为 `.env`，后端启动时会自动加载。对话模型按
+`DeepSeek → 千问 → 离线回复` 的顺序降级；TTS 独立使用千问语音密钥。`.env` 已被 Git
+忽略，不能删除对应忽略规则。
 
 ```env
-DASHSCOPE_API_KEY=                     # 共用密钥
-LLM_API_KEY=                           # 可选：大模型专用密钥
-TTS_API_KEY=                           # 可选：语音专用密钥
+DASHSCOPE_API_KEY=                     # 可选：千问对话与 TTS 共用密钥
+DEEPSEEK_API_KEY=                      # 主对话模型密钥
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+QWEN_API_KEY=                          # 可选：千问备用对话模型专用密钥
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-plus
+TTS_API_KEY=                           # 可选：TTS 专用密钥
 TTS_PROVIDER=auto
 TTS_DEFAULT_VOICE=qwen3_tts:Chelsie
 TTS_QWEN3_MODEL=qwen3-tts-instruct-flash
