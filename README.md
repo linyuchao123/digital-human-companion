@@ -78,6 +78,20 @@
 浏览器存储，内置权威条目也不能通过接口删除。公网部署时还应在反向代理层限制 `/rag` 和
 知识库写接口的访问来源，真实令牌不得写入 `.env.example` 或提交到 Git。
 
+### TTS 语音降级策略
+
+前端会先读取 `/api/status` 的 `tts` 字段。未安装 `dashscope` 或未配置
+`DASHSCOPE_API_KEY` 时，直接使用浏览器中文语音，不会把正常降级显示成网络错误。启用
+CosyVoice 时安装 cloud 可选依赖并通过服务端环境变量提供密钥：
+
+```bash
+.venv-model/bin/pip install -e '.[cloud]'
+export DASHSCOPE_API_KEY='在部署环境的密钥管理中注入'
+```
+
+TTS 文本通过 `POST /api/tts` 的 JSON 请求体传输，不进入 URL、浏览器历史或默认访问日志；
+接口限制单次 500 字，并对音频及错误响应设置 `Cache-Control: no-store`。
+
 ---
 
 ## 1. 背景与意义
