@@ -126,6 +126,9 @@ class TtsApiTests(unittest.TestCase):
 
         self.assertIn("await _canUseServerTTS()", html)
         self.assertIn("fetch('/api/status',{cache:'no-store'})", html)
+        self.assertIn("fetch('/api/tts/voices',{cache:'no-store'})", html)
+        self.assertIn('id="tts-voice-select"', html)
+        self.assertIn("voice:voice||null", html)
         self.assertIn("method:'POST'", html)
         self.assertNotIn("/api/tts?text=", html)
 
