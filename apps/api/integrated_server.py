@@ -266,24 +266,6 @@ try:
 except Exception as e:
     print(f"[IntegratedServer] emotion_to_live2d 不可用: {e}")
 
-# ── RAG 心理学知识库 ──────────────────────────────────────────
-_rag_engine = None
-HAS_RAG = False
-
-def _init_rag():
-    """延迟初始化 RAG 引擎 + 心理学知识库"""
-    global _rag_engine, HAS_RAG
-    try:
-        from services.llm.rag_engine import RAGEngine, PsychologyKnowledgeBase
-        _rag_engine = RAGEngine()
-        PsychologyKnowledgeBase.initialize_kb(_rag_engine)
-        HAS_RAG = True
-        stats = _rag_engine.get_stats()
-        print(f"[RAG] 心理学知识库就绪，文档数: {stats.get('count', 0)}")
-    except Exception as e:
-        print(f"[RAG] 初始化失败（降级运行）: {e}")
-        _rag_engine = None
-
 # ══════════════════════════════════════════════════════════════
 # 模块懒加载（允许部分模块缺失时降级运行）
 # ══════════════════════════════════════════════════════════════
@@ -553,121 +535,6 @@ QWEN_MODEL = (
     or "qwen-plus"
 )
 RAG_EMBEDDING_MODEL_PATH = os.environ.get("RAG_EMBEDDING_MODEL_PATH", "").strip()
-_session_histories: Dict[str, list] = {}
-
-_SYSTEM_PROMPT = """你是一位专业的心理陪护助手，名叫小安，外表是温柔的动漫女孩形象。
-
-【核心职责】
-- 共情倾听：感受用户情绪，给予真诚回应
-- 情感支持：用温暖、积极的语言帮助用户舒缓情绪
-- 识别危机：当用户出现自伤、轻生等信号时，立即提供危机热线
-
-【安全红线】
-- 不进行医疗诊断，不提供药物建议
-- 不做出无法兑现的承诺
-
-【回复格式要求】
-每次回复须包含两部分（严格按此格式）：
-1. 正文：温暖共情的回复，2-3句话，不超过80字，用中文
-2. 动作标签：在正文末尾另起一行，根据对话情感选择最合适的一个动作标签：
-   - [MOTION:FlickUp] —— 用户表达悲伤、感动、哭泣时
-   - [MOTION:Tap] —— 用户表达惊喜、害羞、意外时
-   - [MOTION:Flick3] —— 用户自我否定、需要鼓励或摇头安慰时
-   - [MOTION:Idle] —— 正常倾听、对话平稳时（默认）
-
-【示例】
-用户说"我最近很难过，总是哭"
-回复：
-我听到你了，最近一定承受了很多。哭出来没什么不好，这是你在释放情绪。我陪着你。
-[MOTION:FlickUp]"""
-
-EMOTION_RULES = [
-    (r'压力|焦虑|紧张|烦躁|烦恼', 'Anxiety', -0.3, 0.5, 'medium', '关切'),
-    (r'难过|伤心|悲伤|哭|失落|痛苦', 'Sad', -0.5, -0.2, 'medium', '温柔'),
-    (r'开心|高兴|快乐|棒|好消息|很好|很棒', 'Happy', 0.7, 0.4, 'low', '喜悦'),
-    (r'睡不着|失眠|睡眠|睡不好', 'Anxiety', -0.2, 0.2, 'low', '关心'),
-    (r'孤独|孤单|没人|一个人', 'Sad', -0.3, -0.3, 'low', '陪伴'),
-    (r'想死|不想活|轻生|自杀|放弃生命', 'Fear', -0.9, 0.3, 'high', '紧急'),
-    (r'抑郁|抑郁症|双相|躁郁', 'Sad', -0.5, -0.1, 'medium', '专注'),
-]
-
-def _local_analyze(text: str) -> Dict[str, Any]:
-    for pattern, emotion, valence, arousal, risk, label in EMOTION_RULES:
-        if re.search(pattern, text):
-            return {"emotion": emotion, "valence": valence,
-                    "arousal": arousal, "risk_level": risk, "emotion_label": label}
-    return {"emotion": "Neutral", "valence": 0.05,
-            "arousal": 0.0, "risk_level": "low", "emotion_label": "平静"}
-
-def _get_rag_context(text: str) -> str:
-    """从RAG知识库检索相关心理学知识，构建上下文"""
-    if not HAS_RAG or _rag_engine is None:
-        return ""
-    try:
-        context = _rag_engine.build_context(text, top_k=3)
-        return context
-    except Exception:
-        return ""
-
-_SAFETY_KEYWORDS = re.compile(r'想死|不想活|轻生|自杀|结束生命|活不下去|去死|死了算了')
-
-def _check_crisis(text: str) -> bool:
-    """危机信号检测"""
-    return bool(_SAFETY_KEYWORDS.search(text))
-
-async def _qwen_reply(text: str, session_id: str) -> Optional[str]:
-    if not QWEN_API_KEY:
-        return None
-    try:
-        import httpx
-        # 危机信号优先处理
-        if _check_crisis(text):
-            crisis_reply = ("我非常担心你现在的状态，你说的话让我很揪心。"
-                           "请立即拨打心理援助热线：400-161-9995 或 12320。"
-                           "你不是一个人在承受这些，我陪着你。\n[MOTION:FlickUp]")
-            history = _session_histories.setdefault(session_id, [])
-            history.append({"role": "user", "content": text})
-            history.append({"role": "assistant", "content": crisis_reply})
-            return crisis_reply
-
-        # RAG 检索心理学知识
-        rag_context = _get_rag_context(text)
-
-        # 构建增强系统提示词
-        if rag_context:
-            system_content = _SYSTEM_PROMPT + f"\n\n{rag_context}\n\n请结合以上知识给出更专业的回应。"
-            enable_search = False   # RAG 已有上下文，无需联网
-        else:
-            system_content = _SYSTEM_PROMPT
-            enable_search = True    # 知识库无相关内容，启用联网搜索补充
-
-        history = _session_histories.setdefault(session_id, [])
-        history.append({"role": "user", "content": text})
-        if len(history) > 20:
-            history[:] = history[-20:]
-        messages = [{"role": "system", "content": system_content}] + history
-        # 构建请求体，RAG无结果时启用联网搜索
-        request_body = {
-            "model": QWEN_MODEL,
-            "messages": messages,
-            "max_tokens": 250,
-            "temperature": 0.75,
-        }
-        if enable_search:
-            request_body["enable_search"] = True
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{QWEN_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {QWEN_API_KEY}"},
-                json=request_body
-            )
-            data = resp.json()
-            reply = data["choices"][0]["message"]["content"].strip()
-            history.append({"role": "assistant", "content": reply})
-            return reply
-    except Exception as e:
-        print(f"[Qwen API] 失败: {e}")
-        return None
 
 # ══════════════════════════════════════════════════════════════
 # FastAPI 应用
@@ -1103,7 +970,6 @@ async def delete_session(session_id: str, request: Request):
         conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
         conn.execute("DELETE FROM chat_sessions WHERE id=?", (session_id,))
         conn.commit()
-        _session_histories.pop(session_id, None)
         return JSONResponse({"ok": True})
     finally:
         conn.close()
@@ -1543,7 +1409,6 @@ async def ws_main(websocket: WebSocket):
                 if action == "reset":
                     state.feature_buffer.clear()
                     state.asr_text_buffer = ""
-                    _session_histories.pop(session_id, None)
                     await _send(websocket, {"type": "reset_ack"})
 
     except WebSocketDisconnect:
