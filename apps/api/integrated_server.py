@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hmac
+import importlib.util
 import io
 import json
 import os
@@ -468,9 +469,14 @@ def blendshape_smile_approx(lm) -> float:
 # 3. FunASR
 _asr_model = None
 HAS_ASR = False
+ASR_DEPENDENCY_AVAILABLE = importlib.util.find_spec("funasr") is not None
+ASR_LAST_ERROR: str | None = None
 
 def _get_asr_model():
-    global _asr_model, HAS_ASR
+    global _asr_model, HAS_ASR, ASR_LAST_ERROR
+    if not ASR_DEPENDENCY_AVAILABLE:
+        ASR_LAST_ERROR = "dependency_missing"
+        return None
     if _asr_model is None:
         try:
             from funasr import AutoModel
@@ -480,11 +486,44 @@ def _get_asr_model():
                 punc_model="ct-punc",
             )
             HAS_ASR = True
+            ASR_LAST_ERROR = None
             print("[IntegratedServer] FunASR AutoModel 初始化成功")
         except Exception as e:
             print(f"[IntegratedServer] FunASR不可用: {e}")
             _asr_model = None
+            HAS_ASR = False
+            ASR_LAST_ERROR = type(e).__name__
     return _asr_model
+
+
+def _asr_status_payload() -> Dict[str, Any]:
+    if not ASR_DEPENDENCY_AVAILABLE:
+        return {
+            "available": False,
+            "ready": False,
+            "provider": "browser_speech_recognition",
+            "reason": "dependency_missing",
+            "message": "FunASR 依赖未安装，使用浏览器语音识别",
+        }
+    if HAS_ASR and _asr_model is not None:
+        return {
+            "available": True,
+            "ready": True,
+            "provider": "funasr_paraformer",
+            "reason": None,
+            "message": "FunASR 服务端语音识别已就绪",
+        }
+    return {
+        "available": True,
+        "ready": False,
+        "provider": "funasr_paraformer",
+        "reason": ASR_LAST_ERROR,
+        "message": (
+            f"FunASR 初始化失败：{ASR_LAST_ERROR}"
+            if ASR_LAST_ERROR
+            else "FunASR 将在首次录音时加载"
+        ),
+    }
 
 def _run_asr(audio_path: str) -> str:
     """同步运行ASR，在线程池中执行"""
@@ -599,7 +638,7 @@ async def api_status(request: Request):
         "status": "running",
         "modules": {
             "vision_mediapipe": HAS_MEDIAPIPE,
-            "asr_funasr": HAS_ASR,
+            "asr_funasr": ASR_DEPENDENCY_AVAILABLE,
             "driver_model": HAS_DRIVER and checkpoint_status.ready,
             "deepseek_api": bool(DEEPSEEK_API_KEY),
             "qwen_api": bool(QWEN_API_KEY),
@@ -608,6 +647,7 @@ async def api_status(request: Request):
             "agent_provider": _configured_agent_provider_name(),
         },
         "tts": _tts_status_payload(),
+        "asr": _asr_status_payload(),
         "model_assets": {
             "face_driver": checkpoint_status.to_public_dict(),
         },
@@ -1336,7 +1376,7 @@ async def ws_main(websocket: WebSocket):
         state.model_device = md
         await _send(websocket, {"type": "status",
             "modules": {
-                "vision": HAS_MEDIAPIPE, "asr": HAS_ASR,
+                "vision": HAS_MEDIAPIPE, "asr": ASR_DEPENDENCY_AVAILABLE,
                 "driver": md is not None,
                 "llm": bool(DEEPSEEK_API_KEY or QWEN_API_KEY),
             },
