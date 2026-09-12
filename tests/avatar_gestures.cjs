@@ -42,14 +42,16 @@ assert.equal(values.PARAM_ANGLE_Y, 3, 'Return to current driver pose, not an out
 assert.equal(run('_gesture'), null);
 assert(run("gestureWave('shake',0.25)") > 0);
 assert(run("gestureWave('shake',0.75)") < 0);
-now=4000;run("startGesture('Hello')");
-now=5200;run('tickGesture(live2dModel.internalModel.coreModel)');
-assert.equal(parts[0],0);assert.equal(parts[1],1);
-assert(values.PARAM_ARM_02_L_01>0.8,'Greeting should lift the alternate arm');
-for(let time=4000;time<7200;time+=20){
-  now=time;run('tickGesture(live2dModel.internalModel.coreModel)');
-  for(const id of ids.filter(id=>id.includes('ARM_')||id.includes('HAND_'))) assert(Math.abs(values[id])<=1);
+assert.equal(run('wakePose(0).eye'),0);
+assert.equal(run('wakePose(0.3).eye'),0);
+assert(run('wakePose(0.9).eye')>0&&run('wakePose(0.9).eye')<1);
+assert.equal(run('wakePose(1.5).eye'),1);
+assert(run('wakePose(1.75).eye')<0.3,'Small sleepy blink after opening');
+assert.equal(run('wakePose(2.0).eye'),1);
+assert.equal(run('wakePose(2.55).release'),1);
+for(let t=0;t<2.55;t+=0.01){
+  const p=run(`wakePose(${t})`);
+  assert(p.eye>=0&&p.eye<=1);assert(p.head>=-7&&p.head<=0);
 }
-now=7201;run('tickGesture(live2dModel.internalModel.coreModel)');
-assert.equal(parts[0],1);assert.equal(parts[1],0);
+assert(html.includes("if(motionName==='Hello') motionName='Idle'"));
 console.log('Avatar gesture amplitude, no-drift and return-to-pose checks passed');

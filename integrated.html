@@ -944,7 +944,9 @@ function renderAgentEvent(event){
 }
 
 /* ═══════════ 连接总控 ═══════════ */
+let _connectionGeneration=0;
 async function connectAll(){
+  const generation=++_connectionGeneration;
   const btn=document.getElementById('connect-btn');
   const st=document.getElementById('cs-status');
   btn.classList.add('loading');
@@ -953,31 +955,24 @@ async function connectAll(){
 
   try{
     await initPixiAndModel();
+    if(generation!==_connectionGeneration) return;
     st.textContent='连接驱动服务...';
     const driveUrl=document.getElementById('drive-ws-input').value.trim()||DRIVE_WS_URL;
     connectDriveWS(driveUrl);
     st.textContent='连接对话服务...';
     connectChatWS();
 
-    // ───────────────────────────────────────────────────
-    // 卡点设计：字幕屏素淡出的瞬间小安刺好从 FlickUp 闭眼状态睛开眼睛
-    // FlickUp 动作总时长 ≈2.5s，前半段是低头闭眼，后半段是抬头睛开
-    // 字幕屏在 T=1100ms 开始淡出 (0.5s)，完全消失在 T=1600ms
-    // 目标：FlickUp 的睛眼阶段 ≈ T=1100~1600ms 内完成 → 即刻开始动作
-    // ───────────────────────────────────────────────────
-
-    // 第一步：立刻启动 FlickUp（在字幕屏背后偷偷开始）
-    if(live2dModel){
-      lastMotionTime=0;
-      isPlayingMotion=false;
-      playMotion('FlickUp'); // 不 await，让它在背景播放
-    }
+    // 入场不再播放带闭眼/手臂切换的 FlickUp，使用独立唤醒时间线。
+    lastMotionTime=0;isPlayingMotion=false;_gesture=null;
+    live2dModel?.internalModel?.motionManager?.stopAllMotions();
 
     // 第二步：900ms 后隐藏连接屏，显示主界面
     setTimeout(()=>{
+      if(generation!==_connectionGeneration) return;
       const cs=document.getElementById('connect-screen');
       cs.style.zIndex=''; // 恢复正常 z-index
       cs.classList.add('hidden'); // display:none 隐藏
+      startWakeUp();
       document.getElementById('bottom-bar').classList.add('show');
       document.getElementById('chat-panel').classList.add('show');
       document.getElementById('disconnect-btn').classList.add('show');
@@ -987,10 +982,10 @@ async function connectAll(){
       if(_authToken && !_sidebarOpen) toggleSidebar();
     },900);
 
-    // 第三步：字幕完全消失后（T=1600ms），小安已刺好睛眼微笑，稍后打招呼
+    // 睁眼后才招呼，避免睡着的表情直接开始说话。
     setTimeout(()=>{
-      if(ttsEnabled) speakText('你好，我是小安，很高兴见到你！');
-    },3000);
+      if(generation===_connectionGeneration&&connected&&ttsEnabled) speakText('唔，你来啦！我是小安，很高兴见到你。');
+    },3400);
 
   }catch(e){
     st.textContent='连接失败: '+e.message;
@@ -1000,6 +995,8 @@ async function connectAll(){
 }
 
 function disconnectAll(){
+  _connectionGeneration++;
+  _wakeUp=null;_gesture=null;
   if(driveWs){driveWs.close();driveWs=null;driveWsReady=false;}
   if(chatWs){chatWs.close();chatWs=null;chatWsReady=false;}
   stopVoiceInput(false);
@@ -1084,6 +1081,7 @@ async function initPixiAndModel(){
     applyDriveParams(c);
     tickGesture(c);
     }
+    tickWakeUp(c); // 最后应用，避免驱动帧和自主眨眼抢占入场眼睛。
     // TTS口型：Web Audio振幅分析实时同步
     if(ttsSpeaking){
       const openIdx=c.getParameterIndex('PARAM_MOUTH_OPEN_Y');
@@ -1135,6 +1133,8 @@ function applyDriveParams(coreModel){
 
 /* ═══════════ 动作播放 ═══════════ */
 async function playMotion(motionName){
+  if(_wakeUp) return;
+  if(motionName==='Hello') motionName='Idle'; // 采用作者原生手臂运动，不再猜测编译模型的抬手绑定。
   if(GESTURES[motionName]||['Respond','Listen','Comfort','Think'].includes(motionName)){
     startGesture(({Respond:'Nod',Listen:'Listen',Comfort:'Comfort',Think:'Think'})[motionName]||motionName);return;
   }
@@ -1155,7 +1155,6 @@ async function playMotion(motionName){
 
 /* ═══════════ 自主动画（眨眼 + 呼吸 + 头部微动）═══════════ */
 const GESTURES={
-  Hello:{duration:3.2,params:{PARAM_ANGLE_Y:2,PARAM_ARM_02_L_01:0.7,PARAM_ARM_02_L_02:0.65,PARAM_HAND_02_L:0.3},waves:{PARAM_HAND_02_L:'wave'}},
   Nod:{duration:1.7,params:{PARAM_ANGLE_Y:-12,PARAM_BODY_Y:-0.5},waves:{PARAM_ANGLE_Y:'nod',PARAM_BODY_Y:'nod'}},
   ShakeHead:{duration:2.5,params:{PARAM_ANGLE_X:26},waves:{PARAM_ANGLE_X:'shake'}},
   Think:{duration:3.0,params:{PARAM_ANGLE_Z:11,PARAM_ANGLE_Y:5,PARAM_EYE_BALL_X:0.35}},
@@ -1164,6 +1163,31 @@ const GESTURES={
   Listen:{duration:3.2,params:{PARAM_ANGLE_Z:8,PARAM_ANGLE_Y:4,PARAM_EYE_BALL_Y:0.1}}
 };
 let _gesture=null,_gestureLast=0;
+let _wakeUp=null;
+function wakeSmooth(value){const x=Math.max(0,Math.min(1,value));return x*x*(3-2*x);}
+function wakePose(seconds){
+  const open=wakeSmooth((seconds-0.35)/1.1);
+  const blink=wakeSmooth((seconds-1.6)/0.12)*(1-wakeSmooth((seconds-1.78)/0.2));
+  return {eye:open*(1-0.85*blink),head:-7*(1-wakeSmooth((seconds-0.55)/1.15)),
+    smile:0.35+0.35*wakeSmooth((seconds-0.7)/1.0),release:wakeSmooth((seconds-2.0)/0.55)};
+}
+function startWakeUp(){
+  _wakeUp={start:performance.now()};_blinkState=0;_blinkOpen=1;_blinkTimer=3.5;
+  tickWakeUp(live2dModel.internalModel.coreModel);
+}
+function tickWakeUp(core){
+  if(!_wakeUp) return;
+  const seconds=(performance.now()-_wakeUp.start)/1000,pose=wakePose(seconds);
+  if(seconds>=2.55){_wakeUp=null;_blinkState=0;_blinkOpen=1;_blinkTimer=2.5;return;}
+  for(const [id,value] of Object.entries({PARAM_EYE_L_OPEN:pose.eye,PARAM_EYE_R_OPEN:pose.eye,
+    PARAM_ANGLE_Y:pose.head,PARAM_ANGLE_X:0,PARAM_ANGLE_Z:0,PARAM_MOUTH_FORM:pose.smile})){
+    const index=core.getParameterIndex(id);
+    if(index>=0){
+      const target=core.getParameterValueByIndex(index);
+      core.setParameterValueByIndex(index,value*(1-pose.release)+target*pose.release);
+    }
+  }
+}
 function gestureEnvelope(progress){
   const smooth=x=>x*x*(3-2*x);
   return smooth(Math.min(1,Math.max(0,progress/0.24)))*smooth(Math.min(1,Math.max(0,(1-progress)/0.32)));
@@ -1171,29 +1195,16 @@ function gestureEnvelope(progress){
 function gestureWave(kind,progress){
   // 点头仅一次低头再抬回；招呼只摆手掌，不摇动整个身体。
   if(kind==='nod') return Math.sin(progress*Math.PI)**2;
-  if(kind==='wave') return Math.sin(Math.max(0,Math.min(1,(progress-0.2)/0.6))*Math.PI*4);
   if(kind==='shake') return Math.sin(progress*Math.PI*2);
   if(kind==='sway') return Math.sin(progress*Math.PI*2)*0.75;
   return 1;
 }
 function gestureBase(id){
-  if(_gesture.name==='Hello'&&id==='PARAM_ARM_02_L_01') return 0.28;
-  if(_gesture.name==='Hello'&&id==='PARAM_ARM_02_L_02') return -1;
-  if(_gesture.name==='Hello'&&id==='PARAM_HAND_02_L') return 0;
   const external=Object.entries(wsParamsBuffer).find(([key])=>(PARAM_MAP[key]||key)===id);
   return external?Number(external[1]):(_gesture.bases[id]||0);
 }
-function setGreetingArmPose(core,progress){
-  const smooth=x=>x*x*(3-2*x);
-  const mix=smooth(Math.min(1,Math.max(0,progress/0.18)))*smooth(Math.min(1,Math.max(0,(1-progress)/0.18)));
-  // 使用原模型现成的另一套左臂部件，不叠加两只完整手臂。
-  for(const [id,opacity] of [['PARTS_01_ARM_L_01',1-mix],['PARTS_01_ARM_L_02',mix]]){
-    const index=core.getPartIndex(id);
-    if(index>=0) core.setPartOpacityByIndex(index,opacity);
-  }
-}
 function startGesture(name){
-  if(!GESTURES[name]||isPlayingMotion||_gesture||Date.now()-_gestureLast<1500) return;
+  if(!GESTURES[name]||_wakeUp||isPlayingMotion||_gesture||Date.now()-_gestureLast<1500) return;
   if(!live2dModel?.internalModel?.coreModel) return;
   const core=live2dModel.internalModel.coreModel,bases={};
   for(const id of Object.keys(GESTURES[name].params)){
@@ -1206,12 +1217,10 @@ function tickGesture(core){
   if(!_gesture) return;
   const config=GESTURES[_gesture.name],progress=(performance.now()-_gesture.start)/(config.duration*1000);
   if(progress>=1){
-    if(_gesture.name==='Hello') setGreetingArmPose(core,1);
     for(const id of Object.keys(_gesture.bases)) core.setParameterValueById(id,gestureBase(id));
     _gesture=null;return;
   }
   const envelope=gestureEnvelope(progress);
-  if(_gesture.name==='Hello') setGreetingArmPose(core,progress);
   for(const [id,amplitude] of Object.entries(config.params)){
     const index=core.getParameterIndex(id);
     if(index>=0){
