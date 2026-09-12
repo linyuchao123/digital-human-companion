@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import base64
+import json
 import shutil
 import subprocess
 import tempfile
@@ -176,6 +178,33 @@ class Qwen3TtsProvider:
             raise TtsProviderError("Qwen3-TTS 返回了不安全的音频地址")
         if hostname != "aliyuncs.com" and not hostname.endswith(".aliyuncs.com"):
             raise TtsProviderError("Qwen3-TTS 音频地址不属于阿里云域名")
+
+    async def stream_pcm(self, text: str, *, voice: str):
+        if voice not in {item.id for item in self._voices} or not text.strip():
+            raise TtsProviderError("无效音色或文本")
+        body = {"model": self.model, "input": {
+            "text": text.strip(), "voice": voice, "language_type": "Chinese",
+            "instructions": self._instructions[voice], "optimize_instructions": False,
+        }}
+        try:
+            async with httpx.AsyncClient(timeout=45, follow_redirects=False) as client:
+                async with client.stream("POST", self.endpoint, headers={
+                    "Authorization": f"Bearer {self.api_key}", "X-DashScope-SSE": "enable"
+                }, json=body) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data:"):
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                break
+                            payload = json.loads(data)
+                            if payload.get("code"):
+                                raise TtsProviderError("厂商流式接口返回错误")
+                            encoded = payload.get("output", {}).get("audio", {}).get("data")
+                            if encoded:
+                                yield base64.b64decode(encoded, validate=True)
+        except Exception as exc:
+            raise TtsProviderError(f"流式合成失败: {type(exc).__name__}") from None
 
     def synthesize(self, text: str, *, voice: str, rate: int = 185) -> SynthesizedAudio:
         del rate  # Qwen3-TTS 使用自然语言指令控制语速与表现力。

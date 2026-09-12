@@ -1367,6 +1367,32 @@ async def api_tts_voices():
     }, headers={"Cache-Control": "no-store"})
 
 
+@app.post("/api/tts/stream")
+async def api_tts_stream(payload: TtsRequest):
+    voices = _tts_voice_catalog()
+    voice_id = payload.voice or _default_tts_voice(voices)
+    voice = next((item for item in voices if item["id"] == voice_id), None)
+    if not voice or voice["provider"] != "qwen3_tts":
+        return JSONResponse({"error": "stream_unavailable"}, status_code=400)
+    provider = _get_qwen3_tts_provider()
+    iterator = provider.stream_pcm(payload.text, voice=voice_id.split(":",1)[1])
+    try:
+        first = await anext(iterator)
+    except (TtsProviderError, StopAsyncIteration):
+        await iterator.aclose()
+        return JSONResponse({"error": "stream_failed"}, status_code=502)
+    async def output():
+        try:
+            yield first
+            async for chunk in iterator:
+                yield chunk
+        finally:
+            await iterator.aclose()
+    return StreamingResponse(output(), media_type="application/octet-stream",
+                             headers={"Cache-Control":"no-store", "X-Accel-Buffering":"no",
+                                      "X-Audio-Sample-Rate":"24000"})
+
+
 @app.post("/api/tts")
 async def api_tts(payload: TtsRequest):
     """使用选定的安全白名单音色生成服务端音频。"""
@@ -1783,8 +1809,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "risk_level": safety.risk_level.value,
             "emotion_label": emotion.label,
         }
-        legacy_motion_map = {"Comfort": "FlickUp", "Listen": "Flick3"}
-        motion_name = legacy_motion_map.get(avatar.motion, "Idle")
+        motion_name = avatar.motion
 
         # 更新会话情感状态（用于表情叠加）
         state.current_emotion = emo_result["emotion"]
