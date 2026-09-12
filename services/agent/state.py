@@ -61,6 +61,13 @@ class MemoryRecord(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class ActivityCard(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    title: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=300)
+    minutes: int = Field(ge=1, le=30)
+
+
 class ToolCallRecord(BaseModel):
     name: str = Field(min_length=1)
     reason: str = ""
@@ -103,6 +110,7 @@ class AgentState(TypedDict, total=False):
     retrieved_memories: list[MemoryRecord]
     retrieved_knowledge: list[KnowledgeSnippet]
     tool_calls: list[ToolCallRecord]
+    activities: list[ActivityCard]
     draft_response: str
     final_response: str
     avatar_command: AvatarCommand

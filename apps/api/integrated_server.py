@@ -765,6 +765,7 @@ async def agent_chat(payload: AgentChatRequest):
             "provider": _agent_provider_name,
             "knowledge_provider": _agent_knowledge_provider_name,
             "response": result["final_response"],
+            "activities": [card.model_dump() for card in result.get("activities", [])],
             "safety": result["safety"].model_dump(mode="json"),
             "emotion": result["emotion_context"].model_dump(mode="json"),
             "knowledge": [item.model_dump(mode="json") for item in result["retrieved_knowledge"]],
@@ -1713,6 +1714,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "risk_level": emo_result["risk_level"],
             "emotion_label": emo_result["emotion_label"],
         }
+        msg["activities"] = [card.model_dump() for card in result.get("activities", [])]
         if motion_name:
             msg["motion"] = motion_name
         await _send(ws, msg)

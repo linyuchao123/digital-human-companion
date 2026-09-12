@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 
 from .emotion import EmotionAnalyzer
 from .clock import is_clock_query, clock_answer
+from .activities import requests_activities, activity_cards
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
 from .memory import (
     MemoryStore,
@@ -65,6 +66,7 @@ class DigitalXinyuWorkflow:
         graph.add_node("memory_forgetter", self._forget_memory)
         graph.add_node("companion", self._generate_companion_response)
         graph.add_node("clock_tool", self._read_clock)
+        graph.add_node("activity_planner", self._plan_activities)
         graph.add_node("avatar_director", self._direct_avatar)
 
         graph.add_edge(START, "safety_triage")
@@ -84,6 +86,7 @@ class DigitalXinyuWorkflow:
                 "memory_forgetter": "memory_forgetter",
                 "companion": "companion",
                 "clock_tool": "clock_tool",
+                "activity_planner": "activity_planner",
                 "avatar_director": "avatar_director",
             },
         )
@@ -101,6 +104,7 @@ class DigitalXinyuWorkflow:
         graph.add_edge("memory_writer", "avatar_director")
         graph.add_edge("memory_forgetter", "avatar_director")
         graph.add_edge("clock_tool", "avatar_director")
+        graph.add_edge("activity_planner", "avatar_director")
         graph.add_edge("avatar_director", END)
         return graph
 
@@ -161,6 +165,8 @@ class DigitalXinyuWorkflow:
             intent = "memory_forget"
         elif is_clock_query(text):
             intent = "clock_query"
+        elif requests_activities(text):
+            intent = "activity_plan"
         else:
             intent = "emotional_support" if any(
                 word in text for word in emotional_keywords
@@ -187,7 +193,7 @@ class DigitalXinyuWorkflow:
         state: AgentState,
     ) -> Literal[
         "knowledge_retriever", "memory_retriever", "memory_forgetter",
-        "companion", "avatar_director", "clock_tool"
+        "companion", "avatar_director", "clock_tool", "activity_planner"
     ]:
         if state["safety"].requires_safe_response:
             return "avatar_director"
@@ -195,6 +201,8 @@ class DigitalXinyuWorkflow:
             return "memory_forgetter"
         if state.get("intent") == "clock_query":
             return "clock_tool"
+        if state.get("intent") == "activity_plan":
+            return "activity_planner"
         if state.get("memory_consent") and state.get("user_id") is not None:
             return "memory_retriever"
         if state.get("intent") == "emotional_support":
@@ -352,6 +360,21 @@ class DigitalXinyuWorkflow:
             ],
         )
 
+    async def _plan_activities(self, state: AgentState) -> dict[str, Any]:
+        started_at = perf_counter()
+        cards = activity_cards()
+        response = "我们可以从一件小事开始：整理一个小角落、写一句心情，或听一首喜欢的歌。选一个就好，不想做也没关系。"
+        return self._complete_node(
+            state, "activity_planner", started_at,
+            final_response=response, activities=cards,
+            messages=[*state.get("messages", []), ChatMessage(role="user", content=state["user_text"]),
+                      ChatMessage(role="assistant", content=response)][-MAX_CONTEXT_MESSAGES:],
+            tool_calls=[*state.get("tool_calls", []), ToolCallRecord(
+                name="companion_activity_plan", reason="用户请求日常陪伴活动，提供自愿选择的小任务",
+                status="completed", elapsed_ms=round((perf_counter()-started_at)*1000,3),
+            )],
+        )
+
     async def _read_clock(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
         response = clock_answer(state["user_text"])
@@ -457,6 +480,7 @@ class DigitalXinyuWorkflow:
             "node_timings_ms": {},
             "retrieved_knowledge": [],
             "tool_calls": [],
+            "activities": [],
             "cancelled": False,
             "memory_consent": memory_consent,
             "retrieved_memories": [],
@@ -485,7 +509,7 @@ class DigitalXinyuWorkflow:
                 else "retrieved_memories"
             )
             data["result_count"] = len(state.get(key, []))
-        elif node in {"memory_writer", "memory_forgetter", "clock_tool"}:
+        elif node in {"memory_writer", "memory_forgetter", "clock_tool", "activity_planner"}:
             tool_calls = state.get("tool_calls", [])
             if tool_calls:
                 data["tool_status"] = tool_calls[-1].status
