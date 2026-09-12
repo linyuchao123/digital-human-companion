@@ -38,6 +38,7 @@ vision = [
 ]
 speech = [
   "funasr>=1.0,<2.0",
+  "kaldi-native-fbank>=1.22,<2.0",
   "librosa>=0.10,<1.0",
   "modelscope>=1.14,<2.0",
   "opensmile>=2.5,<3.0",

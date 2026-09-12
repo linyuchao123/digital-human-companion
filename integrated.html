@@ -1336,7 +1336,7 @@ function setStatus(cls,text){
 }
 
 /* ═══════════ 麦克风 ═══════════ */
-/* ═══════ 语音输入（Web Speech API 实时识别） ═══════ */
+/* ═══════ 语音输入（服务端句级录音 / 浏览器识别回退） ═══════ */
 let _speechRec=null, _isListening=false;
 let _voiceStarting=false, _voiceMode='browser', _preferBrowserVoice=false;
 let _micStream=null, _micSource=null, _micProcessor=null, _micMute=null;
@@ -1351,6 +1351,7 @@ async function startVoiceInput(){
   try{
     const resp=await fetch('/api/status',{cache:'no-store'});
     const status=resp.ok?await resp.json():{};
+    if(!chatWsReady) return;
     if(!_preferBrowserVoice&&status.asr?.available&&!status.asr?.reason
         &&navigator.mediaDevices?.getUserMedia){
       await _startServerVoiceInput();
@@ -1359,7 +1360,7 @@ async function startVoiceInput(){
     console.warn('[语音] 服务端录音不可用',error);
     stopVoiceInput(false);
     if(error.name==='NotAllowedError') alert('麦克风权限被拒绝，请在浏览器设置中允许');
-    else _startBrowserVoiceInput();
+    else if(chatWsReady) _startBrowserVoiceInput();
   }finally{_voiceStarting=false;}
 }
 async function _startServerVoiceInput(){
@@ -1367,6 +1368,10 @@ async function _startServerVoiceInput(){
   _micStream=await navigator.mediaDevices.getUserMedia({audio:{
     channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true
   }});
+  if(!chatWsReady){
+    _micStream.getTracks().forEach(track=>track.stop()); _micStream=null;
+    return;
+  }
   const ctx=_ensureAudioCtx();
   _voiceSampleRate=ctx.sampleRate; _voiceChunks=[]; _voiceMode='server';
   _micSource=ctx.createMediaStreamSource(_micStream);
