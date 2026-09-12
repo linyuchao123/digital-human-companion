@@ -385,6 +385,11 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   font-size:12px;font-family:inherit;cursor:pointer;transition:color .2s}
 #auth-guest:hover{color:var(--accent2);text-decoration:underline}
 #auth-err{font-size:11px;color:var(--danger);text-align:center;min-height:16px;margin-top:8px}
+.activity-card{margin-top:10px;padding:12px;border:1px solid #c4ddfa;border-radius:14px;background:#f7fbff;color:#263455}
+.activity-card p{margin:8px 0;font-size:13px;line-height:1.6}
+.activity-card button{border:0;border-radius:10px;padding:8px 12px;background:#6389ed;color:white;cursor:pointer}
+.activity-card button:disabled{background:#699a82;cursor:default}
+.activity-note{font-size:11px;color:#788398;margin-top:8px}
 </style>
 </head>
 <body>
@@ -879,7 +884,7 @@ function renderAgentEvent(event){
     safety_triage:'安全分诊',safe_response:'安全响应',intent_router:'意图路由',
     emotion_analyzer:'情绪分析',knowledge_retriever:'知识检索',
     memory_retriever:'记忆检索',memory_writer:'记忆写入',
-    memory_forgetter:'记忆删除',clock_tool:'真实时间查询',companion:'陪伴回复',avatar_director:'数字人导演'
+    memory_forgetter:'记忆删除',clock_tool:'真实时间查询',activity_planner:'陪伴活动规划',companion:'陪伴回复',avatar_director:'数字人导演'
   };
   if(event.type==='agent.run.started'){
     liveAgentEvents=[];latestAgentTrace=null;
@@ -1288,6 +1293,7 @@ function handleChatMessage(msg){
       showThinking(false);
       const cleanText=msg.text.replace(/\[MOTION:[^\]]+\]/gi,'').trim();
       addBubble('ai',cleanText,msg.emotion_label);
+      renderActivityCards(msg.activities);
       updateEmotion(msg.emotion,msg.valence,msg.arousal,msg.risk_level);
       if(ttsEnabled) speakText(cleanText);
       if(msg.motion&&msg.motion!=='Idle') setTimeout(()=>playMotion(msg.motion),200);
@@ -1773,6 +1779,30 @@ function addBubble(role,text,label){
   }
   row.appendChild(meta);row.appendChild(b);area.appendChild(row);
   area.scrollTop=area.scrollHeight;
+}
+function renderActivityCards(cards){
+  if(!Array.isArray(cards)||!cards.length) return;
+  const area=document.getElementById('chat-area');
+  const row=document.createElement('div');row.className='bubble-row ai';
+  for(const card of cards.slice(0,3)){
+    if(!card||typeof card.title!=='string'||typeof card.description!=='string') continue;
+    const panel=document.createElement('div');panel.className='activity-card';
+    const title=document.createElement('strong');title.textContent=card.title.slice(0,80)+(Number.isInteger(card.minutes)?' · 约'+Math.max(1,Math.min(30,card.minutes))+'分钟':'');
+    const description=document.createElement('p');description.textContent=card.description.slice(0,300);
+    const button=document.createElement('button');button.type='button';button.textContent='选择这个活动';
+    button.onclick=()=>{
+      if(button.dataset.started==='true'){
+        button.textContent='✓ 已完成';button.disabled=true;
+      }else{
+        button.dataset.started='true';button.textContent='标记完成';
+      }
+    };
+    panel.append(title,description,button);row.appendChild(panel);
+  }
+  if(!row.children.length) return;
+  const note=document.createElement('div');note.className='activity-note';
+  note.textContent='按自己的节奏选择，随时可以停止。完成状态仅保留在当前页面；不会自动播放音乐。';
+  row.appendChild(note);area.appendChild(row);area.scrollTop=area.scrollHeight;
 }
 function sendText(){
   const input=document.getElementById('text-input');
