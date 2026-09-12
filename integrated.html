@@ -1155,15 +1155,30 @@ async function playMotion(motionName){
 
 /* ═══════════ 自主动画（眨眼 + 呼吸 + 头部微动）═══════════ */
 const GESTURES={
-  Hello:{duration:2.4,params:{PARAM_ANGLE_Z:5,PARAM_ARM_R:0.25}},
-  Nod:{duration:1.8,params:{PARAM_ANGLE_Y:7}},
-  ShakeHead:{duration:2.0,params:{PARAM_ANGLE_X:9}},
-  Think:{duration:2.4,params:{PARAM_ANGLE_Z:6,PARAM_EYE_BALL_X:0.25}},
-  Celebrate:{duration:2.4,params:{PARAM_BODY_Z:3,PARAM_ANGLE_Z:5,PARAM_ARM_L:0.18}},
-  Comfort:{duration:2.6,params:{PARAM_ANGLE_Y:-3,PARAM_ANGLE_Z:3}},
-  Listen:{duration:2.8,params:{PARAM_ANGLE_Z:4,PARAM_ANGLE_Y:2}}
+  Hello:{duration:2.6,params:{PARAM_ANGLE_Z:9,PARAM_ANGLE_Y:4,PARAM_BODY_Z:2.5}},
+  Nod:{duration:2.0,params:{PARAM_ANGLE_Y:14,PARAM_BODY_Y:2},waves:{PARAM_ANGLE_Y:'nod',PARAM_BODY_Y:'nod'}},
+  ShakeHead:{duration:2.4,params:{PARAM_ANGLE_X:17,PARAM_ANGLE_Z:3},waves:{PARAM_ANGLE_X:'shake'}},
+  Think:{duration:3.0,params:{PARAM_ANGLE_Z:11,PARAM_ANGLE_Y:5,PARAM_EYE_BALL_X:0.35}},
+  Celebrate:{duration:2.8,params:{PARAM_BODY_Z:4.5,PARAM_ANGLE_Z:10,PARAM_ANGLE_Y:6},waves:{PARAM_BODY_Z:'sway',PARAM_ANGLE_Z:'sway'}},
+  Comfort:{duration:3.0,params:{PARAM_ANGLE_Y:-6,PARAM_ANGLE_Z:7,PARAM_BODY_Z:1.5}},
+  Listen:{duration:3.2,params:{PARAM_ANGLE_Z:8,PARAM_ANGLE_Y:4,PARAM_EYE_BALL_Y:0.1}}
 };
 let _gesture=null,_gestureLast=0;
+function gestureEnvelope(progress){
+  const smooth=x=>x*x*(3-2*x);
+  return smooth(Math.min(1,Math.max(0,progress/0.24)))*smooth(Math.min(1,Math.max(0,(1-progress)/0.32)));
+}
+function gestureWave(kind,progress){
+  // 点头两次，第二次更轻；摇头只左右一次，避免全身一起抖动。
+  if(kind==='nod') return Math.sin(progress*Math.PI*2)**2*(1-0.35*progress);
+  if(kind==='shake') return Math.sin(progress*Math.PI*2);
+  if(kind==='sway') return Math.sin(progress*Math.PI*2)*0.75;
+  return 1;
+}
+function gestureBase(id){
+  const external=Object.entries(wsParamsBuffer).find(([key])=>(PARAM_MAP[key]||key)===id);
+  return external?Number(external[1]):(_gesture.bases[id]||0);
+}
 function startGesture(name){
   if(!GESTURES[name]||isPlayingMotion||_gesture||Date.now()-_gestureLast<1500) return;
   if(!live2dModel?.internalModel?.coreModel) return;
@@ -1178,17 +1193,15 @@ function tickGesture(core){
   if(!_gesture) return;
   const config=GESTURES[_gesture.name],progress=(performance.now()-_gesture.start)/(config.duration*1000);
   if(progress>=1){
-    for(const [id,value] of Object.entries(_gesture.bases)) core.setParameterValueById(id,value);
+    for(const id of Object.keys(_gesture.bases)) core.setParameterValueById(id,gestureBase(id));
     _gesture=null;return;
   }
-  const envelope=Math.sin(Math.PI*Math.max(0,progress))**2;
-  const oscillation=['Nod','ShakeHead','Celebrate','Hello'].includes(_gesture.name)?Math.sin(progress*Math.PI*4):1;
+  const envelope=gestureEnvelope(progress);
   for(const [id,amplitude] of Object.entries(config.params)){
     const index=core.getParameterIndex(id);
     if(index>=0){
-      const offset=amplitude*envelope*oscillation;
-      const external=Object.entries(wsParamsBuffer).find(([key])=>(PARAM_MAP[key]||key)===id);
-      const base=external?Number(external[1]):(_gesture.bases[id]||0);
+      const offset=amplitude*envelope*gestureWave(config.waves?.[id],progress);
+      const base=gestureBase(id);
       core.setParameterValueByIndex(index,base+offset);
     }
   }
