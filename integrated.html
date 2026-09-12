@@ -1477,6 +1477,7 @@ let _audioSrc=null;
 let _mouthSmooth=0;
 let _freqData=null;
 let _ttsAbort=null;
+let _ttsGeneration=0;
 let _useBrowserTTS=false;   // 是否当前使用浏览器TTS降级
 let _ttsCapabilityPromise=null;
 let _ttsVoicesPromise=null;
@@ -1516,6 +1517,7 @@ function _ensureAudioCtx(){
 }
 
 function _stopAudio(){
+  _ttsGeneration++;
   if(_ttsAbort){_ttsAbort.abort();_ttsAbort=null;}
   if(_audioSrc){try{_audioSrc.stop();}catch(e){}_audioSrc=null;}
   if(window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1527,11 +1529,13 @@ async function speakText(text){
   if(!ttsEnabled||!text) return;
   if(_isListening&&_voiceMode==='server') return; // 避免录音期间采集数字人自己的播报。
   _stopAudio();
+  const generation=_ttsGeneration;
   const useServerTTS=await _canUseServerTTS();
-  const ok=useServerTTS?await _speakViaServerTTS(text):false;
-  if(!ok){
+  if(generation!==_ttsGeneration) return;
+  const ok=useServerTTS?await _speakViaServerTTS(text,generation):false;
+  if(!ok&&generation===_ttsGeneration){
     console.info('[TTS] 使用浏览器中文语音');
-    _speakViaBrowser(text);
+    _speakViaBrowser(text,generation);
   }
 }
 
@@ -1598,10 +1602,12 @@ async function _canUseServerTTS(){
   return _ttsCapabilityPromise;
 }
 
-async function _speakViaServerTTS(text){
+async function _speakViaServerTTS(text,generation){
   try{
-    _ttsAbort=new AbortController();
+    const controller=new AbortController();
+    _ttsAbort=controller;
     const catalog=await _loadTtsVoices();
+    if(generation!==_ttsGeneration) return true;
     const select=document.getElementById('tts-voice-select');
     const voice=select&&!select.disabled?select.value:catalog.default_voice;
     console.log('[TTS] 请求服务端语音...',voice||'默认音色');
@@ -1609,25 +1615,30 @@ async function _speakViaServerTTS(text){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({text,voice:voice||null}),
-      signal:_ttsAbort.signal
+      signal:controller.signal
     });
     if(!resp.ok){
       console.warn('[TTS] /api/tts返回',resp.status);
       return false;
     }
     const arrayBuf=await resp.arrayBuffer();
-    if(_ttsAbort&&_ttsAbort.signal.aborted) return true;
+    if(controller.signal.aborted||generation!==_ttsGeneration) return true;
     const ctx=_ensureAudioCtx();
+    const audioBuf=await ctx.decodeAudioData(arrayBuf);
+    if(generation!==_ttsGeneration) return true;
+    if(_analyser) _analyser.disconnect();
     _analyser=ctx.createAnalyser();
     _analyser.fftSize=256;
     _analyser.smoothingTimeConstant=0.45;
     _freqData=new Uint8Array(_analyser.frequencyBinCount);
     _analyser.connect(ctx.destination);
-    const audioBuf=await ctx.decodeAudioData(arrayBuf);
-    _audioSrc=ctx.createBufferSource();
-    _audioSrc.buffer=audioBuf;
-    _audioSrc.connect(_analyser);
-    _audioSrc.onended=()=>{
+    const source=ctx.createBufferSource();
+    _audioSrc=source;
+    source.buffer=audioBuf;
+    source.connect(_analyser);
+    source.onended=()=>{
+      source.disconnect();
+      if(generation!==_ttsGeneration||_audioSrc!==source) return;
       ttsSpeaking=false; _mouthSmooth=0; _audioSrc=null; _useBrowserTTS=false;
       document.getElementById('speaking-indicator').classList.remove('show');
     };
@@ -1635,11 +1646,11 @@ async function _speakViaServerTTS(text){
     ttsSpeaking=true;
     document.getElementById('speaking-indicator').classList.add('show');
     document.getElementById('thinking-bar').classList.remove('show');
-    _audioSrc.start(0);
+    source.start(0);
     console.log('[TTS] 服务端语音播放中，时长',audioBuf.duration.toFixed(1),'s');
     return true;
   }catch(e){
-    if(e.name==='AbortError') return true;
+    if(e.name==='AbortError'||generation!==_ttsGeneration) return true;
     console.error('[服务端TTS异常]',e);
     return false;
   }
@@ -1647,17 +1658,19 @@ async function _speakViaServerTTS(text){
 
 const _SWEET_VOICES=['Microsoft Xiaoxiao','Microsoft XiaoXiao','Xiaoxiao',
   'Microsoft Xiaoyi','Microsoft Yaoyao','Ting-Ting'];
-function _speakViaBrowser(text){
+function _speakViaBrowser(text,generation){
   if(!window.speechSynthesis) return;
   const utt=new SpeechSynthesisUtterance(text);
   utt.lang='zh-CN'; utt.rate=0.92; utt.pitch=1.25; utt.volume=1.0;
   const doSpeak=()=>{
+    if(generation!==_ttsGeneration) return;
     const voices=window.speechSynthesis.getVoices();
     let v=null;
     for(const name of _SWEET_VOICES){v=voices.find(x=>x.name.includes(name));if(v)break;}
     if(!v) v=voices.find(x=>x.lang==='zh-CN')||voices.find(x=>x.lang.startsWith('zh'));
     if(v){ utt.voice=v; console.log('[TTS] 浏览器TTS音色:',v.name); }
     utt.onstart=()=>{
+      if(generation!==_ttsGeneration) return;
       _useBrowserTTS=true;
       ttsSpeaking=true;
       _startLipSync(text); // 启动字符时序口型
@@ -1665,6 +1678,7 @@ function _speakViaBrowser(text){
       document.getElementById('thinking-bar').classList.remove('show');
     };
     utt.onend=utt.onerror=()=>{
+      if(generation!==_ttsGeneration) return;
       ttsSpeaking=false; _mouthSmooth=0; _useBrowserTTS=false; _lipText='';
       document.getElementById('speaking-indicator').classList.remove('show');
     };
@@ -1704,7 +1718,7 @@ function toggleTTS(){
   const btn=document.getElementById('tts-btn');
   btn.classList.toggle('on',ttsEnabled);
   btn.innerHTML=ttsEnabled?'🔊 语音':'🔇 静音';
-  if(!ttsEnabled){window.speechSynthesis&&window.speechSynthesis.cancel();ttsSpeaking=false;}
+  if(!ttsEnabled) _stopAudio();
 }
 
 /* ═══════════ UI ═══════════ */

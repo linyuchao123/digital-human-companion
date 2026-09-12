@@ -25,6 +25,25 @@ class VoiceFrontendTests(unittest.TestCase):
         self.assertIn("_isListening&&_voiceMode==='server'", self.html)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js 未安装，跳过 WAV 编码运行测试")
+    def test_interrupted_pending_tts_does_not_resume(self):
+        function = re.search(r"async function speakText\(.*?(?=async function _loadTtsVoices)", self.html, re.S).group()
+        script = """
+        let ttsEnabled=true,_isListening=false,_voiceMode='',_ttsGeneration=0;
+        let release,played=0;
+        function _stopAudio(){_ttsGeneration++;}
+        function _canUseServerTTS(){return new Promise(resolve=>release=resolve);}
+        async function _speakViaServerTTS(){played++;return true;}
+        function _speakViaBrowser(){played++;}
+        """ + function + """
+        (async()=>{const pending=speakText('旧回复');_stopAudio();release(true);
+          await pending;console.log(played);})();
+        """
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        self.assertEqual(result.stdout.strip(), "0")
+        self.assertIn("if(generation!==_ttsGeneration||_audioSrc!==source) return", self.html)
+        self.assertIn("if(!ttsEnabled) _stopAudio()", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js 未安装，跳过 WAV 编码运行测试")
     def test_wav_encoder_resamples_to_16khz_mono_pcm(self):
         function = re.search(
             r"function _encodeVoiceWav\(.*?(?=function _startBrowserVoiceInput)",
