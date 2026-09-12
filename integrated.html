@@ -981,7 +981,8 @@ async function connectAll(){
 function disconnectAll(){
   if(driveWs){driveWs.close();driveWs=null;driveWsReady=false;}
   if(chatWs){chatWs.close();chatWs=null;chatWsReady=false;}
-  stopMicOnly();
+  stopVoiceInput(false);
+  _stopAudio();
   connected=false;
   // 隐藏聊天/控制栏
   document.getElementById('bottom-bar').classList.remove('show');
@@ -1267,6 +1268,12 @@ function handleChatMessage(msg){
     case 'asr_result':
       if(msg.is_final&&msg.text) addBubble('user',msg.text);
       break;
+    case 'asr_processing':showThinking(true);break;
+    case 'asr_error':
+      showThinking(false);
+      if(msg.code==='unavailable') _preferBrowserVoice=true;
+      alert(msg.message||'语音识别失败，请重试');
+      break;
     case 'llm_thinking':showThinking(true);break;
     case 'agent_event':
       renderAgentEvent(msg.event);
@@ -1331,11 +1338,70 @@ function setStatus(cls,text){
 /* ═══════════ 麦克风 ═══════════ */
 /* ═══════ 语音输入（Web Speech API 实时识别） ═══════ */
 let _speechRec=null, _isListening=false;
+let _voiceStarting=false, _voiceMode='browser', _preferBrowserVoice=false;
+let _micStream=null, _micSource=null, _micProcessor=null, _micMute=null;
+let _voiceChunks=[], _voiceTimer=null, _voiceSampleRate=48000;
 function toggleMic(){
   if(_isListening) stopVoiceInput();
-  else startVoiceInput();
+  else if(!_voiceStarting) startVoiceInput();
 }
-function startVoiceInput(){
+async function startVoiceInput(){
+  if(!chatWsReady){alert('请先连接数字人再录音');return;}
+  _voiceStarting=true;
+  try{
+    const resp=await fetch('/api/status',{cache:'no-store'});
+    const status=resp.ok?await resp.json():{};
+    if(!_preferBrowserVoice&&status.asr?.available&&!status.asr?.reason
+        &&navigator.mediaDevices?.getUserMedia){
+      await _startServerVoiceInput();
+    }else _startBrowserVoiceInput();
+  }catch(error){
+    console.warn('[语音] 服务端录音不可用',error);
+    stopVoiceInput(false);
+    if(error.name==='NotAllowedError') alert('麦克风权限被拒绝，请在浏览器设置中允许');
+    else _startBrowserVoiceInput();
+  }finally{_voiceStarting=false;}
+}
+async function _startServerVoiceInput(){
+  _stopAudio();
+  _micStream=await navigator.mediaDevices.getUserMedia({audio:{
+    channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true
+  }});
+  const ctx=_ensureAudioCtx();
+  _voiceSampleRate=ctx.sampleRate; _voiceChunks=[]; _voiceMode='server';
+  _micSource=ctx.createMediaStreamSource(_micStream);
+  _micProcessor=ctx.createScriptProcessor(4096,1,1);
+  _micMute=ctx.createGain(); _micMute.gain.value=0;
+  _micProcessor.onaudioprocess=(event)=>{
+    if(_isListening) _voiceChunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+  };
+  _micSource.connect(_micProcessor); _micProcessor.connect(_micMute); _micMute.connect(ctx.destination);
+  _isListening=true;
+  document.getElementById('mic-btn').classList.add('mic-on');
+  document.getElementById('text-input').placeholder='🎤 正在录音，再点麦克风发送（最长30秒）';
+  _voiceTimer=setTimeout(()=>stopVoiceInput(),30000);
+}
+function _encodeVoiceWav(chunks,sampleRate){
+  const length=chunks.reduce((n,c)=>n+c.length,0);
+  const source=new Float32Array(length); let offset=0;
+  for(const chunk of chunks){source.set(chunk,offset);offset+=chunk.length;}
+  const targetRate=16000, ratio=sampleRate/targetRate;
+  const count=Math.floor(length/ratio), buffer=new ArrayBuffer(44+count*2), view=new DataView(buffer);
+  const ascii=(at,text)=>{for(let i=0;i<text.length;i++) view.setUint8(at+i,text.charCodeAt(i));};
+  ascii(0,'RIFF');view.setUint32(4,36+count*2,true);ascii(8,'WAVE');ascii(12,'fmt ');
+  view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
+  view.setUint32(24,targetRate,true);view.setUint32(28,targetRate*2,true);
+  view.setUint16(32,2,true);view.setUint16(34,16,true);ascii(36,'data');view.setUint32(40,count*2,true);
+  for(let i=0;i<count;i++){
+    const start=Math.floor(i*ratio), end=Math.min(length,Math.max(start+1,Math.floor((i+1)*ratio)));
+    let sum=0;for(let j=start;j<end;j++) sum+=source[j];
+    const value=Math.max(-1,Math.min(1,sum/(end-start)));
+    view.setInt16(44+i*2,value<0?value*32768:value*32767,true);
+  }
+  return new Blob([buffer],{type:'audio/wav'});
+}
+function _startBrowserVoiceInput(){
+  _voiceMode='browser';
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){alert('当前浏览器不支持语音识别，请使用 Chrome');return;}
   _speechRec=new SR();
@@ -1377,8 +1443,24 @@ function startVoiceInput(){
     console.log('[语音识别] 已开启');
   }catch(e){console.error('[语音识别] 启动失败',e);}
 }
-function stopVoiceInput(){
+function stopVoiceInput(sendRecording=true){
+  const wasRecording=_isListening&&_voiceMode==='server';
   _isListening=false;
+  if(_voiceTimer){clearTimeout(_voiceTimer);_voiceTimer=null;}
+  for(const node of [_micSource,_micProcessor,_micMute]){if(node){try{node.disconnect();}catch(error){}}}
+  if(_micProcessor) _micProcessor.onaudioprocess=null;
+  if(_micStream) _micStream.getTracks().forEach(track=>track.stop());
+  _micStream=_micSource=_micProcessor=_micMute=null;
+  if(wasRecording&&sendRecording&&_voiceChunks.length){
+    const wav=_encodeVoiceWav(_voiceChunks,_voiceSampleRate), reader=new FileReader();
+    reader.onload=()=>{
+      if(chatWsReady) chatSend({type:'audio',format:'wav',data:String(reader.result).split(',')[1]});
+      else alert('连接已断开，录音未发送');
+    };
+    reader.onerror=()=>alert('录音编码失败，请重试');
+    reader.readAsDataURL(wav);
+  }
+  _voiceChunks=[];
   if(_speechRec){try{_speechRec.stop();}catch(e){}_speechRec=null;}
   document.getElementById('mic-btn').classList.remove('mic-on');
   const input=document.getElementById('text-input');
@@ -1443,6 +1525,7 @@ function _stopAudio(){
 
 async function speakText(text){
   if(!ttsEnabled||!text) return;
+  if(_isListening&&_voiceMode==='server') return; // 避免录音期间采集数字人自己的播报。
   _stopAudio();
   const useServerTTS=await _canUseServerTTS();
   const ok=useServerTTS?await _speakViaServerTTS(text):false;
