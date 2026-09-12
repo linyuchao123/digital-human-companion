@@ -820,7 +820,8 @@ async def agent_chat(payload: AgentChatRequest):
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/auth/register")
 async def auth_register(request: Request):
-    body = await request.json()
+    try: body = await request.json()
+    except ValueError: return JSONResponse({'error':'请求格式不正确'},status_code=400)
     if not isinstance(body,dict) or not isinstance(body.get("username"),str) or not isinstance(body.get("password"),str):
         return JSONResponse({"error":"请填写有效用户名和密码"},status_code=400)
     username = (body.get("username") or "").strip()
@@ -857,7 +858,8 @@ async def auth_register(request: Request):
 
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
-    body = await request.json()
+    try: body = await request.json()
+    except ValueError: return JSONResponse({'error':'请求格式不正确'},status_code=400)
     if not isinstance(body,dict) or not isinstance(body.get("username"),str) or not isinstance(body.get("password"),str):
         return JSONResponse({"error":"用户名或密码错误"},status_code=401)
     username = (body.get("username") or "").strip()
@@ -1728,6 +1730,11 @@ async def ws_main(websocket: WebSocket):
                         "message": "无权绑定该会话",
                     })
                     continue
+                # 换绑会话前取消旧会话任务，避免迟到回复写入新会话。
+                for task in list(pending_tasks): task.cancel()
+                await asyncio.gather(*pending_tasks,return_exceptions=True)
+                pending_tasks.clear()
+                state.feature_buffer.clear()
                 state.user_id = user_id
                 state.auth_token = token
                 state.db_session_id = db_sid if db_sid else None
