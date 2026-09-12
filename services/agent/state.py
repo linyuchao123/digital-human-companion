@@ -79,7 +79,7 @@ class ToolCallRecord(BaseModel):
 class AvatarCommand(BaseModel):
     emotion: str = "Neutral"
     intensity: float = Field(default=0.3, ge=0, le=1)
-    motion: Literal["Idle", "Listen", "Think", "Respond", "Comfort"] = "Idle"
+    motion: Literal["Idle", "Listen", "Think", "Respond", "Comfort", "Hello", "Nod", "ShakeHead", "Celebrate"] = "Idle"
     mouth_open: float = Field(default=0, ge=0, le=1)
     gaze_x: float = Field(default=0, ge=-1, le=1)
     gaze_y: float = Field(default=0, ge=-1, le=1)

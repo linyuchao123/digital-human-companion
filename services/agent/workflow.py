@@ -445,6 +445,16 @@ class DigitalXinyuWorkflow:
             "Neutral": (0.4, "Respond"),
         }
         intensity, motion = presentations[emotion]
+        text = state.get("user_text", "")
+        if not state["safety"].requires_safe_response:
+            if any(word in text for word in ("你好", "嗨", "自我介绍")):
+                motion = "Hello"
+            elif "摇头" in text:
+                motion = "ShakeHead"
+            elif "点头" in text:
+                motion = "Nod"
+            elif any(word in text for word in ("成功了", "通过了", "太开心", "庆祝")):
+                motion = "Celebrate"
         command = AvatarCommand(
             emotion=emotion,
             intensity=intensity,

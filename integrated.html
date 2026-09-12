@@ -460,6 +460,11 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <select class="tts-voice-select" id="tts-voice-select" title="选择服务端语音音色" disabled>
     <option value="">正在读取音色…</option>
   </select>
+  <select class="tts-voice-select" title="预览动作；自动动作根据对话内容选择" onchange="playMotion(this.value);this.value=''">
+    <option value="">🎭 动作预览</option>
+    <optgroup label="原模型动作"><option value="FlickUp">原动作 1</option><option value="Tap">原动作 2</option><option value="Flick3">原动作 3</option><option value="Idle">原动作 4</option></optgroup>
+    <optgroup label="新增轻量动作"><option value="Hello">问候</option><option value="Nod">点头</option><option value="ShakeHead">摇头</option><option value="Think">思考</option><option value="Celebrate">庆祝</option><option value="Comfort">安慰</option><option value="Listen">倾听</option></optgroup>
+  </select>
 <button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()" title="管理长期记忆授权与已保存内容">🧠 长期记忆</button>
 <button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
 <button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()" title="显示智能体节点、风控与形象指令">🧭 开发者模式</button>
@@ -1068,6 +1073,7 @@ async function initPixiAndModel(){
     const c=live2dModel.internalModel.coreModel;
     if(!c) return;
     // 锁定部件
+    if(!isPlayingMotion){
     partsShow.forEach(id=>{const i=c.getPartIndex(id);if(i>=0)c.setPartOpacityByIndex(i,1);});
     partsHide.forEach(id=>{const i=c.getPartIndex(id);if(i>=0)c.setPartOpacityByIndex(i,0);});
     // 手臂归零
@@ -1076,6 +1082,8 @@ async function initPixiAndModel(){
     tickAutoAnim();
     // 应用外部驱动参数（会覆盖自主动画中对应参数）
     applyDriveParams(c);
+    tickGesture(c);
+    }
     // TTS口型：Web Audio振幅分析实时同步
     if(ttsSpeaking){
       const openIdx=c.getParameterIndex('PARAM_MOUTH_OPEN_Y');
@@ -1127,6 +1135,10 @@ function applyDriveParams(coreModel){
 
 /* ═══════════ 动作播放 ═══════════ */
 async function playMotion(motionName){
+  if(GESTURES[motionName]||['Respond','Listen','Comfort','Think'].includes(motionName)){
+    startGesture(({Respond:'Nod',Listen:'Listen',Comfort:'Comfort',Think:'Think'})[motionName]||motionName);return;
+  }
+  if(_gesture) return;
   if(!live2dModel||!motionName||isPlayingMotion) return;
   const now=Date.now();
   if(now-lastMotionTime<MOTION_COOLDOWN_MS) return;
@@ -1135,12 +1147,52 @@ async function playMotion(motionName){
   try{
     lastMotionTime=now;isPlayingMotion=true;
     console.log('[Motion]',motionName);
-    await live2dModel.motion(group,0);
-    setTimeout(()=>{isPlayingMotion=false;},2500);
+    const played=await live2dModel.motion(group,0,3);
+    if(played===false){isPlayingMotion=false;return;}
+    setTimeout(()=>{isPlayingMotion=false;},1800);
   }catch(e){isPlayingMotion=false;console.warn('[Motion]',e);}
 }
 
 /* ═══════════ 自主动画（眨眼 + 呼吸 + 头部微动）═══════════ */
+const GESTURES={
+  Hello:{duration:2.4,params:{PARAM_ANGLE_Z:5,PARAM_ARM_R:0.25}},
+  Nod:{duration:1.8,params:{PARAM_ANGLE_Y:7}},
+  ShakeHead:{duration:2.0,params:{PARAM_ANGLE_X:9}},
+  Think:{duration:2.4,params:{PARAM_ANGLE_Z:6,PARAM_EYE_BALL_X:0.25}},
+  Celebrate:{duration:2.4,params:{PARAM_BODY_Z:3,PARAM_ANGLE_Z:5,PARAM_ARM_L:0.18}},
+  Comfort:{duration:2.6,params:{PARAM_ANGLE_Y:-3,PARAM_ANGLE_Z:3}},
+  Listen:{duration:2.8,params:{PARAM_ANGLE_Z:4,PARAM_ANGLE_Y:2}}
+};
+let _gesture=null,_gestureLast=0;
+function startGesture(name){
+  if(!GESTURES[name]||isPlayingMotion||_gesture||Date.now()-_gestureLast<1500) return;
+  if(!live2dModel?.internalModel?.coreModel) return;
+  const core=live2dModel.internalModel.coreModel,bases={};
+  for(const id of Object.keys(GESTURES[name].params)){
+    const index=core.getParameterIndex(id);
+    if(index>=0) bases[id]=core.getParameterValueByIndex(index);
+  }
+  _gesture={name,start:performance.now(),bases};_gestureLast=Date.now();
+}
+function tickGesture(core){
+  if(!_gesture) return;
+  const config=GESTURES[_gesture.name],progress=(performance.now()-_gesture.start)/(config.duration*1000);
+  if(progress>=1){
+    for(const [id,value] of Object.entries(_gesture.bases)) core.setParameterValueById(id,value);
+    _gesture=null;return;
+  }
+  const envelope=Math.sin(Math.PI*Math.max(0,progress))**2;
+  const oscillation=['Nod','ShakeHead','Celebrate','Hello'].includes(_gesture.name)?Math.sin(progress*Math.PI*4):1;
+  for(const [id,amplitude] of Object.entries(config.params)){
+    const index=core.getParameterIndex(id);
+    if(index>=0){
+      const offset=amplitude*envelope*oscillation;
+      const external=Object.entries(wsParamsBuffer).find(([key])=>(PARAM_MAP[key]||key)===id);
+      const base=external?Number(external[1]):(_gesture.bases[id]||0);
+      core.setParameterValueByIndex(index,base+offset);
+    }
+  }
+}
 let _blinkTimer=0, _blinkState=0, _blinkOpen=1.0;
 let _breathPhase=Math.random()*Math.PI*2;
 let _headPhaseX=Math.random()*Math.PI*2, _headPhaseY=Math.random()*Math.PI*2;
@@ -1521,6 +1573,7 @@ let _mouthSmooth=0;
 let _freqData=null;
 let _ttsAbort=null;
 let _ttsGeneration=0;
+const _streamSources=new Set();
 let _useBrowserTTS=false;   // 是否当前使用浏览器TTS降级
 let _ttsCapabilityPromise=null;
 let _ttsVoicesPromise=null;
@@ -1561,6 +1614,8 @@ function _ensureAudioCtx(){
 
 function _stopAudio(){
   _ttsGeneration++;
+  for(const source of _streamSources){try{source.stop();}catch(error){}}
+  _streamSources.clear();
   if(_ttsAbort){_ttsAbort.abort();_ttsAbort=null;}
   if(_audioSrc){try{_audioSrc.stop();}catch(e){}_audioSrc=null;}
   if(window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1653,6 +1708,10 @@ async function _speakViaServerTTS(text,generation){
     if(generation!==_ttsGeneration) return true;
     const select=document.getElementById('tts-voice-select');
     const voice=select&&!select.disabled?select.value:catalog.default_voice;
+    if(voice?.startsWith('qwen3_tts:')){
+      const streamed=await _playStreamTTS(text,voice,generation,controller);
+      if(streamed) return true;
+    }
     console.log('[TTS] 请求服务端语音...',voice||'默认音色');
     const resp=await fetch('/api/tts',{
       method:'POST',
@@ -1699,6 +1758,46 @@ async function _speakViaServerTTS(text,generation){
   }
 }
 
+async function _playStreamTTS(text,voice,generation,controller){
+  let started=false;
+  try{
+    const response=await fetch('/api/tts/stream',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text,voice}),signal:controller.signal});
+    if(!response.ok) return false;
+    if(generation!==_ttsGeneration) return true;
+    const ctx=_ensureAudioCtx(),reader=response.body.getReader();
+    let pending=new Uint8Array(0),at=ctx.currentTime+0.12;
+    const sampleRate=Number(response.headers.get('X-Audio-Sample-Rate'))||24000;
+    if(_analyser) _analyser.disconnect();
+    _analyser=ctx.createAnalyser();_analyser.fftSize=256;_analyser.connect(ctx.destination);
+    const schedule=(bytes)=>{
+      const buffer=ctx.createBuffer(1,bytes.length/2,sampleRate),values=buffer.getChannelData(0),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+      for(let i=0;i<values.length;i++) values[i]=view.getInt16(i*2,true)/32768;
+      const source=ctx.createBufferSource();source.buffer=buffer;source.connect(_analyser);
+      _streamSources.add(source);source.onended=()=>{_streamSources.delete(source);source.disconnect();};
+      at=Math.max(at,ctx.currentTime+0.02);source.start(at);at+=buffer.duration;started=true;
+      ttsSpeaking=true;_useBrowserTTS=false;
+      document.getElementById('speaking-indicator').classList.add('show');
+    };
+    while(true){
+      const {value,done}=await reader.read();
+      if(generation!==_ttsGeneration){await reader.cancel();return true;}
+      if(value){const joined=new Uint8Array(pending.length+value.length);joined.set(pending);joined.set(value,pending.length);pending=joined;}
+      const length=pending.length-pending.length%2;
+      if(length>=5760||done&&length){schedule(pending.slice(0,length));pending=pending.slice(length);}
+      if(done) break;
+    }
+    if(!started) return false;
+    setTimeout(()=>{
+      if(generation===_ttsGeneration){ttsSpeaking=false;_mouthSmooth=0;document.getElementById('speaking-indicator').classList.remove('show');}
+    },Math.max(0,(at-ctx.currentTime)*1000));
+    return true;
+  }catch(error){
+    if(generation!==_ttsGeneration||error.name==='AbortError') return true;
+    if(started){console.warn('[TTS] 流式播报中断');_stopAudio();return true;}
+    return false;
+  }
+}
 const _SWEET_VOICES=['Microsoft Xiaoxiao','Microsoft XiaoXiao','Xiaoxiao',
   'Microsoft Xiaoyi','Microsoft Yaoyao','Ting-Ting'];
 function _speakViaBrowser(text,generation){
@@ -1766,10 +1865,11 @@ function toggleTTS(){
 
 /* ═══════════ UI ═══════════ */
 function updateEmotion(emotion){
-  document.body.className='';
+  document.body.classList.remove('emo-happy','emo-sad','emo-anxiety');
   if(emotion==='Happy') document.body.classList.add('emo-happy');
   else if(emotion==='Sad') document.body.classList.add('emo-sad');
   else if(emotion==='Anxiety'||emotion==='Fear'||emotion==='Concerned') document.body.classList.add('emo-anxiety');
+  document.getElementById('tts-btn').title='当前情绪主题：'+(({Happy:'喜悦 · 绿色',Sad:'悲伤 · 蓝灰色',Anxiety:'焦虑 · 紫色',Concerned:'关切 · 紫色'})[emotion]||'平静 · 默认蓝色');
 }
 function showThinking(show){
   document.getElementById('thinking-bar').classList.toggle('show',show);
