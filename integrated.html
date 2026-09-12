@@ -449,6 +449,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <button id="disconnect-btn" onclick="disconnectAll()">🔌 断开连接</button>
   <div class="spacer"></div>
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
+  <span class="tb-chip" id="asr-provider-label" title="实际录音识别来源">🎤 ASR</span>
   <select class="tts-voice-select" id="tts-voice-select" title="选择服务端语音音色" disabled>
     <option value="">正在读取音色…</option>
   </select>
@@ -1266,6 +1267,8 @@ function handleChatMessage(msg){
       }
       break;
     case 'asr_result':
+      document.getElementById('asr-provider-label').textContent=msg.provider==='qwen_cloud'?'🎤 百炼云端':'🎤 本地'+(msg.fallback_reason?'备用':'识别');
+      document.getElementById('asr-provider-label').title=msg.fallback_reason?'云端识别失败，已使用本地备用（'+msg.fallback_reason+'）':'本次识别来源：'+(msg.provider||'本地');
       if(msg.is_final&&msg.text) addBubble('user',msg.text);
       break;
     case 'asr_processing':showThinking(true);break;
@@ -1351,6 +1354,8 @@ async function startVoiceInput(){
   try{
     const resp=await fetch('/api/status',{cache:'no-store'});
     const status=resp.ok?await resp.json():{};
+    document.getElementById('asr-provider-label').textContent=status.asr?.provider==='qwen_cloud'?'🎤 百炼云端':'🎤 本地识别';
+    document.getElementById('asr-provider-label').title=status.asr?.message||'识别状态未知';
     if(!chatWsReady) return;
     if(!_preferBrowserVoice&&status.asr?.available&&!status.asr?.reason
         &&navigator.mediaDevices?.getUserMedia){

@@ -41,6 +41,11 @@ services:
       - QWEN_MODEL=${QWEN_MODEL:-qwen-plus}
       - ASR_MODEL=${ASR_MODEL:-paraformer-zh}
       - ASR_DEVICE=${ASR_DEVICE:-cpu}
+      - ASR_PROVIDER=${ASR_PROVIDER:-funasr}
+      - ASR_API_KEY=${ASR_API_KEY:-}
+      - ASR_CLOUD_MODEL=${ASR_CLOUD_MODEL:-qwen-audio-3.0-asr-flash}
+      - ASR_CLOUD_URL=${ASR_CLOUD_URL:-https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
+      - ASR_FALLBACK_LOCAL=${ASR_FALLBACK_LOCAL:-true}
       - ASR_HOTWORDS=${ASR_HOTWORDS:-小安 数字心屿}
       # 语音模型使用独立密钥；共用 DashScope 密钥仍作为兼容回退项
       - TTS_API_KEY=${TTS_API_KEY:-}

@@ -80,6 +80,25 @@
 
 ### 服务端录音识别
 
+云端识别已支持百炼 `qwen-audio-3.0-asr-flash` 句级 HTTP 接口（非实时流式）。
+在后端 `.env` 设置：
+
+```env
+ASR_PROVIDER=qwen
+ASR_API_KEY=
+ASR_CLOUD_MODEL=qwen-audio-3.0-asr-flash
+ASR_CLOUD_URL=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+ASR_FALLBACK_LOCAL=true
+```
+
+独立密钥为空时依次复用 `DASHSCOPE_API_KEY`、`TTS_API_KEY`、`QWEN_API_KEY`，
+不会使用 DeepSeek 密钥。需保证密钥的地域和模型权限匹配；新工作空间域名也可配置。
+密钥只在后端使用。录音以 Base64 发送到阿里云，会涉及云端数据处理和音频时长计费，
+项目不会长期保存录音。界面显示本次“百炼云端”或“本地备用”；悬浮可查看降级原因。
+设置 `ASR_FALLBACK_LOCAL=false` 可以关闭自动降级，便于单独验收云端质量。
+设置 `ASR_PROVIDER=funasr` 可完全关闭云端上传。配置修改后需重启后端。
+接口字段参考[百炼 ASR 官方文档](https://help.aliyun.com/en/model-studio/fun-asr-flash-recorded-speech-recognition-http-api)。
+
 原界面的麦克风现支持句级语音对话：点击开始录音，再次点击结束并发送（最长 30 秒）。
 浏览器将录音转换为 16 kHz 单声道 PCM WAV，后端识别完成后自动进入智能体回复流程。
 录音开始会停止当前播报；断开连接会释放麦克风并丢弃未发送录音。
