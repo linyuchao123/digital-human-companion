@@ -26,6 +26,7 @@ import threading
 import time
 import traceback
 import uuid
+from datetime import date
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from pathlib import Path
@@ -62,7 +63,7 @@ try:
     HAS_BCRYPT = True
 except ImportError:
     HAS_BCRYPT = False
-    print("[Auth] 警告: bcrypt 未安装，密码将使用明文存储（不安全）")
+    print("[Auth] bcrypt 未安装，已禁用密码认证与注册")
 
 def _get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH))
@@ -149,6 +150,10 @@ def _init_db():
         columns = {row[1] for row in conn.execute("PRAGMA table_info(activity_tasks)")}
         if "removed_at" not in columns:
             conn.execute("ALTER TABLE activity_tasks ADD COLUMN removed_at TEXT")
+        user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        for name in ("display_name", "birthday", "avatar"):
+            if name not in user_columns:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
         conn.commit()
         print("[DB] 数据库初始化完成")
     finally:
@@ -157,7 +162,7 @@ def _init_db():
 def _hash_password(pwd: str) -> str:
     if HAS_BCRYPT:
         return _bcrypt.hashpw(pwd.encode(), _bcrypt.gensalt()).decode()
-    return pwd  # 降级明文
+    raise RuntimeError("bcrypt 不可用，禁止不安全密码存储")
 
 def _check_password(pwd: str, hashed: str) -> bool:
     if HAS_BCRYPT:
@@ -165,7 +170,7 @@ def _check_password(pwd: str, hashed: str) -> bool:
             return _bcrypt.checkpw(pwd.encode(), hashed.encode())
         except Exception:
             return False
-    return pwd == hashed
+    return False
 
 def _verify_auth_token(token: str) -> Optional[int]:
     """验证 token，返回 user_id 或 None"""
@@ -633,9 +638,13 @@ RAG_EMBEDDING_MODEL_PATH = os.environ.get("RAG_EMBEDDING_MODEL_PATH", "").strip(
 # ══════════════════════════════════════════════════════════════
 app = FastAPI(title="AI数字人情感陪护全功能整合", version="2.0.0")
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"],
+    CORSMiddleware, allow_origins=[x.strip() for x in os.getenv("ALLOWED_ORIGINS", "http://127.0.0.1:8801,http://localhost:8801").split(",") if x.strip()],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
+from apps.api.security import install_http_security, allow_request
+def _public_deployment():
+    return os.getenv("PUBLIC_DEPLOYMENT","false").lower()=="true"
+install_http_security(app,_verify_auth_token,_public_deployment)
 
 # 托管 MediaPipe 本地文件（避免 CDN 访问不稳定）
 MEDIAPIPE_STATIC_DIR = ROOT / "static" / "mediapipe"
@@ -706,6 +715,17 @@ async def api_status(request: Request):
         },
         "port": request.scope.get("server", (None, None))[1],
     })
+
+
+@app.get('/api/health/ready')
+async def readiness():
+    if not HAS_BCRYPT:
+        return JSONResponse({'ready':False,'reason':'password_dependency_unavailable'},status_code=503)
+    try:
+        with _get_db() as conn: conn.execute('SELECT 1 FROM users LIMIT 1')
+    except sqlite3.Error:
+        return JSONResponse({'ready':False,'reason':'database_unavailable'},status_code=503)
+    return JSONResponse({'ready':True})
 
 
 class AgentChatRequest(BaseModel):
@@ -801,14 +821,20 @@ async def agent_chat(payload: AgentChatRequest):
 @app.post("/api/auth/register")
 async def auth_register(request: Request):
     body = await request.json()
+    if not isinstance(body,dict) or not isinstance(body.get("username"),str) or not isinstance(body.get("password"),str):
+        return JSONResponse({"error":"请填写有效用户名和密码"},status_code=400)
     username = (body.get("username") or "").strip()
-    password = (body.get("password") or "").strip()
+    password = body.get("password") or ""
+    if not HAS_BCRYPT:
+        return JSONResponse({"error":"密码服务不可用"}, status_code=503)
     if not username or not password:
         return JSONResponse({"error": "用户名和密码不能为空"}, status_code=400)
     if len(username) < 2 or len(username) > 20:
         return JSONResponse({"error": "用户名长度须2-20位"}, status_code=400)
-    if len(password) < 4:
-        return JSONResponse({"error": "密码至少4位"}, status_code=400)
+    if not 8 <= len(password) <= 64 or len(password.encode()) > 72:
+        return JSONResponse({"error": "密码须8-64位，UTF-8长度不超过72字节"}, status_code=400)
+    if not re.fullmatch(r"[\w-]{2,20}",username):
+        return JSONResponse({"error":"用户名仅支持文字、数字、下划线和连字符"},status_code=400)
     conn = _get_db()
     try:
         exists = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
@@ -832,8 +858,12 @@ async def auth_register(request: Request):
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
     body = await request.json()
+    if not isinstance(body,dict) or not isinstance(body.get("username"),str) or not isinstance(body.get("password"),str):
+        return JSONResponse({"error":"用户名或密码错误"},status_code=401)
     username = (body.get("username") or "").strip()
-    password = (body.get("password") or "").strip()
+    password = body.get("password") or ""
+    if not isinstance(password,str) or len(password.encode())>72:
+        return JSONResponse({"error":"用户名或密码错误"},status_code=401)
     if not username or not password:
         return JSONResponse({"error": "用户名和密码不能为空"}, status_code=400)
     conn = _get_db()
@@ -866,6 +896,80 @@ async def auth_logout(request: Request):
 def _get_user_id_from_request(request: Request) -> Optional[int]:
     token = request.headers.get("X-Auth-Token", "")
     return _verify_auth_token(token)
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str = Field(default="",max_length=40)
+    username: str = Field(min_length=2,max_length=20)
+    birthday: str = Field(default="",max_length=10)
+    avatar: str = Field(default="",max_length=180000)
+    current_password: str = Field(default="",max_length=64)
+
+
+class PasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=1,max_length=64)
+    new_password: str = Field(min_length=8,max_length=64)
+
+
+@app.get("/api/profile")
+async def get_profile(request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None:
+        return JSONResponse({"error":"请先登录"},status_code=401)
+    with _get_db() as conn:
+        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at FROM users WHERE id=?",(user_id,)).fetchone()
+    return JSONResponse(dict(row))
+
+
+@app.patch("/api/profile")
+async def update_profile(payload: ProfileUpdate,request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None:
+        return JSONResponse({"error":"请先登录"},status_code=401)
+    if not re.fullmatch(r"[\w-]{2,20}",payload.username):
+        return JSONResponse({"error":"用户名仅支持文字、数字、下划线和连字符"},status_code=400)
+    if payload.birthday:
+        try:
+            born=date.fromisoformat(payload.birthday)
+            if born>date.today() or born.year<1900: raise ValueError()
+        except ValueError:
+            return JSONResponse({"error":"生日须为1900年至今的有效日期"},status_code=400)
+    if payload.avatar:
+        try:
+            prefix,encoded=payload.avatar.split(',',1)
+            if prefix not in ('data:image/jpeg;base64','data:image/png;base64'): raise ValueError()
+            raw=base64.b64decode(encoded,validate=True)
+            if not (raw.startswith(b'\xff\xd8\xff') or raw.startswith(b'\x89PNG\r\n\x1a\n')): raise ValueError()
+        except (ValueError,TypeError):
+            return JSONResponse({"error":"头像仅支持有效 PNG/JPEG 图片"},status_code=400)
+    with _get_db() as conn:
+        row=conn.execute("SELECT username,password_hash FROM users WHERE id=?",(user_id,)).fetchone()
+        if payload.username!=row['username'] and not _check_password(payload.current_password,row['password_hash']):
+            return JSONResponse({"error":"修改用户名需要验证当前密码"},status_code=403)
+        try:
+            conn.execute("UPDATE users SET username=?,display_name=?,birthday=?,avatar=? WHERE id=?",
+                         (payload.username,payload.display_name.strip(),payload.birthday,payload.avatar,user_id))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            return JSONResponse({"error":"用户名已被使用"},status_code=409)
+    return JSONResponse({"ok":True})
+
+
+@app.post("/api/profile/password")
+async def update_password(payload: PasswordUpdate,request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None: return JSONResponse({"error":"请先登录"},status_code=401)
+    if not HAS_BCRYPT: return JSONResponse({"error":"密码服务不可用"},status_code=503)
+    if len(payload.new_password.encode())>72:
+        return JSONResponse({"error":"密码UTF-8长度不能超过72字节"},status_code=400)
+    with _get_db() as conn:
+        row=conn.execute("SELECT password_hash FROM users WHERE id=?",(user_id,)).fetchone()
+        if not _check_password(payload.current_password,row['password_hash']):
+            return JSONResponse({"error":"当前密码不正确"},status_code=403)
+        conn.execute("UPDATE users SET password_hash=? WHERE id=?",(_hash_password(payload.new_password),user_id))
+        conn.execute("DELETE FROM auth_tokens WHERE user_id=?",(user_id,))
+        conn.commit()
+    return JSONResponse({"ok":True,"reauthenticate":True})
 
 
 def _session_belongs_to_user(session_id: str, user_id: int) -> bool:
@@ -1540,6 +1644,11 @@ async def ws_drive(websocket: WebSocket):
 # ══════════════════════════════════════════════════════════════
 @app.websocket("/ws/main")
 async def ws_main(websocket: WebSocket):
+    origin=websocket.headers.get('origin')
+    allowed={x.strip() for x in os.getenv('ALLOWED_ORIGINS','http://127.0.0.1:8801,http://localhost:8801').split(',')}
+    if origin and origin not in allowed:
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     session_id = str(uuid.uuid4())
     state = SessionState(session_id)
@@ -1563,7 +1672,15 @@ async def ws_main(websocket: WebSocket):
             "driver_model": _driver_runtime_payload(md),
         })
 
-    asyncio.create_task(preload_driver())
+    preload_task=asyncio.create_task(preload_driver())
+    pending_tasks=set()
+    def spawn_session_task(coroutine):
+        if len(pending_tasks)>=4:
+            coroutine.close()
+            return
+        task=asyncio.create_task(coroutine)
+        pending_tasks.add(task)
+        task.add_done_callback(pending_tasks.discard)
 
     # 驱动参数推送任务（30fps）
     drive_task = asyncio.create_task(_drive_loop(websocket, state, loop))
@@ -1571,12 +1688,26 @@ async def ws_main(websocket: WebSocket):
     try:
         while True:
             raw = await websocket.receive_text()
+            if len(raw)>3*1024*1024:
+                await websocket.close(code=1009)
+                break
             try:
                 msg = json.loads(raw)
             except Exception:
                 continue
 
             msg_type = msg.get("type", "")
+            if msg_type in {'audio','text_input','frame'}:
+                if getattr(state,'auth_token',None) and _verify_auth_token(state.auth_token)!=state.user_id:
+                    await _send(websocket,{'type':'error','code':'unauthorized','message':'登录状态已失效'})
+                    await websocket.close(code=1008)
+                    break
+                if _public_deployment() and state.user_id is None:
+                    await _send(websocket,{'type':'error','code':'unauthorized','message':'请先登录'})
+                    continue
+                if not allow_request(('ws',websocket.client.host,state.user_id,msg_type),60 if msg_type!='frame' else 1800):
+                    await _send(websocket,{'type':'error','code':'rate_limited','message':'请求过于频繁'})
+                    continue
 
             if msg_type == "init":
                 # 前端登录后绑定 user_id 和 db_session_id
@@ -1598,6 +1729,7 @@ async def ws_main(websocket: WebSocket):
                     })
                     continue
                 state.user_id = user_id
+                state.auth_token = token
                 state.db_session_id = db_sid if db_sid else None
                 state.agent_messages = (
                     _db_load_message_context(db_sid) if db_sid else []
@@ -1612,17 +1744,17 @@ async def ws_main(websocket: WebSocket):
 
             elif msg_type == "frame":
                 # 解码图像帧 → 提取特征 → 缓冲
-                asyncio.create_task(_handle_frame(msg, state, websocket, loop))
+                spawn_session_task(_handle_frame(msg, state, websocket, loop))
 
             elif msg_type == "audio":
                 # 解码音频 → ASR → 触发LLM
-                asyncio.create_task(_handle_audio(msg, state, websocket, loop))
+                spawn_session_task(_handle_audio(msg, state, websocket, loop))
 
             elif msg_type == "text_input":
                 # 手动文字输入（ASR不可用时的降级）
                 text = msg.get("text", "").strip()
                 if text:
-                    asyncio.create_task(_trigger_llm(text, state, websocket))
+                    spawn_session_task(_trigger_llm(text, state, websocket))
 
             elif msg_type == "control":
                 action = msg.get("action", "")
@@ -1637,6 +1769,9 @@ async def ws_main(websocket: WebSocket):
         print(f"[WS] 异常: {e}")
         traceback.print_exc()
     finally:
+        preload_task.cancel()
+        for task in list(pending_tasks): task.cancel()
+        await asyncio.gather(preload_task,*pending_tasks,return_exceptions=True)
         drive_task.cancel()
         with suppress(asyncio.CancelledError):
             await drive_task
@@ -1923,19 +2058,7 @@ async def _drive_loop(ws: WebSocket, state: SessionState, loop):
             params = await _compute_live2d_params(state, loop)
             await _send(ws, {"type": "live2d_params", "params": params})
 
-            # 同步广播给 /ws/drive 的客户端（integrated.html 驱动通道）
-            if _drive_clients:
-                drive_msg = {"type": "params", "data": params}
-                if state.pending_motion:
-                    drive_msg["motion"] = state.pending_motion
-                    state.pending_motion = None
-                dead = set()
-                for dc in list(_drive_clients):
-                    try:
-                        await dc.send_json(drive_msg)
-                    except Exception:
-                        dead.add(dc)
-                _drive_clients.difference_update(dead)
+            # 不再向独立 /ws/drive 广播，防止不同账号的驱动互相串扰。
 
             # 额外推送视觉监控数据（供 vision_demo.html 展示）
             if state.feature_buffer:
@@ -2129,15 +2252,18 @@ def _features_to_params_simple(state: SessionState) -> Dict[str, float]:
 # 视频文件上传处理
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/upload_video")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(request: Request,file: UploadFile = File(...)):
     """上传MP4文件，返回task_id，通过WS推送处理进度"""
     suffix = Path(file.filename).suffix.lower() if file.filename else ".mp4"
+    if suffix not in {'.mp4','.webm','.mov'}:
+        return JSONResponse({'error':'仅支持MP4、WebM或MOV视频'},status_code=400)
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         content = await file.read()
         f.write(content)
         tmp_path = f.name
 
     task_id = str(uuid.uuid4())
+    _video_owners[task_id]=_get_user_id_from_request(request)
     # 后台处理任务
     asyncio.create_task(_process_video_file(tmp_path, task_id))
     return JSONResponse({"task_id": task_id, "status": "processing",
@@ -2146,6 +2272,7 @@ async def upload_video(file: UploadFile = File(...)):
 
 # 视频任务状态存储
 _video_tasks: Dict[str, Dict] = {}
+_video_owners: Dict[str, Optional[int]] = {}
 
 async def _process_video_file(video_path: str, task_id: str):
     """后台处理视频文件"""
@@ -2207,6 +2334,8 @@ async def _process_video_file(video_path: str, task_id: str):
             os.unlink(video_path)
         except Exception:
             pass
+        if 'audio_path' in locals():
+            with suppress(OSError): os.unlink(audio_path)
 
 
 def _extract_audio_from_video(video_path: str, audio_path: str) -> bool:
@@ -2225,7 +2354,9 @@ def _extract_audio_from_video(video_path: str, audio_path: str) -> bool:
 
 
 @app.get("/api/video_task/{task_id}")
-async def get_video_task(task_id: str):
+async def get_video_task(task_id: str,request: Request):
+    if _public_deployment() and (_get_user_id_from_request(request) is None or _video_owners.get(task_id)!=_get_user_id_from_request(request)):
+        return JSONResponse({'error':'无权访问该视频任务'},status_code=403)
     result = _video_tasks.get(task_id, {"status": "not_found"})
     return JSONResponse(result)
 
