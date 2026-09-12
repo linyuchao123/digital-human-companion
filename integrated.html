@@ -506,6 +506,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <aside id="activity-history-panel" aria-label="活动记录">
   <button class="tb-chip" onclick="toggleActivityHistory()">关闭</button>
   <h3>📋 我的活动记录</h3>
+  <div id="activity-summary" class="activity-note"></div>
   <p>展示最近50条选择的活动，完成状态由你自行标记。</p>
   <div id="activity-history-list"></div>
 </aside>
@@ -1796,13 +1797,18 @@ async function toggleActivityHistory(){
 }
 async function loadActivityHistory(){
   const root=document.getElementById('activity-history-list'),token=_authToken;
+  const summary=document.getElementById('activity-summary');summary.textContent='';
   root.textContent=token?'正在加载…':'登录后可保存和回顾活动；游客活动只保留在当前页面。';
   if(!token) return;
   try{
     const response=await fetch('/api/activities',{headers:{'X-Auth-Token':token}});
     if(!response.ok) throw new Error('活动记录加载失败，请确认登录状态');
     const data=await response.json();
+    const statsResponse=await fetch('/api/activities/summary',{headers:{'X-Auth-Token':token}});
+    if(!statsResponse.ok) throw new Error('活动统计加载失败，请重试');
+    const stats=await statsResponse.json();
     if(token!==_authToken) return;
+    summary.textContent=`已选择 ${stats.total} · 已完成 ${stats.completed} · 进行中 ${stats.started}（全部未移除记录，不代表情绪改善）`;
     root.textContent=data.activities?.length?'':'还没有活动记录，先向小安请求几个小活动吧。';
     renderActivityCards(data.activities,root);
   }catch(error){if(token===_authToken) root.textContent=error.message;}
@@ -1848,6 +1854,20 @@ function renderActivityCards(cards,target){
       }
     };
     panel.append(title,description,button);row.appendChild(panel);
+    if(target&&card.task_id){
+      const remove=document.createElement('button');remove.type='button';remove.textContent='移除记录';
+      remove.style.marginLeft='8px';
+      remove.onclick=async()=>{
+        if(!confirm('从活动列表和统计中移除这条记录？这是隐藏操作，数据库仍保留记录。')) return;
+        const token=_authToken;remove.disabled=true;
+        try{
+          const response=await fetch('/api/activities/'+encodeURIComponent(card.task_id),{method:'DELETE',headers:{'X-Auth-Token':token}});
+          if(!response.ok) throw new Error('移除失败，请重试');
+          if(token===_authToken) await loadActivityHistory();
+        }catch(error){alert(error.message);remove.disabled=false;}
+      };
+      panel.appendChild(remove);
+    }
     if(card.created_at){
       const timestamp=document.createElement('p');timestamp.className='activity-note';
       timestamp.textContent='选择时间：'+new Date(card.created_at).toLocaleString()+
@@ -1992,6 +2012,7 @@ async function doLogout(){
   document.getElementById('memory-panel').classList.remove('show');
   document.getElementById('activity-history-panel').classList.remove('show');
   document.getElementById('activity-history-list').textContent='';
+  document.getElementById('activity-summary').textContent='';
   if(_sidebarOpen) toggleSidebar();
   document.getElementById('auth-modal').classList.remove('hidden');
   document.getElementById('auth-username').value='';
