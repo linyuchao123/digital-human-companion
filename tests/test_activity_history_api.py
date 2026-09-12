@@ -48,3 +48,27 @@ class ActivityHistoryTests(unittest.TestCase):
         self.client.post('/api/activities',json={'template_id':'journal','client_id':'stable'},headers=self.headers[0])
         server._init_db()
         self.assertEqual(len(self.client.get('/api/activities',headers=self.headers[0]).json()['activities']),1)
+
+    def test_summary_and_removal_are_scoped_and_idempotent(self):
+        headers=self.headers[0]
+        self.assertEqual(self.client.get('/api/activities/summary').status_code,401)
+        self.assertEqual(self.client.get('/api/activities/summary',headers=headers).json(),{'total':0,'completed':0,'started':0})
+        payload={'template_id':'tidy','client_id':'review'}
+        task=self.client.post('/api/activities',json=payload,headers=headers).json()
+        path='/api/activities/'+task['task_id']
+        self.assertEqual(self.client.delete(path,headers=self.headers[1]).status_code,404)
+        self.client.post(path+'/complete',headers=headers)
+        self.assertEqual(self.client.get('/api/activities/summary',headers=headers).json(),{'total':1,'completed':1,'started':0})
+        self.assertEqual(self.client.delete(path,headers=headers).status_code,200)
+        self.assertEqual(self.client.delete(path,headers=headers).status_code,200)
+        self.assertEqual(self.client.get('/api/activities/summary',headers=headers).json()['total'],0)
+        self.assertEqual(self.client.get('/api/activities',headers=headers).json()['activities'],[])
+        self.assertEqual(self.client.post(path+'/complete',headers=headers).status_code,404)
+        self.assertEqual(self.client.post('/api/activities',json=payload,headers=headers).status_code,410)
+
+    def test_schema_migration_preserves_existing_tasks(self):
+        conn=server._get_db()
+        conn.execute('ALTER TABLE activity_tasks DROP COLUMN removed_at')
+        conn.commit();conn.close()
+        server._init_db()
+        self.assertEqual(self.client.get('/api/activities',headers=self.headers[0]).status_code,200)

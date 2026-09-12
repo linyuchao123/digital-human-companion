@@ -135,6 +135,7 @@ def _init_db():
                 status TEXT NOT NULL DEFAULT 'started',
                 created_at TEXT NOT NULL,
                 completed_at TEXT,
+                removed_at TEXT,
                 UNIQUE(user_id,client_id)
             );
             CREATE INDEX IF NOT EXISTS idx_activity_tasks_user ON activity_tasks(user_id,created_at);
@@ -145,6 +146,9 @@ def _init_db():
             CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id, created_at);
         """)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(activity_tasks)")}
+        if "removed_at" not in columns:
+            conn.execute("ALTER TABLE activity_tasks ADD COLUMN removed_at TEXT")
         conn.commit()
         print("[DB] 数据库初始化完成")
     finally:
@@ -908,6 +912,8 @@ async def start_activity(payload: ActivityStartRequest, request: Request):
         row = conn.execute("SELECT * FROM activity_tasks WHERE user_id=? AND client_id=?", (user_id,payload.client_id)).fetchone()
         if row["template_id"] != payload.template_id:
             return JSONResponse({"error": "请求标识已用于其他活动"}, status_code=409)
+        if row["removed_at"]:
+            return JSONResponse({"error": "该活动记录已移除，请重新选择活动"}, status_code=410)
         return JSONResponse(_activity_payload(row))
     finally:
         conn.close()
@@ -920,8 +926,39 @@ async def list_activities(request: Request):
         return JSONResponse({"error": "未登录"}, status_code=401)
     conn = _get_db()
     try:
-        rows = conn.execute("SELECT * FROM activity_tasks WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50", (user_id,)).fetchall()
+        rows = conn.execute("SELECT * FROM activity_tasks WHERE user_id=? AND removed_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 50", (user_id,)).fetchall()
         return JSONResponse({"activities": [_activity_payload(row) for row in rows]})
+    finally:
+        conn.close()
+
+
+@app.get("/api/activities/summary")
+async def activity_summary(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS total,COALESCE(SUM(status='completed'),0) AS completed FROM activity_tasks WHERE user_id=? AND removed_at IS NULL", (user_id,)).fetchone()
+        return JSONResponse({"total": row["total"], "completed": row["completed"],
+                             "started": row["total"]-row["completed"]})
+    finally:
+        conn.close()
+
+
+@app.delete("/api/activities/{task_id}")
+async def remove_activity(task_id: str, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        cursor = conn.execute("UPDATE activity_tasks SET removed_at=COALESCE(removed_at,?) WHERE id=? AND user_id=?",
+                              (time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),task_id,user_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return JSONResponse({"error": "活动不存在"}, status_code=404)
+        return JSONResponse({"removed": True})
     finally:
         conn.close()
 
@@ -933,10 +970,10 @@ async def complete_activity(task_id: str, request: Request):
         return JSONResponse({"error": "未登录"}, status_code=401)
     conn = _get_db()
     try:
-        conn.execute("UPDATE activity_tasks SET status='completed',completed_at=COALESCE(completed_at,?) WHERE id=? AND user_id=?",
+        conn.execute("UPDATE activity_tasks SET status='completed',completed_at=COALESCE(completed_at,?) WHERE id=? AND user_id=? AND removed_at IS NULL",
                      (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),task_id,user_id))
         conn.commit()
-        row = conn.execute("SELECT * FROM activity_tasks WHERE id=? AND user_id=?", (task_id,user_id)).fetchone()
+        row = conn.execute("SELECT * FROM activity_tasks WHERE id=? AND user_id=? AND removed_at IS NULL", (task_id,user_id)).fetchone()
         if not row:
             return JSONResponse({"error": "活动不存在"}, status_code=404)
         return JSONResponse(_activity_payload(row))
