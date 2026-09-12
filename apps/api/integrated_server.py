@@ -22,6 +22,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import uuid
@@ -471,6 +472,7 @@ _asr_model = None
 HAS_ASR = False
 ASR_DEPENDENCY_AVAILABLE = importlib.util.find_spec("funasr") is not None
 ASR_LAST_ERROR: str | None = None
+_asr_inference_lock = threading.Lock()
 
 def _get_asr_model():
     global _asr_model, HAS_ASR, ASR_LAST_ERROR
@@ -527,17 +529,18 @@ def _asr_status_payload() -> Dict[str, Any]:
 
 def _run_asr(audio_path: str) -> str:
     """同步运行ASR，在线程池中执行"""
-    model = _get_asr_model()
-    if model is None:
-        return ""
-    try:
-        res = model.generate(input=audio_path, batch_size_s=300)
-        if res and isinstance(res, list):
-            return "".join(str(item.get("text", "")) for item in res if isinstance(item, dict)).strip()
-        return ""
-    except Exception as e:
-        print(f"[ASR] 识别失败: {e}")
-        return ""
+    with _asr_inference_lock:
+        model = _get_asr_model()
+        if model is None:
+            return ""
+        try:
+            res = model.generate(input=audio_path, batch_size_s=300)
+            if res and isinstance(res, list):
+                return "".join(str(item.get("text", "")) for item in res if isinstance(item, dict)).strip()
+            return ""
+        except Exception as e:
+            print(f"[ASR] 识别失败: {type(e).__name__}")
+            return ""
 
 # 4. 大模型与语音 API。专用密钥为空时回退到共用 DashScope 密钥。
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
@@ -1313,6 +1316,7 @@ class SessionState:
         self.asr_text_buffer = ""
         self.last_asr_trigger = 0.0
         self.llm_running = False
+        self.asr_running = False
         self.au_latest: Dict[str, float] = {}
         # 情感状态（LLM返回后更新，用于表情叠加）
         self.current_emotion: str = "Neutral"
@@ -1523,12 +1527,24 @@ async def _handle_frame(msg: dict, state: SessionState, ws: WebSocket, loop):
 
 async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
     """处理音频片段：保存临时文件→ASR→触发LLM"""
+    if state.asr_running or state.llm_running:
+        await _send(ws, {"type": "asr_error", "code": "busy", "message": "正在处理上一句话，请稍后再录音"})
+        return
+    state.asr_running = True
     try:
         audio_b64 = msg.get("data", "")
-        if not audio_b64:
-            return
-        audio_bytes = base64.b64decode(audio_b64)
+        if not isinstance(audio_b64, str) or not audio_b64 or len(audio_b64) > 2_800_000:
+            raise ValueError("音频为空或超过 2MB 限制")
+        audio_bytes = base64.b64decode(audio_b64, validate=True)
         suffix = msg.get("format", "webm")
+        if suffix not in {"wav", "webm", "ogg", "mp4"}:
+            raise ValueError("不支持的音频格式")
+        if len(audio_bytes) > 2 * 1024 * 1024:
+            raise ValueError("音频超过 2MB 限制")
+        if not ASR_DEPENDENCY_AVAILABLE:
+            await _send(ws, {"type": "asr_error", "code": "unavailable", "message": "服务端语音识别不可用，请使用浏览器语音或文字输入"})
+            return
+        await _send(ws, {"type": "asr_processing", "message": "正在识别录音，首次使用需要加载模型…"})
 
         with tempfile.NamedTemporaryFile(suffix=f".{suffix}", delete=False) as f:
             f.write(audio_bytes)
@@ -1544,17 +1560,15 @@ async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
 
         if text:
             await _send(ws, {"type": "asr_result", "text": text, "is_final": True})
-            state.asr_text_buffer += text
-            # 触发LLM（节流：距上次触发 > 1s）
-            now = time.time()
-            if not state.llm_running and (now - state.last_asr_trigger) > 1.0:
-                state.last_asr_trigger = now
-                full_text = state.asr_text_buffer.strip()
-                state.asr_text_buffer = ""
-                asyncio.create_task(_trigger_llm(full_text, state, ws))
+            await _trigger_llm(text, state, ws)
+        else:
+            await _send(ws, {"type": "asr_error", "code": "empty_result", "message": "未识别到文字或模型加载失败，请重试或使用文字输入"})
 
     except Exception as e:
-        print(f"[Audio] 处理失败: {e}")
+        print(f"[Audio] 处理失败: {type(e).__name__}")
+        await _send(ws, {"type": "asr_error", "code": "invalid_audio", "message": "录音处理失败，请检查格式与大小后重试"})
+    finally:
+        state.asr_running = False
 
 
 _MOTION_PATTERN = re.compile(r'\[MOTION:(FlickUp|Tap|Flick3|Idle)\]', re.IGNORECASE)
