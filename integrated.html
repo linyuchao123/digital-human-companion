@@ -1155,9 +1155,9 @@ async function playMotion(motionName){
 
 /* ═══════════ 自主动画（眨眼 + 呼吸 + 头部微动）═══════════ */
 const GESTURES={
-  Hello:{duration:2.6,params:{PARAM_ANGLE_Z:9,PARAM_ANGLE_Y:4,PARAM_BODY_Z:2.5}},
-  Nod:{duration:2.0,params:{PARAM_ANGLE_Y:14,PARAM_BODY_Y:2},waves:{PARAM_ANGLE_Y:'nod',PARAM_BODY_Y:'nod'}},
-  ShakeHead:{duration:2.4,params:{PARAM_ANGLE_X:17,PARAM_ANGLE_Z:3},waves:{PARAM_ANGLE_X:'shake'}},
+  Hello:{duration:3.2,params:{PARAM_ANGLE_Y:2,PARAM_ARM_02_L_01:0.7,PARAM_ARM_02_L_02:0.65,PARAM_HAND_02_L:0.3},waves:{PARAM_HAND_02_L:'wave'}},
+  Nod:{duration:1.7,params:{PARAM_ANGLE_Y:-12,PARAM_BODY_Y:-0.5},waves:{PARAM_ANGLE_Y:'nod',PARAM_BODY_Y:'nod'}},
+  ShakeHead:{duration:2.5,params:{PARAM_ANGLE_X:26},waves:{PARAM_ANGLE_X:'shake'}},
   Think:{duration:3.0,params:{PARAM_ANGLE_Z:11,PARAM_ANGLE_Y:5,PARAM_EYE_BALL_X:0.35}},
   Celebrate:{duration:2.8,params:{PARAM_BODY_Z:4.5,PARAM_ANGLE_Z:10,PARAM_ANGLE_Y:6},waves:{PARAM_BODY_Z:'sway',PARAM_ANGLE_Z:'sway'}},
   Comfort:{duration:3.0,params:{PARAM_ANGLE_Y:-6,PARAM_ANGLE_Z:7,PARAM_BODY_Z:1.5}},
@@ -1169,15 +1169,28 @@ function gestureEnvelope(progress){
   return smooth(Math.min(1,Math.max(0,progress/0.24)))*smooth(Math.min(1,Math.max(0,(1-progress)/0.32)));
 }
 function gestureWave(kind,progress){
-  // 点头两次，第二次更轻；摇头只左右一次，避免全身一起抖动。
-  if(kind==='nod') return Math.sin(progress*Math.PI*2)**2*(1-0.35*progress);
+  // 点头仅一次低头再抬回；招呼只摆手掌，不摇动整个身体。
+  if(kind==='nod') return Math.sin(progress*Math.PI)**2;
+  if(kind==='wave') return Math.sin(Math.max(0,Math.min(1,(progress-0.2)/0.6))*Math.PI*4);
   if(kind==='shake') return Math.sin(progress*Math.PI*2);
   if(kind==='sway') return Math.sin(progress*Math.PI*2)*0.75;
   return 1;
 }
 function gestureBase(id){
+  if(_gesture.name==='Hello'&&id==='PARAM_ARM_02_L_01') return 0.28;
+  if(_gesture.name==='Hello'&&id==='PARAM_ARM_02_L_02') return -1;
+  if(_gesture.name==='Hello'&&id==='PARAM_HAND_02_L') return 0;
   const external=Object.entries(wsParamsBuffer).find(([key])=>(PARAM_MAP[key]||key)===id);
   return external?Number(external[1]):(_gesture.bases[id]||0);
+}
+function setGreetingArmPose(core,progress){
+  const smooth=x=>x*x*(3-2*x);
+  const mix=smooth(Math.min(1,Math.max(0,progress/0.18)))*smooth(Math.min(1,Math.max(0,(1-progress)/0.18)));
+  // 使用原模型现成的另一套左臂部件，不叠加两只完整手臂。
+  for(const [id,opacity] of [['PARTS_01_ARM_L_01',1-mix],['PARTS_01_ARM_L_02',mix]]){
+    const index=core.getPartIndex(id);
+    if(index>=0) core.setPartOpacityByIndex(index,opacity);
+  }
 }
 function startGesture(name){
   if(!GESTURES[name]||isPlayingMotion||_gesture||Date.now()-_gestureLast<1500) return;
@@ -1193,16 +1206,20 @@ function tickGesture(core){
   if(!_gesture) return;
   const config=GESTURES[_gesture.name],progress=(performance.now()-_gesture.start)/(config.duration*1000);
   if(progress>=1){
+    if(_gesture.name==='Hello') setGreetingArmPose(core,1);
     for(const id of Object.keys(_gesture.bases)) core.setParameterValueById(id,gestureBase(id));
     _gesture=null;return;
   }
   const envelope=gestureEnvelope(progress);
+  if(_gesture.name==='Hello') setGreetingArmPose(core,progress);
   for(const [id,amplitude] of Object.entries(config.params)){
     const index=core.getParameterIndex(id);
     if(index>=0){
       const offset=amplitude*envelope*gestureWave(config.waves?.[id],progress);
       const base=gestureBase(id);
-      core.setParameterValueByIndex(index,base+offset);
+      // 手臂参数范围为约 -1～1；不要因放大幅度超出原模型绑定范围。
+      const value=id.includes('ARM_')||id.includes('HAND_')?Math.max(-1,Math.min(1,base+offset)):base+offset;
+      core.setParameterValueByIndex(index,value);
     }
   }
 }
