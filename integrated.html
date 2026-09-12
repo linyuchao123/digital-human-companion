@@ -392,6 +392,34 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 .activity-note{font-size:11px;color:#788398;margin-top:8px}
 #activity-history-panel{display:none;position:fixed;right:20px;top:65px;width:min(380px,calc(100vw - 40px));max-height:75vh;overflow:auto;z-index:180;background:#f4fbff;border:1px solid #c4ddfa;border-radius:18px;padding:16px;box-shadow:0 12px 36px #21395833}
 #activity-history-panel.show{display:block}
+#auth-modal{background:radial-gradient(ellipse at 20% 20%,#c3d6f2 0,transparent 55%),linear-gradient(135deg,#e5edf8,#f3eef8);padding:24px;overflow:auto}
+#auth-box{width:min(880px,100%);display:grid;grid-template-columns:1fr 1fr;padding:0;overflow:hidden;border-radius:28px;box-shadow:0 30px 90px #263a6526;background:#fff}
+.auth-brand{padding:52px 40px;background:linear-gradient(145deg,#273b67,#6879ac);color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:520px}
+.auth-brand .brand-mark{font-size:13px;letter-spacing:.16em;color:#d8e4ff}
+.auth-brand h1{font-size:35px;line-height:1.45;margin:42px 0 18px;font-weight:600;letter-spacing:.02em}
+.auth-brand p{font-size:14px;line-height:1.9;color:#dbe4f7}
+.auth-brand small{color:#b8c8e8;line-height:1.8}
+.auth-form{padding:42px 38px;align-self:center}
+#auth-title{text-align:left;font-size:24px;margin-bottom:10px}
+#auth-sub{text-align:left;line-height:1.7;margin-bottom:24px}
+.auth-field input{height:46px;border-radius:12px;background:#f8faff;border-color:#dfe6f2;font-size:14px}
+.auth-field label{font-size:12px}
+#auth-submit{height:46px;border-radius:12px;box-shadow:0 6px 18px #647bdd26}
+.auth-footnote{font-size:11px;color:#8d96aa;line-height:1.7;margin-top:20px}
+#sb-user-row{cursor:pointer}#sb-avatar{overflow:hidden;flex-shrink:0}#sb-avatar img{width:100%;height:100%;object-fit:cover}
+#profile-dialog{border:1px solid #e0e7f4;border-radius:24px;width:min(560px,calc(100vw - 32px));max-height:88vh;padding:28px;color:var(--text);box-shadow:0 24px 80px #26395533}
+#profile-dialog::backdrop{background:#21324e66;backdrop-filter:blur(6px)}
+.profile-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.profile-heading h2{font-size:22px;margin:0}.profile-heading button{background:#f1f4fa;border:0;border-radius:50%;width:32px;height:32px;cursor:pointer}
+.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.profile-grid .auth-field{margin:0}
+#profile-avatar{width:72px;height:72px;object-fit:cover;border-radius:50%;background:#dbe7fa;display:none}
+.profile-avatar-row{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.profile-avatar-row input{max-width:240px;font-size:12px}
+.profile-actions{display:flex;gap:10px;margin-top:20px}.profile-actions button{padding:11px 18px;border:0;border-radius:10px;background:#5a80d8;color:#fff;cursor:pointer}
+#profile-dialog fieldset{border:1px solid #e1e7f2;border-radius:12px;margin-top:24px;padding:16px}#profile-dialog legend{font-size:13px;color:#67768f}
+#profile-status{font-size:13px;line-height:1.7;min-height:24px;margin-top:14px;color:#526783}
+@media(max-width:650px){#auth-box{grid-template-columns:1fr}.auth-brand{min-height:0;padding:22px 28px}.auth-brand h1{font-size:23px;margin:15px 0 8px}.auth-brand p,.auth-brand small{display:none}.auth-form{padding:28px}.profile-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){#auth-modal *{transition:none}}
 </style>
 </head>
 <body>
@@ -403,25 +431,31 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <!-- ══ 登录弹窗 ══ -->
 <div id="auth-modal">
   <div id="auth-box">
-    <div id="auth-title">数字心屿 · AI情绪陪伴</div>
-    <div id="auth-sub">登录后可保存对话记录，随时回顾</div>
+    <aside class="auth-brand"><div><div class="brand-mark">DIGITAL XINYU · 数字心屿</div><h1>给心情，<br>一个温柔的落点。</h1><p>和小安聊聊今天。<br>每一次倾听，都从这里开始。</p></div><small>由 AI 驱动的日常情绪陪伴<br>不是医疗诊断或专业治疗服务</small></aside>
+    <div class="auth-form">
+    <div id="auth-title">欢迎回来</div>
+    <div id="auth-sub">登录你的心屿，继续上一次的故事。</div>
     <div id="auth-tabs">
       <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">登 录</button>
       <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">注 册</button>
     </div>
     <div class="auth-field">
       <label>用户名</label>
-      <input type="text" id="auth-username" placeholder="请输入用户名" maxlength="20"
+      <input type="text" id="auth-username" aria-label="用户名" autocomplete="username" placeholder="请输入用户名" maxlength="20"
         onkeydown="if(event.key==='Enter')document.getElementById('auth-password').focus()"/>
     </div>
     <div class="auth-field">
       <label>密码</label>
-      <input type="password" id="auth-password" placeholder="请输入密码（至少4位）" maxlength="32"
+      <input type="password" id="auth-password" aria-label="密码" autocomplete="current-password" placeholder="请输入密码" maxlength="64"
         onkeydown="if(event.key==='Enter')doAuth()"/>
     </div>
+    <div class="auth-field" id="auth-confirm-field" hidden><label for="auth-confirm">确认密码</label><input type="password" id="auth-confirm" autocomplete="new-password" maxlength="64" placeholder="再次输入密码" onkeydown="if(event.key==='Enter')doAuth()"/></div>
+    <button type="button" class="tb-chip" onclick="const p=document.getElementById('auth-password');p.type=p.type==='password'?'text':'password';this.textContent=p.type==='password'?'显示密码':'隐藏密码'">显示密码</button>
     <button id="auth-submit" onclick="doAuth()">进 入</button>
     <button id="auth-guest" onclick="continueAsGuest()">先体验，稍后登录</button>
-    <div id="auth-err"></div>
+    <div id="auth-err" role="status" aria-live="polite"></div>
+    <p class="auth-footnote">长期记忆默认关闭，由你决定是否授权。<br>注册密码至少 8 位，建议使用不与其他平台重复的密码。</p>
+    </div>
   </div>
 </div>
 
@@ -436,13 +470,26 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>
   </div>
   <div id="sb-bottom">
-    <div id="sb-user-row">
+    <div id="sb-user-row" role="button" tabindex="0" aria-label="打开个人资料" onclick="openProfile()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openProfile();}">
       <div id="sb-avatar">?</div>
       <span id="sb-name">未登录</span>
-      <button id="sb-logout-btn" onclick="doLogout()">退出</button>
+      <button id="sb-logout-btn" onclick="event.stopPropagation();doLogout()">退出</button>
     </div>
   </div>
 </div>
+<dialog id="profile-dialog" aria-labelledby="profile-title">
+  <div class="profile-heading"><h2 id="profile-title">个人资料</h2><button onclick="document.getElementById('profile-dialog').close()" aria-label="关闭个人资料">×</button></div>
+  <div class="profile-avatar-row"><img id="profile-avatar" alt="我的头像"/><div><label for="profile-avatar-file">更换头像 · PNG / JPEG</label><br><input id="profile-avatar-file" type="file" accept="image/png,image/jpeg" onchange="selectProfileAvatar(this.files[0])"/><button class="tb-chip" onclick="_profileAvatar='';document.getElementById('profile-avatar').style.display='none'">移除头像</button></div></div>
+  <div class="profile-grid">
+    <div class="auth-field"><label for="profile-name">姓名 / 昵称（选填）</label><input id="profile-name" maxlength="40" autocomplete="name"/></div>
+    <div class="auth-field"><label for="profile-username">用户名</label><input id="profile-username" maxlength="20" autocomplete="username"/></div>
+    <div class="auth-field"><label for="profile-birthday">生日（选填）</label><input id="profile-birthday" type="date" min="1900-01-01"/></div>
+    <div class="auth-field"><label for="profile-current-password">当前密码（改用户名或密码时填写）</label><input id="profile-current-password" type="password" maxlength="64" autocomplete="current-password"/></div>
+  </div>
+  <div class="profile-actions"><button onclick="saveProfile(this)">保存资料</button></div>
+  <fieldset><legend>账号安全 · 修改密码</legend><div class="auth-field"><label for="profile-new-password">新密码（至少8位）</label><input id="profile-new-password" type="password" maxlength="64" autocomplete="new-password"/></div><div class="auth-field"><label for="profile-confirm-password">确认新密码</label><input id="profile-confirm-password" type="password" maxlength="64" autocomplete="new-password"/></div><div class="profile-actions"><button onclick="changeProfilePassword(this)">修改密码</button></div><p class="auth-footnote">密码不展示、不回传。修改成功后所有设备需重新登录。</p></fieldset>
+  <div id="profile-created" class="auth-footnote"></div><div id="profile-status" role="status" aria-live="polite"></div>
+</dialog>
 <div id="sidebar-toggle" onclick="toggleSidebar()">&#8250;</div>
 
 <!-- ══ 顶栏 ══ -->
@@ -480,8 +527,8 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <div class="cs-title">🌸 数字心屿 · AI情绪陪伴数字人</div>
   <div class="cs-sub">基于深度学习模型驱动的情感陪护数字人系统<br>24维面部参数实时驱动 + 心理对话引擎</div>
   <div class="cs-ws-row">
-    <label>驱动服务：</label>
-    <input type="text" id="drive-ws-input" />
+    <label>会话通道：</label>
+    <input type="text" id="drive-ws-input" readonly title="驱动与对话共用当前用户的会话连接" />
   </div>
   <button id="connect-btn" onclick="connectAll()">
     <span>🔗</span><span>连接数字人</span>
@@ -598,7 +645,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 /* ═══════════ 配置 ═══════════ */
 const WS_ORIGIN    = `${location.protocol==='https:'?'wss:':'ws:'}//${location.host}`;
 const CHAT_WS_URL  = `${WS_ORIGIN}/ws/main`;
-const DRIVE_WS_URL = `${WS_ORIGIN}/ws/drive`;
+const DRIVE_WS_URL = `${WS_ORIGIN}/ws/main`;
 const API_URL      = location.origin;
 const MODEL_PATH   = '/shizuku/shizuku.model3.json';
 const AUDIO_SLICE_MS = 2000;
@@ -957,8 +1004,7 @@ async function connectAll(){
     await initPixiAndModel();
     if(generation!==_connectionGeneration) return;
     st.textContent='连接驱动服务...';
-    const driveUrl=document.getElementById('drive-ws-input').value.trim()||DRIVE_WS_URL;
-    connectDriveWS(driveUrl);
+    // 驱动与对话使用同一条会话 WebSocket，禁止连接共享广播通道。
     st.textContent='连接对话服务...';
     connectChatWS();
 
@@ -1349,13 +1395,13 @@ function connectChatWS(){
   if(chatWs) chatWs.close();
   chatWs=new WebSocket(CHAT_WS_URL);
   chatWs.onopen=()=>{
-    chatWsReady=true;updateOverallStatus();
+    chatWsReady=true;driveWsReady=true;wsParamsBuffer={};updateOverallStatus();
     // 绑定用户身份和当前会话到后端
-    if(_authToken&&_currentDbSession){
+    if(_authToken){
       chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
     }
   };
-  chatWs.onclose=()=>{chatWsReady=false;updateOverallStatus();
+  chatWs.onclose=()=>{chatWsReady=false;driveWsReady=false;wsParamsBuffer={};updateOverallStatus();
     if(connected) setTimeout(connectChatWS,3000);};
   chatWs.onerror=()=>{};
   chatWs.onmessage=(e)=>{try{handleChatMessage(JSON.parse(e.data));}catch(err){}};
@@ -1366,7 +1412,7 @@ function handleChatMessage(msg){
   switch(msg.type){
     case 'live2d_params':
       // /ws/main 同时推送驱动参数，当 /ws/drive 无数据时作为备用
-      if(msg.params&&Object.keys(wsParamsBuffer).length===0){
+      if(msg.params){
         for(const [k,v] of Object.entries(msg.params)) wsParamsBuffer[k]=v;
         driveFrameCount++;
         document.getElementById('di-frames').textContent=driveFrameCount;
@@ -1754,7 +1800,7 @@ async function _speakViaServerTTS(text,generation){
     console.log('[TTS] 请求服务端语音...',voice||'默认音色');
     const resp=await fetch('/api/tts',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},
       body:JSON.stringify({text,voice:voice||null}),
       signal:controller.signal
     });
@@ -1800,7 +1846,7 @@ async function _speakViaServerTTS(text,generation){
 async function _playStreamTTS(text,voice,generation,controller){
   let started=false;
   try{
-    const response=await fetch('/api/tts/stream',{method:'POST',headers:{'Content-Type':'application/json'},
+    const response=await fetch('/api/tts/stream',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},
       body:JSON.stringify({text,voice}),signal:controller.signal});
     if(!response.ok) return false;
     if(generation!==_ttsGeneration) return true;
@@ -2048,6 +2094,68 @@ window.addEventListener('load',()=>{
 });
 
 /* ═══════════ 认证与会话管理 ═══════════ */
+let _profile=null,_profileAvatar='';
+function renderProfileIdentity(){
+  if(!_profile) return;
+  document.getElementById('sb-name').textContent=_profile.display_name||_profile.username;
+  const avatar=document.getElementById('sb-avatar');avatar.textContent=(_profile.display_name||_profile.username).charAt(0).toUpperCase();
+  if(_profile.avatar){const image=document.createElement('img');image.src=_profile.avatar;image.alt='我的头像';avatar.textContent='';avatar.appendChild(image);}
+}
+async function profileRequest(path,method,payload){
+  const response=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:payload?JSON.stringify(payload):undefined});
+  const data=await response.json();
+  if(!response.ok) throw new Error(typeof data.error==='string'?data.error:'请检查输入内容或重新登录');
+  return data;
+}
+async function openProfile(){
+  if(!_authToken){document.getElementById('auth-modal').classList.remove('hidden');return;}
+  const dialog=document.getElementById('profile-dialog');if(!dialog.open) dialog.showModal();
+  const status=document.getElementById('profile-status');status.textContent='正在读取资料…';
+  try{
+    _profile=await profileRequest('/api/profile','GET');_profileAvatar=_profile.avatar||'';
+    document.getElementById('profile-name').value=_profile.display_name||'';
+    document.getElementById('profile-username').value=_profile.username;
+    document.getElementById('profile-birthday').value=_profile.birthday||'';
+    document.getElementById('profile-birthday').max=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+    for(const id of ['profile-current-password','profile-new-password','profile-confirm-password','profile-avatar-file']) document.getElementById(id).value='';
+    const image=document.getElementById('profile-avatar');image.src=_profileAvatar;image.style.display=_profileAvatar?'block':'none';
+    document.getElementById('profile-created').textContent='加入心屿：'+_profile.created_at.slice(0,10);
+    status.textContent='资料仅属于当前账号，生日和姓名可以不填写。';
+  }catch(error){status.textContent=error.message;}
+}
+async function selectProfileAvatar(file){
+  if(!file) return;
+  const status=document.getElementById('profile-status');
+  if(!['image/jpeg','image/png'].includes(file.type)||file.size>5*1024*1024){status.textContent='请选择小于5MB的PNG/JPEG图片';return;}
+  try{
+    const bitmap=await createImageBitmap(file),canvas=document.createElement('canvas');canvas.width=canvas.height=192;
+    const size=Math.min(bitmap.width,bitmap.height);canvas.getContext('2d').drawImage(bitmap,(bitmap.width-size)/2,(bitmap.height-size)/2,size,size,0,0,192,192);bitmap.close();
+    _profileAvatar=canvas.toDataURL('image/jpeg',0.85);
+    const image=document.getElementById('profile-avatar');image.src=_profileAvatar;image.style.display='block';status.textContent='头像已预览，点击保存资料后生效。';
+  }catch(error){status.textContent='图片读取失败，请更换图片';}
+}
+async function saveProfile(button){
+  button.disabled=true;const status=document.getElementById('profile-status');
+  try{
+    await profileRequest('/api/profile','PATCH',{display_name:document.getElementById('profile-name').value,
+      username:document.getElementById('profile-username').value.trim(),birthday:document.getElementById('profile-birthday').value,
+      avatar:_profileAvatar,current_password:document.getElementById('profile-current-password').value});
+    _profile=await profileRequest('/api/profile','GET');_currentUser=_profile.username;setCookie('auth_user',_currentUser,7);renderProfileIdentity();
+    document.getElementById('profile-current-password').value='';status.textContent='个人资料已保存';
+  }catch(error){status.textContent=error.message;}finally{button.disabled=false;}
+}
+async function changeProfilePassword(button){
+  const password=document.getElementById('profile-new-password').value,status=document.getElementById('profile-status');
+  if(password.length<8||password!==document.getElementById('profile-confirm-password').value){status.textContent='新密码至少8位，两次输入须一致';return;}
+  button.disabled=true;
+  try{
+    await profileRequest('/api/profile/password','POST',{current_password:document.getElementById('profile-current-password').value,new_password:password});
+    disconnectAll();delCookie('auth_token');delCookie('auth_user');_authToken='';_currentUser='';_currentDbSession='';_profile=null;
+    document.getElementById('profile-dialog').close();document.getElementById('auth-modal').classList.remove('hidden');
+    document.getElementById('auth-err').textContent='密码已修改，请使用新密码重新登录';
+    document.getElementById('auth-password').value='';
+  }catch(error){status.textContent=error.message;}finally{button.disabled=false;}
+}
 let _authToken='', _currentUser='', _currentDbSession='', _sidebarOpen=false;
 
 function getCookie(name){
@@ -2056,7 +2164,7 @@ function getCookie(name){
 }
 function setCookie(name,val,days){
   const d=new Date();d.setTime(d.getTime()+days*86400000);
-  document.cookie=name+'='+encodeURIComponent(val)+';expires='+d.toUTCString()+';path=/';
+  document.cookie=name+'='+encodeURIComponent(val)+';expires='+d.toUTCString()+';path=/;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');
 }
 function delCookie(name){document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';}
 
@@ -2072,6 +2180,11 @@ function initAuth(){
 }
 
 function switchAuthTab(tab){
+  document.getElementById('auth-confirm-field').hidden=tab!=='register';
+  document.getElementById('auth-title').textContent=tab==='login'?'欢迎回来':'创建你的心屿';
+  document.getElementById('auth-sub').textContent=tab==='login'?'登录你的心屿，继续上一次的故事。':'让每一次陪伴，都有迹可循。';
+  document.getElementById('auth-password').autocomplete=tab==='login'?'current-password':'new-password';
+  document.getElementById('auth-confirm').value='';
   document.getElementById('tab-login').classList.toggle('active',tab==='login');
   document.getElementById('tab-register').classList.toggle('active',tab==='register');
   document.getElementById('auth-submit').textContent=tab==='login'?'进 入':'注 册';
@@ -2087,6 +2200,9 @@ async function doAuth(){
   const password=document.getElementById('auth-password').value;
   const errEl=document.getElementById('auth-err');
   if(!username||!password){errEl.textContent='请填写用户名和密码';return;}
+  if(mode==='register'&&(password.length<8||password!==document.getElementById('auth-confirm').value)){
+    errEl.textContent='密码至少8位，且两次输入须一致';return;
+  }
   btn.disabled=true;
   btn.textContent='请稍候...';
   try{
@@ -2097,18 +2213,29 @@ async function doAuth(){
     if(!res.ok){errEl.textContent=data.error||'操作失败';return;}
     setCookie('auth_token',data.token,7);
     setCookie('auth_user',data.username,7);
-    _onLoginSuccess(data.token,data.username,false);
+    document.getElementById('auth-password').value='';document.getElementById('auth-confirm').value='';
+    await _onLoginSuccess(data.token,data.username,false);
   }catch(e){errEl.textContent='网络错误，请重试';}
   finally{btn.disabled=false;btn.textContent=mode==='login'?'进 入':'注 册';}
 }
 
 async function _onLoginSuccess(token,username,silent){
   _authToken=token; _currentUser=username;
+  try{
+    const res=await fetch('/api/profile',{headers:{'X-Auth-Token':token}});
+    if(res.status===401){
+      _authToken='';_currentUser='';delCookie('auth_token');delCookie('auth_user');
+      document.getElementById('auth-modal').classList.remove('hidden');
+      document.getElementById('auth-err').textContent='登录已过期，请重新登录';return;
+    }
+    if(res.ok){_profile=await res.json();username=_profile.username;}
+  }catch(error){document.getElementById('auth-err').textContent='连接服务失败，请稍后重试';return;}
   document.getElementById('auth-modal').classList.add('hidden');
   // 更新底部用户区（豆包风格）
   const initial=username.charAt(0).toUpperCase();
   document.getElementById('sb-avatar').textContent=initial;
   document.getElementById('sb-name').textContent=username;
+  renderProfileIdentity();
   document.getElementById('sb-logout-btn').textContent='退出';
   // 自动打开侧边栏
   if(!_sidebarOpen) toggleSidebar();
@@ -2121,6 +2248,8 @@ async function _onLoginSuccess(token,username,silent){
 }
 
 function continueAsGuest(){
+  if(connected) disconnectAll();
+  delCookie('auth_token');delCookie('auth_user');_profile=null;
   _authToken=''; _currentUser='游客'; _currentDbSession='';
   document.getElementById('auth-modal').classList.add('hidden');
   document.getElementById('sb-avatar').textContent='游';
@@ -2137,11 +2266,13 @@ async function doLogout(){
     return;
   }
   if(!confirm('确定退出登录？')) return;
+  disconnectAll();
   try{
     await fetch('/api/auth/logout',{method:'POST',headers:{'X-Auth-Token':_authToken}});
   }catch(e){}
   delCookie('auth_token'); delCookie('auth_user');
   _authToken=''; _currentUser=''; _currentDbSession='';
+  _profile=null;document.getElementById('profile-dialog').close();
   document.getElementById('sb-sessions').innerHTML=
     '<div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>';
   document.getElementById('sb-avatar').textContent='?';
