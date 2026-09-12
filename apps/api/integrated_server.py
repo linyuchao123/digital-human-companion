@@ -481,11 +481,14 @@ def _get_asr_model():
         return None
     if _asr_model is None:
         try:
+            os.environ.setdefault("MODELSCOPE_CACHE", str(ROOT / "models" / "asr"))
             from funasr import AutoModel
             _asr_model = AutoModel(
-                model="paraformer-zh",
+                model=os.environ.get("ASR_MODEL", "paraformer-zh"),
                 vad_model="fsmn-vad",
                 punc_model="ct-punc",
+                device=os.environ.get("ASR_DEVICE", "cpu"),
+                disable_update=True,
             )
             HAS_ASR = True
             ASR_LAST_ERROR = None

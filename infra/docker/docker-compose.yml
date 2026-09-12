@@ -39,6 +39,8 @@ services:
       - QWEN_API_KEY=${QWEN_API_KEY:-}
       - QWEN_BASE_URL=${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       - QWEN_MODEL=${QWEN_MODEL:-qwen-plus}
+      - ASR_MODEL=${ASR_MODEL:-paraformer-zh}
+      - ASR_DEVICE=${ASR_DEVICE:-cpu}
       # 语音模型使用独立密钥；共用 DashScope 密钥仍作为兼容回退项
       - TTS_API_KEY=${TTS_API_KEY:-}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
