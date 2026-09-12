@@ -41,3 +41,16 @@ jobs:
           DASHSCOPE_API_KEY: ""
           TTS_API_KEY: ""
         run: python -m unittest discover -s tests -p "test_*.py"
+
+  frontend-and-compose:
+    name: 动作与部署配置检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 动作逻辑测试
+        run: node tests/avatar_gestures.cjs
+      - name: Compose静态校验（不展开密钥）
+        run: docker compose -f infra/docker/docker-compose.yml config --quiet
