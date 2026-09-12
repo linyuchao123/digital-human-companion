@@ -127,6 +127,17 @@ def _init_db():
                 total_latency_ms REAL NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS activity_tasks (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                client_id TEXT NOT NULL,
+                template_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'started',
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                UNIQUE(user_id,client_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_tasks_user ON activity_tasks(user_id,created_at);
             CREATE INDEX IF NOT EXISTS idx_sessions_user ON chat_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
             CREATE INDEX IF NOT EXISTS idx_tokens_user ON auth_tokens(user_id);
@@ -863,6 +874,72 @@ def _session_belongs_to_user(session_id: str, user_id: int) -> bool:
             (session_id, user_id),
         ).fetchone()
         return row is not None
+    finally:
+        conn.close()
+
+
+class ActivityStartRequest(BaseModel):
+    template_id: str = Field(min_length=1, max_length=40)
+    client_id: str = Field(min_length=1, max_length=80)
+
+
+def _activity_payload(row):
+    from services.agent.activities import activity_cards
+    template = next((card for card in activity_cards() if card.id == row["template_id"]), None)
+    return {**(template.model_dump() if template else {}),
+            "task_id": row["id"], "status": row["status"],
+            "created_at": row["created_at"], "completed_at": row["completed_at"]}
+
+
+@app.post("/api/activities")
+async def start_activity(payload: ActivityStartRequest, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    from services.agent.activities import activity_cards
+    if payload.template_id not in {card.id for card in activity_cards()}:
+        return JSONResponse({"error": "未知活动模板"}, status_code=422)
+    conn = _get_db()
+    try:
+        conn.execute("INSERT OR IGNORE INTO activity_tasks(id,user_id,client_id,template_id,created_at) VALUES(?,?,?,?,?)",
+                     (str(uuid.uuid4()), user_id, payload.client_id, payload.template_id,
+                      time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
+        conn.commit()
+        row = conn.execute("SELECT * FROM activity_tasks WHERE user_id=? AND client_id=?", (user_id,payload.client_id)).fetchone()
+        if row["template_id"] != payload.template_id:
+            return JSONResponse({"error": "请求标识已用于其他活动"}, status_code=409)
+        return JSONResponse(_activity_payload(row))
+    finally:
+        conn.close()
+
+
+@app.get("/api/activities")
+async def list_activities(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        rows = conn.execute("SELECT * FROM activity_tasks WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50", (user_id,)).fetchall()
+        return JSONResponse({"activities": [_activity_payload(row) for row in rows]})
+    finally:
+        conn.close()
+
+
+@app.post("/api/activities/{task_id}/complete")
+async def complete_activity(task_id: str, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        conn.execute("UPDATE activity_tasks SET status='completed',completed_at=COALESCE(completed_at,?) WHERE id=? AND user_id=?",
+                     (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),task_id,user_id))
+        conn.commit()
+        row = conn.execute("SELECT * FROM activity_tasks WHERE id=? AND user_id=?", (task_id,user_id)).fetchone()
+        if not row:
+            return JSONResponse({"error": "活动不存在"}, status_code=404)
+        return JSONResponse(_activity_payload(row))
     finally:
         conn.close()
 
