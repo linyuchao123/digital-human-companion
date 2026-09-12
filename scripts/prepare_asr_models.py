@@ -27,7 +27,9 @@ def main():
     )
     print("FunASR / VAD / 标点模型准备完成")
     if args.audio:
-        result = model.generate(input=str(args.audio), batch_size_s=30)
+        result = model.generate(input=str(args.audio), batch_size_s=30,
+                                merge_vad=True, merge_length_s=15,
+                                hotword=os.environ.get("ASR_HOTWORDS", "小安 数字心屿"))
         print("识别结果：", "".join(item.get("text", "") for item in result))
 
 

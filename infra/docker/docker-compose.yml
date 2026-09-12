@@ -41,6 +41,7 @@ services:
       - QWEN_MODEL=${QWEN_MODEL:-qwen-plus}
       - ASR_MODEL=${ASR_MODEL:-paraformer-zh}
       - ASR_DEVICE=${ASR_DEVICE:-cpu}
+      - ASR_HOTWORDS=${ASR_HOTWORDS:-小安 数字心屿}
       # 语音模型使用独立密钥；共用 DashScope 密钥仍作为兼容回退项
       - TTS_API_KEY=${TTS_API_KEY:-}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}

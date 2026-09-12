@@ -530,6 +530,14 @@ def _asr_status_payload() -> Dict[str, Any]:
         ),
     }
 
+def _asr_hotwords() -> str:
+    """只传递有限的词语，避免 FunASR 将配置误解释为路径或 URL。"""
+    words = re.split(r"[,，;；\s]+", os.environ.get("ASR_HOTWORDS", "小安 数字心屿"))
+    return " ".join(dict.fromkeys(
+        word for word in words if re.fullmatch(r"[\w\u4e00-\u9fff]{1,20}", word)
+    ))[:400]
+
+
 def _run_asr(audio_path: str) -> str:
     """同步运行ASR，在线程池中执行"""
     with _asr_inference_lock:
@@ -537,7 +545,13 @@ def _run_asr(audio_path: str) -> str:
         if model is None:
             return ""
         try:
-            res = model.generate(input=audio_path, batch_size_s=300)
+            # 合并短停顿的 VAD 片段，为识别保留句内上下文；热词只影响声学解码，
+            # 不用 LLM 改写转录，以免改变用户的否定词、情绪和风险表达。
+            res = model.generate(
+                input=audio_path, batch_size_s=30,
+                merge_vad=True, merge_length_s=15,
+                hotword=_asr_hotwords(),
+            )
             if res and isinstance(res, list):
                 return "".join(str(item.get("text", "")) for item in res if isinstance(item, dict)).strip()
             return ""
