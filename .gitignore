@@ -26,6 +26,7 @@ node_modules/
 
 # 大文件/模型文件（超过100MB）
 models/embedding/
+models/asr/
 *.pt
 *.pth
 *.pth.tar

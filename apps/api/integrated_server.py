@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hmac
+import importlib.util
 import io
 import json
 import os
@@ -21,6 +22,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import uuid
@@ -468,37 +470,80 @@ def blendshape_smile_approx(lm) -> float:
 # 3. FunASR
 _asr_model = None
 HAS_ASR = False
+ASR_DEPENDENCY_AVAILABLE = importlib.util.find_spec("funasr") is not None
+ASR_LAST_ERROR: str | None = None
+_asr_inference_lock = threading.Lock()
 
 def _get_asr_model():
-    global _asr_model, HAS_ASR
+    global _asr_model, HAS_ASR, ASR_LAST_ERROR
+    if not ASR_DEPENDENCY_AVAILABLE:
+        ASR_LAST_ERROR = "dependency_missing"
+        return None
     if _asr_model is None:
         try:
+            os.environ.setdefault("MODELSCOPE_CACHE", str(ROOT / "models" / "asr"))
             from funasr import AutoModel
             _asr_model = AutoModel(
-                model="paraformer-zh",
+                model=os.environ.get("ASR_MODEL", "paraformer-zh"),
                 vad_model="fsmn-vad",
                 punc_model="ct-punc",
+                device=os.environ.get("ASR_DEVICE", "cpu"),
+                disable_update=True,
             )
             HAS_ASR = True
+            ASR_LAST_ERROR = None
             print("[IntegratedServer] FunASR AutoModel 初始化成功")
         except Exception as e:
             print(f"[IntegratedServer] FunASR不可用: {e}")
             _asr_model = None
+            HAS_ASR = False
+            ASR_LAST_ERROR = type(e).__name__
     return _asr_model
+
+
+def _asr_status_payload() -> Dict[str, Any]:
+    if not ASR_DEPENDENCY_AVAILABLE:
+        return {
+            "available": False,
+            "ready": False,
+            "provider": "browser_speech_recognition",
+            "reason": "dependency_missing",
+            "message": "FunASR 依赖未安装，使用浏览器语音识别",
+        }
+    if HAS_ASR and _asr_model is not None:
+        return {
+            "available": True,
+            "ready": True,
+            "provider": "funasr_paraformer",
+            "reason": None,
+            "message": "FunASR 服务端语音识别已就绪",
+        }
+    return {
+        "available": True,
+        "ready": False,
+        "provider": "funasr_paraformer",
+        "reason": ASR_LAST_ERROR,
+        "message": (
+            f"FunASR 初始化失败：{ASR_LAST_ERROR}"
+            if ASR_LAST_ERROR
+            else "FunASR 将在首次录音时加载"
+        ),
+    }
 
 def _run_asr(audio_path: str) -> str:
     """同步运行ASR，在线程池中执行"""
-    model = _get_asr_model()
-    if model is None:
-        return ""
-    try:
-        res = model.generate(input=audio_path, batch_size_s=300)
-        if res and isinstance(res, list):
-            return "".join(str(item.get("text", "")) for item in res if isinstance(item, dict)).strip()
-        return ""
-    except Exception as e:
-        print(f"[ASR] 识别失败: {e}")
-        return ""
+    with _asr_inference_lock:
+        model = _get_asr_model()
+        if model is None:
+            return ""
+        try:
+            res = model.generate(input=audio_path, batch_size_s=300)
+            if res and isinstance(res, list):
+                return "".join(str(item.get("text", "")) for item in res if isinstance(item, dict)).strip()
+            return ""
+        except Exception as e:
+            print(f"[ASR] 识别失败: {type(e).__name__}")
+            return ""
 
 # 4. 大模型与语音 API。专用密钥为空时回退到共用 DashScope 密钥。
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
@@ -599,7 +644,7 @@ async def api_status(request: Request):
         "status": "running",
         "modules": {
             "vision_mediapipe": HAS_MEDIAPIPE,
-            "asr_funasr": HAS_ASR,
+            "asr_funasr": ASR_DEPENDENCY_AVAILABLE,
             "driver_model": HAS_DRIVER and checkpoint_status.ready,
             "deepseek_api": bool(DEEPSEEK_API_KEY),
             "qwen_api": bool(QWEN_API_KEY),
@@ -608,6 +653,7 @@ async def api_status(request: Request):
             "agent_provider": _configured_agent_provider_name(),
         },
         "tts": _tts_status_payload(),
+        "asr": _asr_status_payload(),
         "model_assets": {
             "face_driver": checkpoint_status.to_public_dict(),
         },
@@ -1273,6 +1319,7 @@ class SessionState:
         self.asr_text_buffer = ""
         self.last_asr_trigger = 0.0
         self.llm_running = False
+        self.asr_running = False
         self.au_latest: Dict[str, float] = {}
         # 情感状态（LLM返回后更新，用于表情叠加）
         self.current_emotion: str = "Neutral"
@@ -1336,7 +1383,7 @@ async def ws_main(websocket: WebSocket):
         state.model_device = md
         await _send(websocket, {"type": "status",
             "modules": {
-                "vision": HAS_MEDIAPIPE, "asr": HAS_ASR,
+                "vision": HAS_MEDIAPIPE, "asr": ASR_DEPENDENCY_AVAILABLE,
                 "driver": md is not None,
                 "llm": bool(DEEPSEEK_API_KEY or QWEN_API_KEY),
             },
@@ -1483,12 +1530,24 @@ async def _handle_frame(msg: dict, state: SessionState, ws: WebSocket, loop):
 
 async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
     """处理音频片段：保存临时文件→ASR→触发LLM"""
+    if state.asr_running or state.llm_running:
+        await _send(ws, {"type": "asr_error", "code": "busy", "message": "正在处理上一句话，请稍后再录音"})
+        return
+    state.asr_running = True
     try:
         audio_b64 = msg.get("data", "")
-        if not audio_b64:
-            return
-        audio_bytes = base64.b64decode(audio_b64)
+        if not isinstance(audio_b64, str) or not audio_b64 or len(audio_b64) > 2_800_000:
+            raise ValueError("音频为空或超过 2MB 限制")
+        audio_bytes = base64.b64decode(audio_b64, validate=True)
         suffix = msg.get("format", "webm")
+        if suffix not in {"wav", "webm", "ogg", "mp4"}:
+            raise ValueError("不支持的音频格式")
+        if len(audio_bytes) > 2 * 1024 * 1024:
+            raise ValueError("音频超过 2MB 限制")
+        if not ASR_DEPENDENCY_AVAILABLE:
+            await _send(ws, {"type": "asr_error", "code": "unavailable", "message": "服务端语音识别不可用，请使用浏览器语音或文字输入"})
+            return
+        await _send(ws, {"type": "asr_processing", "message": "正在识别录音，首次使用需要加载模型…"})
 
         with tempfile.NamedTemporaryFile(suffix=f".{suffix}", delete=False) as f:
             f.write(audio_bytes)
@@ -1504,17 +1563,15 @@ async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
 
         if text:
             await _send(ws, {"type": "asr_result", "text": text, "is_final": True})
-            state.asr_text_buffer += text
-            # 触发LLM（节流：距上次触发 > 1s）
-            now = time.time()
-            if not state.llm_running and (now - state.last_asr_trigger) > 1.0:
-                state.last_asr_trigger = now
-                full_text = state.asr_text_buffer.strip()
-                state.asr_text_buffer = ""
-                asyncio.create_task(_trigger_llm(full_text, state, ws))
+            await _trigger_llm(text, state, ws)
+        else:
+            await _send(ws, {"type": "asr_error", "code": "empty_result", "message": "未识别到文字或模型加载失败，请重试或使用文字输入"})
 
     except Exception as e:
-        print(f"[Audio] 处理失败: {e}")
+        print(f"[Audio] 处理失败: {type(e).__name__}")
+        await _send(ws, {"type": "asr_error", "code": "invalid_audio", "message": "录音处理失败，请检查格式与大小后重试"})
+    finally:
+        state.asr_running = False
 
 
 _MOTION_PATTERN = re.compile(r'\[MOTION:(FlickUp|Tap|Flick3|Idle)\]', re.IGNORECASE)
