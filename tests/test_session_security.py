@@ -92,6 +92,12 @@ class SessionAuthorizationTests(unittest.TestCase):
             })
             response = websocket.receive_json()
 
+            # 驱动帧可能先于鉴权错误到达，不假定跨任务消息顺序。
+            for _ in range(10):
+                if response.get("type") == "error":
+                    break
+                response = websocket.receive_json()
+
         self.assertEqual(response["type"], "error")
         self.assertEqual(response["code"], "session_forbidden")
 
