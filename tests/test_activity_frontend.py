@@ -18,6 +18,7 @@ class ActivityFrontendTests(unittest.TestCase):
           appendChild(item){this.children.push(item);}
         }
         const area=new Element();
+        const _authToken='';
         const document={createElement:()=>new Element(),getElementById:()=>area};
         """ + function + """
         renderActivityCards([null,{title:'<script>unsafe</script>',description:'记录心情',minutes:2}]);
