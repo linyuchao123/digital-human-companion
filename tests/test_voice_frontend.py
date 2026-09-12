@@ -44,6 +44,21 @@ class VoiceFrontendTests(unittest.TestCase):
         self.assertIn("if(!ttsEnabled) _stopAudio()", self.html)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js 未安装，跳过 WAV 编码运行测试")
+    def test_resampler_rejects_above_nyquist_noise(self):
+        function = re.search(r"function _encodeVoiceWav\(.*?(?=function _startBrowserVoiceInput)", self.html, re.S).group()
+        script = function + """
+        (async()=>{
+          const source=Float32Array.from({length:48000},(_,i)=>0.5*Math.sin(2*Math.PI*12000*i/48000));
+          const v=new DataView(await _encodeVoiceWav([source],48000).arrayBuffer());
+          let energy=0;
+          for(let i=100;i<15900;i++) energy+=(v.getInt16(44+2*i,true)/32768)**2;
+          console.log(Math.sqrt(energy/15800));
+        })();
+        """
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        self.assertLess(float(result.stdout), 0.005)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js 未安装，跳过 WAV 编码运行测试")
     def test_wav_encoder_resamples_to_16khz_mono_pcm(self):
         function = re.search(
             r"function _encodeVoiceWav\(.*?(?=function _startBrowserVoiceInput)",
