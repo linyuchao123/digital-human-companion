@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable, Literal, Sequence
 from langgraph.graph import END, START, StateGraph
 
 from .emotion import EmotionAnalyzer
+from .clock import is_clock_query, clock_answer
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
 from .memory import (
     MemoryStore,
@@ -63,6 +64,7 @@ class DigitalXinyuWorkflow:
         graph.add_node("memory_writer", self._write_memory)
         graph.add_node("memory_forgetter", self._forget_memory)
         graph.add_node("companion", self._generate_companion_response)
+        graph.add_node("clock_tool", self._read_clock)
         graph.add_node("avatar_director", self._direct_avatar)
 
         graph.add_edge(START, "safety_triage")
@@ -81,6 +83,7 @@ class DigitalXinyuWorkflow:
                 "memory_retriever": "memory_retriever",
                 "memory_forgetter": "memory_forgetter",
                 "companion": "companion",
+                "clock_tool": "clock_tool",
                 "avatar_director": "avatar_director",
             },
         )
@@ -97,6 +100,7 @@ class DigitalXinyuWorkflow:
         )
         graph.add_edge("memory_writer", "avatar_director")
         graph.add_edge("memory_forgetter", "avatar_director")
+        graph.add_edge("clock_tool", "avatar_director")
         graph.add_edge("avatar_director", END)
         return graph
 
@@ -155,6 +159,8 @@ class DigitalXinyuWorkflow:
             "清空" in text and "记忆" in text
         ):
             intent = "memory_forget"
+        elif is_clock_query(text):
+            intent = "clock_query"
         else:
             intent = "emotional_support" if any(
                 word in text for word in emotional_keywords
@@ -181,12 +187,14 @@ class DigitalXinyuWorkflow:
         state: AgentState,
     ) -> Literal[
         "knowledge_retriever", "memory_retriever", "memory_forgetter",
-        "companion", "avatar_director"
+        "companion", "avatar_director", "clock_tool"
     ]:
         if state["safety"].requires_safe_response:
             return "avatar_director"
         if state.get("intent") == "memory_forget":
             return "memory_forgetter"
+        if state.get("intent") == "clock_query":
+            return "clock_tool"
         if state.get("memory_consent") and state.get("user_id") is not None:
             return "memory_retriever"
         if state.get("intent") == "emotional_support":
@@ -344,6 +352,21 @@ class DigitalXinyuWorkflow:
             ],
         )
 
+    async def _read_clock(self, state: AgentState) -> dict[str, Any]:
+        started_at = perf_counter()
+        response = clock_answer(state["user_text"])
+        return self._complete_node(
+            state, "clock_tool", started_at,
+            final_response=response,
+            messages=[*state.get("messages", []),
+                      ChatMessage(role="user", content=state["user_text"]),
+                      ChatMessage(role="assistant", content=response)][-MAX_CONTEXT_MESSAGES:],
+            tool_calls=[*state.get("tool_calls", []), ToolCallRecord(
+                name="current_datetime", reason="用户明确询问时间或日期，读取真实时钟而非模型猜测",
+                status="completed", elapsed_ms=round((perf_counter()-started_at)*1000,3),
+            )],
+        )
+
     async def _generate_companion_response(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
         conversation_messages: Sequence[ChatMessage] = [
@@ -462,7 +485,7 @@ class DigitalXinyuWorkflow:
                 else "retrieved_memories"
             )
             data["result_count"] = len(state.get(key, []))
-        elif node in {"memory_writer", "memory_forgetter"}:
+        elif node in {"memory_writer", "memory_forgetter", "clock_tool"}:
             tool_calls = state.get("tool_calls", [])
             if tool_calls:
                 data["tool_status"] = tool_calls[-1].status
