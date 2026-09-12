@@ -1,4 +1,5 @@
 import asyncio
+import os
 import base64
 import json
 import unittest
@@ -17,6 +18,11 @@ class CaptureWebSocket:
 
 
 class VoiceAudioFlowTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        config = patch.dict(os.environ, {"ASR_PROVIDER": "funasr"})
+        config.start()
+        self.addCleanup(config.stop)
+
     async def call_audio(self, message, state=None):
         state = state or server.SessionState("voice-test")
         ws = CaptureWebSocket()

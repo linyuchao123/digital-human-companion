@@ -45,6 +45,7 @@ from dotenv import load_dotenv
 import numpy as np
 
 from services.tts import MacOSSayProvider, Qwen3TtsProvider, TtsProviderError
+from services.asr import cloud_provider as cloud_asr
 
 load_dotenv(ROOT / ".env", override=False)
 
@@ -502,6 +503,11 @@ def _get_asr_model():
 
 
 def _asr_status_payload() -> Dict[str, Any]:
+    if os.environ.get("ASR_PROVIDER", "funasr") == "qwen":
+        configured = bool(cloud_asr.api_key())
+        return {"available": configured, "ready": False, "provider": "qwen_cloud",
+                "reason": None if configured else "key_missing",
+                "message": "百炼云端ASR已配置，录音将发送到阿里云" if configured else "未配置ASR密钥"}
     if not ASR_DEPENDENCY_AVAILABLE:
         return {
             "available": False,
@@ -529,6 +535,18 @@ def _asr_status_payload() -> Dict[str, Any]:
             else "FunASR 将在首次录音时加载"
         ),
     }
+
+def _recognize_audio(audio_path):
+    if os.environ.get("ASR_PROVIDER", "funasr") != "qwen":
+        return _run_asr(audio_path), "funasr_paraformer", None
+    try:
+        return cloud_asr.transcribe(audio_path, _asr_hotwords()), "qwen_cloud", None
+    except cloud_asr.CloudAsrError as exc:
+        reason = str(exc)
+        if os.environ.get("ASR_FALLBACK_LOCAL", "true").lower() == "true" and ASR_DEPENDENCY_AVAILABLE:
+            return _run_asr(audio_path), "funasr_paraformer", reason
+        raise
+
 
 def _asr_hotwords() -> str:
     """只传递有限的词语，避免 FunASR 将配置误解释为路径或 URL。"""
@@ -1397,7 +1415,7 @@ async def ws_main(websocket: WebSocket):
         state.model_device = md
         await _send(websocket, {"type": "status",
             "modules": {
-                "vision": HAS_MEDIAPIPE, "asr": ASR_DEPENDENCY_AVAILABLE,
+                "vision": HAS_MEDIAPIPE, "asr": _asr_status_payload()["available"],
                 "driver": md is not None,
                 "llm": bool(DEEPSEEK_API_KEY or QWEN_API_KEY),
             },
@@ -1558,7 +1576,7 @@ async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
             raise ValueError("不支持的音频格式")
         if len(audio_bytes) > 2 * 1024 * 1024:
             raise ValueError("音频超过 2MB 限制")
-        if not ASR_DEPENDENCY_AVAILABLE:
+        if not _asr_status_payload()["available"]:
             await _send(ws, {"type": "asr_error", "code": "unavailable", "message": "服务端语音识别不可用，请使用浏览器语音或文字输入"})
             return
         await _send(ws, {"type": "asr_processing", "message": "正在识别录音，首次使用需要加载模型…"})
@@ -1568,7 +1586,7 @@ async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
             tmp_path = f.name
 
         try:
-            text = await loop.run_in_executor(_executor, _run_asr, tmp_path)
+            text, provider, fallback_reason = await loop.run_in_executor(_executor, _recognize_audio, tmp_path)
         finally:
             try:
                 os.unlink(tmp_path)
@@ -1576,11 +1594,14 @@ async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
                 pass
 
         if text:
-            await _send(ws, {"type": "asr_result", "text": text, "is_final": True})
+            await _send(ws, {"type": "asr_result", "text": text, "is_final": True,
+                             "provider": provider, "fallback_reason": fallback_reason})
             await _trigger_llm(text, state, ws)
         else:
             await _send(ws, {"type": "asr_error", "code": "empty_result", "message": "未识别到文字或模型加载失败，请重试或使用文字输入"})
 
+    except cloud_asr.CloudAsrError:
+        await _send(ws, {"type": "asr_error", "code": "cloud_failed", "message": "云端识别失败，请检查ASR密钥、地域与模型权限，或切换本地识别"})
     except Exception as e:
         print(f"[Audio] 处理失败: {type(e).__name__}")
         await _send(ws, {"type": "asr_error", "code": "invalid_audio", "message": "录音处理失败，请检查格式与大小后重试"})

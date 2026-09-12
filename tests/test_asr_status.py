@@ -1,4 +1,5 @@
 import unittest
+import os
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -8,6 +9,9 @@ from apps.api import integrated_server
 
 class AsrStatusTests(unittest.TestCase):
     def setUp(self):
+        self.config = patch.dict(os.environ, {"ASR_PROVIDER": "funasr"})
+        self.config.start()
+        self.addCleanup(self.config.stop)
         self.client = TestClient(integrated_server.app)
 
     def tearDown(self):
