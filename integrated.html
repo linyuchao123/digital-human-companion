@@ -529,7 +529,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()" title="管理长期记忆授权与已保存内容">🧠 长期记忆</button>
 <button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
 <button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()" title="显示智能体节点、风控与形象指令">🧭 开发者模式</button>
-<button class="tb-chip" onclick="window.open('/vision','_blank')" title="打开视觉人脸检测监控页面">👁 人脸检测</button>
+<button class="tb-chip" id="camera-btn" onclick="toggleCameraPerception()">👁 摄像头感知</button>
 <button class="tb-chip" onclick="window.open('/rag','_blank')" title="打开心理学知识库管理页面">📚 知识库</button>
 </div>
 
@@ -1059,6 +1059,7 @@ async function connectAll(){
 }
 
 function disconnectAll(){
+  window.stopCameraPerception?.();
   _connectionGeneration++;
   _wakeUp=null;_gesture=null;
   if(driveWs){driveWs.close();driveWs=null;driveWsReady=false;}
@@ -1419,7 +1420,7 @@ function connectChatWS(){
       chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
     }
   };
-  chatWs.onclose=()=>{chatWsReady=false;driveWsReady=false;wsParamsBuffer={};updateOverallStatus();
+  chatWs.onclose=()=>{window.stopCameraPerception?.('连接已断开');chatWsReady=false;driveWsReady=false;wsParamsBuffer={};updateOverallStatus();
     if(connected) setTimeout(connectChatWS,3000);};
   chatWs.onerror=()=>{};
   chatWs.onmessage=(e)=>{try{handleChatMessage(JSON.parse(e.data));}catch(err){}};
@@ -1431,6 +1432,12 @@ function chatSend(data){
 
 function handleChatMessage(msg){
   switch(msg.type){
+    case 'session_bound':
+      window.stopCameraPerception?.('会话已切换，摄像头已关闭');
+      break;
+    case 'vision_status':
+      document.getElementById('camera-status').textContent=msg.status;
+      break;
     case 'live2d_params':
       // /ws/main 同时推送驱动参数，当 /ws/drive 无数据时作为备用
       if(msg.params){
@@ -2621,5 +2628,13 @@ async function deleteSession(sessionId){
 }
 
 </script>
+<aside id="camera-panel" hidden style="position:fixed;bottom:90px;left:285px;z-index:50;background:rgba(255,255,255,.92);padding:12px;border-radius:18px;box-shadow:0 8px 30px #18234422;width:200px;max-width:50vw">
+  <div id="camera-status" role="status" aria-live="polite">已关闭</div>
+  <video id="camera-video" autoplay muted playsinline style="width:100%;border-radius:12px;transform:scaleX(-1)"></video>
+  <button type="button" class="tb-chip" onclick="toggleCameraPreview()">显示/隐藏预览</button>
+  <button type="button" class="tb-chip" onclick="stopCameraPerception()">关闭摄像头</button>
+  <small style="display:block;margin-top:8px">画面仅本机处理 · 表情不等于真实情绪</small>
+</aside>
+<script src="/static/mediapipe/camera-controller.js"></script>
 </body>
 </html>

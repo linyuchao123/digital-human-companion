@@ -651,6 +651,9 @@ install_http_security(app,_verify_auth_token,_public_deployment)
 
 # 托管 MediaPipe 本地文件（避免 CDN 访问不稳定）
 MEDIAPIPE_STATIC_DIR = ROOT / "static" / "mediapipe"
+@app.get('/api/vision/face-landmarker-model')
+async def browser_face_landmarker_model():
+    return FileResponse(ROOT / 'models' / 'face_landmarker.task', media_type='application/octet-stream')
 if MEDIAPIPE_STATIC_DIR.exists():
     app.mount("/static/mediapipe", StaticFiles(directory=str(MEDIAPIPE_STATIC_DIR)), name="mediapipe-static")
     print(f"[IntegratedServer] MediaPipe 本地静态资源挂载: {MEDIAPIPE_STATIC_DIR}")

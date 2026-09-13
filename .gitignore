@@ -77,6 +77,8 @@ Thumbs.db
 dist/
 *.tsbuildinfo
 *.mjs
+!static/mediapipe/camera-worker.mjs
+!static/mediapipe/tasks-vision/vision_bundle.mjs
 
 # 临时文件
 __TEMP__/
