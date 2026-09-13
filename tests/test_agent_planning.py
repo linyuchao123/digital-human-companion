@@ -9,9 +9,9 @@ class PlanningTests(unittest.IsolatedAsyncioTestCase):
     async def test_strict_allowlist_and_failure(self):
         for raw in ['{"tool":"shell"}', '{"tool":"weather","url":"http://localhost"}', 'not json', '[]', '{"tool":[]}']:
             provider=FakeCompanionProvider();provider.select_tool=AsyncMock(return_value=raw)
-            self.assertEqual(await select_tool(provider,'问题'),('chat','invalid'))
+            self.assertEqual(await select_tool(provider,'请问测试问题'),('chat','invalid'))
         provider.select_tool=AsyncMock(side_effect=TimeoutError('secret'))
-        self.assertEqual(await select_tool(provider,'问题'),('chat','timeout'))
+        self.assertEqual(await select_tool(provider,'请问测试问题'),('chat','timeout'))
 
     async def test_weather_model_route_and_missing_city(self):
         provider=FakeCompanionProvider();provider.select_tool=AsyncMock(return_value='{"tool":"weather"}')
@@ -34,7 +34,7 @@ class PlanningTests(unittest.IsolatedAsyncioTestCase):
         result=await DigitalXinyuWorkflow(provider=provider).run(user_text='帮我了解情绪调节',trace_id='p',session_id='p')
         self.assertIn('knowledge_retriever',result['execution_path'])
         provider.select_tool=AsyncMock(return_value='{"tool":"shell"}')
-        result=await DigitalXinyuWorkflow(provider=provider).run(user_text='请问你好',trace_id='p',session_id='p')
+        result=await DigitalXinyuWorkflow(provider=provider).run(user_text='请问测试问题',trace_id='p',session_id='p')
         self.assertEqual(result['intent'],'chat')
         self.assertEqual(result['routing_source'],'invalid')
         self.assertNotIn('web_search',result['execution_path'])

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
 
 import httpx
+from .planning import external_tools_disabled
 
 
 CITIES = ('北京', '上海', '广州', '深圳', '南京', '杭州', '苏州', '镇江', '成都', '重庆',
@@ -25,9 +26,10 @@ def resolve_weather_query(text, messages=(), now=None):
         return text if explicit else None
     previous = messages[-1].content
     if '你想查询哪个城市的天气' in previous:
-        if city_in(text):
+        if re.fullmatch(r'(?:那|在)?(?:'+'|'.join(CITIES)+r')(?:的)?(?:今天|明天|后天)?(?:呢)?[？?。！!\s]*', text):
             # Current city overrides any earlier city; only inherit the date.
-            day = '' if any(w in text for w in ('今天','明天','后天','昨天','下周','下个月')) else ('明天' if '明天' in messages[-2].content else '今天')
+            days = ('今天','明天','后天','昨天','下周','下个月')
+            day = '' if any(w in text for w in days) else next((w for w in days if w in messages[-2].content), '今天')
             return f'{text} {day} 天气'
         return text if explicit else None
     match = re.match(r'(' + '|'.join(CITIES) + r')，.*?(\d{4}-\d{2}-\d{2})预报', previous)
@@ -36,7 +38,10 @@ def resolve_weather_query(text, messages=(), now=None):
     if not match or 'Open-Meteo' not in previous or not (explicit or followup or outing):
         return text if explicit else None
     today = (now or datetime.now(ZoneInfo('Asia/Shanghai'))).date()
-    age = (datetime.fromisoformat(match[2]).date() - today).days
+    try:
+        age = (datetime.fromisoformat(match[2]).date() - today).days
+    except ValueError:
+        return text if explicit else None
     if age not in (0, 1):
         return text if explicit else None
     city = city_in(text) or match[1]
@@ -45,6 +50,8 @@ def resolve_weather_query(text, messages=(), now=None):
 
 
 def search_intent(text, messages=()):
+    if external_tools_disabled(text):
+        return False
     # 天气闲聊不是查询，不把普通聊天送到第三方。
     if re.search(r'天气(?:真|很|挺|还|太|有点|非常|特别)?(?:不错|好|差|糟糕|冷|热)', text) and not re.search(r'查询|搜索|查一下|吗|[？?]', text):
         return False
@@ -52,8 +59,6 @@ def search_intent(text, messages=()):
         return True
     if resolve_weather_query(text, messages) is not None:
         return True
-    if messages and messages[-1].role == 'assistant' and '你想查询哪个城市的天气' in messages[-1].content:
-        return bool(city_in(text))
     return bool(re.search(r'联网|上网查|搜索|搜一下|查一下|最新消息|最新新闻', text))
 
 
