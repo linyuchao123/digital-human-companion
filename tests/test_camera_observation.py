@@ -38,12 +38,24 @@ class CameraTests(unittest.TestCase):
             self.camera.update(self.sample(2))
 
     def test_multiple_faces_and_isolation(self):
+        with self.assertRaises(ValueError):
+            self.camera.control({**self.control, 'enabled': False, 'stream_id': 'old'})
+        self.assertEqual('test', self.camera.stream)
         self.camera.update(self.sample(0, face_count=2))
         self.assertEqual('', self.camera.summary())
         self.assertEqual('', CameraObservation().summary())
         self.now += .6
         self.camera.update(self.sample(1, face_count=0))
         self.assertFalse(self.camera.samples)
+
+    def test_number_validation_and_poor_quality(self):
+        for value in (float('nan'), float('inf'), True, '0.5', -1, 2):
+            features = self.sample(0)['features']
+            features['smile'] = value
+            with self.assertRaises(ValueError):
+                self.camera.update(self.sample(0, features=features))
+        self.camera.update(self.sample(0, quality='poor'))
+        self.assertEqual('', self.camera.summary())
 
 if __name__ == '__main__':
     unittest.main()

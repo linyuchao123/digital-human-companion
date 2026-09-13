@@ -19,6 +19,13 @@
 复用 models/face_landmarker.task。运行时无 CDN 请求。
 许可证 https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE 。
 
+完整性 SHA-256：
+
+- vision_bundle.mjs: de83c48ff329717a27aeb528d5ef5f47f077c628a5302dc483aca5b513e7464b
+- vision_wasm_internal.wasm: cb3ec20026a9aecc2a81a93c25630ceb5389297ddb7a5f0bd61dd09cde606b9b
+- vision_wasm_nosimd_internal.wasm: 924274fcd5ac8985f6570a8573e7971b7bd2d580ba1b8f3beb0ba8f95db6347c
+- face_landmarker.task: 64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff
+
 ## 人工验收（尚未完成）
 
 - 实际摄像头：微笑、皱眉、转头、闭眼、离开、多人与暗光。

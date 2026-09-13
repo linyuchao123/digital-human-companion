@@ -1682,6 +1682,7 @@ async def ws_main(websocket: WebSocket):
         await _send(websocket, {"type": "status",
             "modules": {
                 "vision": HAS_MEDIAPIPE, "asr": _asr_status_payload()["available"],
+                "browser_vision": {"available": (ROOT / 'models' / 'face_landmarker.task').exists(), "enabled": False, "processing": "local_browser"},
                 "driver": md is not None,
                 "llm": bool(DEEPSEEK_API_KEY or QWEN_API_KEY),
             },
@@ -1715,6 +1716,8 @@ async def ws_main(websocket: WebSocket):
             if not isinstance(msg, dict):
                 continue
             msg_type = msg.get("type", "")
+            if not isinstance(msg_type, str):
+                continue
             if msg_type in {'audio','text_input','frame','vision_control','vision_features'}:
                 if getattr(state,'auth_token',None) and _verify_auth_token(state.auth_token)!=state.user_id:
                     await _send(websocket,{'type':'error','code':'unauthorized','message':'登录状态已失效'})

@@ -24,6 +24,8 @@ class CameraObservation:
             raise ValueError('invalid_control')
         if not isinstance(msg['stream_id'], str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', msg['stream_id']):
             raise ValueError('invalid_stream')
+        if not msg['enabled'] and self.stream and msg['stream_id'] != self.stream:
+            raise ValueError('inactive_stream')
         self.clear()
         if msg['enabled']:
             self.stream = msg['stream_id']

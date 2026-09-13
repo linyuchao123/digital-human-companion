@@ -1,11 +1,11 @@
 /* Raw camera frames stay in this browser and its worker. No frame uploads. */
 (() => {
-  let generation=0, stream=null, worker=null, timer=null, busy=false, lastSent=0, seq=0, id='', interval=125, timeout=null, starting=false;
+  let generation=0, stream=null, worker=null, timer=null, busy=false, lastSent=0, seq=0, id='', interval=125, timeout=null, starting=false, frameTimeout=null;
   const video=()=>document.getElementById('camera-video');
   const status=text=>{document.getElementById('camera-status').textContent=text;};
   window.stopCameraPerception = (reason='已关闭') => {
     generation++;
-    clearTimeout(timer); clearTimeout(timeout);
+    clearTimeout(timer); clearTimeout(timeout); clearTimeout(frameTimeout);
     if(id) chatSend({type:'vision_control',enabled:false,stream_id:id});
     id=''; worker?.terminate(); worker=null;
     stream?.getTracks().forEach(t=>t.stop()); stream=null;
@@ -14,6 +14,7 @@
   };
   window.toggleCameraPreview=()=>{video().hidden=!video().hidden;};
   window.toggleCameraPerception=async()=>{
+    document.getElementById('camera-panel').hidden=false;
     if(worker || stream || starting){stopCameraPerception();return;}
     if(!chatWsReady){status('请先连接数字人');return;}
     if(!navigator.mediaDevices?.getUserMedia){status('请使用 localhost 或 HTTPS 打开页面');return;}
@@ -30,7 +31,7 @@
       id=crypto.randomUUID(); seq=0; lastSent=0; interval=125;
       if(!chatSend({type:'vision_control',enabled:true,stream_id:id})) throw Error('connection');
       worker=new Worker('/static/mediapipe/camera-worker.mjs',{type:'module'});
-      timeout=setTimeout(()=>stopCameraPerception('视觉模型加载超时'),20000);
+      timeout=setTimeout(()=>stopCameraPerception('视觉模型加载超时'),45000);
       const pump=async()=>{
         if(epoch!==generation || !worker) return;
         if(!document.hidden && !busy && video().readyState>=2){
@@ -39,6 +40,7 @@
             const bitmap=await createImageBitmap(video());
             if(epoch!==generation || !worker){bitmap.close();return;}
             worker.postMessage({type:'frame',bitmap,timestamp:performance.now()},[bitmap]);
+            frameTimeout=setTimeout(()=>stopCameraPerception('视觉处理超时，已停止摄像头'),5000);
           } catch { stopCameraPerception('摄像头处理失败');return; }
         }
         timer=setTimeout(pump,interval);
@@ -48,7 +50,7 @@
         if(epoch!==generation) return;
         if(data.type==='ready'){clearTimeout(timeout);starting=false;status('观察中');pump();return;}
         if(data.type==='error'){stopCameraPerception('视觉模型处理失败');return;}
-        busy=false;
+        clearTimeout(frameTimeout); busy=false;
         if(data.duration>125) interval=250;
         status(data.face_count===0?'未检测到人脸':data.face_count>1?'多人入镜':data.quality==='poor'?'画面不清晰':'观察中');
         if(performance.now()-lastSent>=520){
