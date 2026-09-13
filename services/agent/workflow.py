@@ -15,6 +15,7 @@ from .weather import weather_request, get_weather
 from .planning import needs_model_routing, select_tool
 from .context import compact_context
 from .knowledge_intent import requests_knowledge, declines_knowledge
+from .knowledge_context import knowledge_context
 from .activities import requests_activities, activity_cards
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
 from .memory import (
@@ -512,15 +513,10 @@ class DigitalXinyuWorkflow:
                     f"{memory_context}"
                 ),
             ))
-        if knowledge:
-            context = "\n".join(
-                f"[{index}] {item.content}（来源：{item.source}"
-                f"{f'，链接：{item.source_url}' if item.source_url else ''}）"
-                for index, item in enumerate(knowledge, 1)
-            )
+        if knowledge or state.get("knowledge_status") in {"empty", "failed"}:
             provider_messages.insert(0, ChatMessage(
                 role="system",
-                content=f"以下是可参考的心理教育知识，不要将其当作医疗诊断：\n{context}",
+                content=knowledge_context(knowledge, state.get("knowledge_status", "empty")),
             ))
         response = await self._provider.generate(provider_messages)
         return self._complete_node(
