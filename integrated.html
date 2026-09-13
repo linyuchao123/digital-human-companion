@@ -418,6 +418,9 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 .profile-actions{display:flex;gap:10px;margin-top:20px}.profile-actions button{padding:11px 18px;border:0;border-radius:10px;background:#5a80d8;color:#fff;cursor:pointer}
 #profile-dialog fieldset{border:1px solid #e1e7f2;border-radius:12px;margin-top:24px;padding:16px}#profile-dialog legend{font-size:13px;color:#67768f}
 #profile-status{font-size:13px;line-height:1.7;min-height:24px;margin-top:14px;color:#526783}
+.social-login{display:flex;gap:10px;margin-top:16px}.social-login button{flex:1;height:42px;border:1px solid #dce5f2;background:#f8fbff;color:#334b69;border-radius:12px;cursor:pointer;font-size:13px}.social-login button:hover{border-color:#759adb;background:#eef5ff}.social-login button:disabled{opacity:.55;cursor:not-allowed}
+.social-divider{display:flex;align-items:center;gap:10px;font-size:11px;color:#8793a8;margin-top:20px}.social-divider::before,.social-divider::after{content:'';height:1px;background:#e5eaf3;flex:1}
+#auth-method-note{font-size:11px;color:#8793a8;line-height:1.7;margin-top:10px}.email-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 @media(max-width:650px){#auth-box{grid-template-columns:1fr}.auth-brand{min-height:0;padding:22px 28px}.auth-brand h1{font-size:23px;margin:15px 0 8px}.auth-brand p,.auth-brand small{display:none}.auth-form{padding:28px}.profile-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){#auth-modal *{transition:none}}
 </style>
@@ -440,8 +443,8 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
       <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">注 册</button>
     </div>
     <div class="auth-field">
-      <label>用户名</label>
-      <input type="text" id="auth-username" aria-label="用户名" autocomplete="username" placeholder="请输入用户名" maxlength="20"
+      <label id="auth-identity-label">用户名 / 已验证邮箱</label>
+      <input type="text" id="auth-username" aria-label="用户名或邮箱" autocomplete="username" placeholder="请输入用户名或已验证邮箱" maxlength="254"
         onkeydown="if(event.key==='Enter')document.getElementById('auth-password').focus()"/>
     </div>
     <div class="auth-field">
@@ -453,6 +456,9 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <button type="button" class="tb-chip" onclick="const p=document.getElementById('auth-password');p.type=p.type==='password'?'text':'password';this.textContent=p.type==='password'?'显示密码':'隐藏密码'">显示密码</button>
     <button id="auth-submit" onclick="doAuth()">进 入</button>
     <button id="auth-guest" onclick="continueAsGuest()">先体验，稍后登录</button>
+    <div class="social-divider">其他登录方式</div>
+    <div class="social-login"><button id="wechat-login" onclick="startSocialLogin('wechat',false,this)">微信登录</button><button id="qq-login" onclick="startSocialLogin('qq',false,this)">QQ 登录</button></div>
+    <div id="auth-method-note">正在检查第三方登录配置…</div>
     <div id="auth-err" role="status" aria-live="polite"></div>
     <p class="auth-footnote">长期记忆默认关闭，由你决定是否授权。<br>注册密码至少 8 位，建议使用不与其他平台重复的密码。</p>
     </div>
@@ -487,6 +493,8 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <div class="auth-field"><label for="profile-current-password">当前密码（改用户名或密码时填写）</label><input id="profile-current-password" type="password" maxlength="64" autocomplete="current-password"/></div>
   </div>
   <div class="profile-actions"><button onclick="saveProfile(this)">保存资料</button></div>
+  <fieldset><legend>绑定邮箱</legend><div id="profile-email-state" class="auth-footnote"></div><div class="auth-field"><label for="profile-email">邮箱地址</label><input id="profile-email" type="email" autocomplete="email" maxlength="254" placeholder="请输入要绑定的邮箱"/></div><div class="auth-field"><label for="profile-email-code">邮件验证码</label><input id="profile-email-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6位验证码"/></div><div class="email-controls"><button class="tb-chip" onclick="sendEmailCode(this)">发送验证码</button><button class="tb-chip" onclick="verifyEmailCode(this)">验证并绑定</button></div><p class="auth-footnote">先填写当前密码，再发送验证码。绑定后可用邮箱及账号密码登录；填写地址并不代表已验证。</p></fieldset>
+  <fieldset><legend>绑定第三方身份</legend><div class="social-login"><button onclick="startSocialLogin('wechat',true,this)">绑定微信</button><button onclick="startSocialLogin('qq',true,this)">绑定 QQ</button></div><p class="auth-footnote">已有账号请在这里主动绑定，不会按昵称自动合并账号。绑定时须填写当前密码。</p></fieldset>
   <fieldset><legend>账号安全 · 修改密码</legend><div class="auth-field"><label for="profile-new-password">新密码（至少8位）</label><input id="profile-new-password" type="password" maxlength="64" autocomplete="new-password"/></div><div class="auth-field"><label for="profile-confirm-password">确认新密码</label><input id="profile-confirm-password" type="password" maxlength="64" autocomplete="new-password"/></div><div class="profile-actions"><button onclick="changeProfilePassword(this)">修改密码</button></div><p class="auth-footnote">密码不展示、不回传。修改成功后所有设备需重新登录。</p></fieldset>
   <div id="profile-created" class="auth-footnote"></div><div id="profile-status" role="status" aria-live="polite"></div>
 </dialog>
@@ -2091,10 +2099,48 @@ window.addEventListener('load',()=>{
   window.speechSynthesis&&window.speechSynthesis.getVoices();
   _loadTtsVoices();
   initAuth();
+  loadAuthMethods();
 });
 
 /* ═══════════ 认证与会话管理 ═══════════ */
 let _profile=null,_profileAvatar='';
+async function loadAuthMethods(){
+  try{
+    const response=await fetch('/api/auth/options');if(!response.ok) throw new Error();
+    const options=await response.json();
+    for(const [provider,label] of [['wechat','微信'],['qq','QQ']]){
+      const button=document.getElementById(provider+'-login');button.textContent=label+'登录'+(options[provider]?'':' · 待配置');
+      button.title=options[provider]?'跳转官方平台授权':'需配置平台应用凭证和回调域名';
+    }
+    document.getElementById('auth-method-note').textContent=options.wechat&&options.qq?'将跳转官方授权页面；我们不会获取你的微信或QQ密码。':'微信 / QQ需配置平台应用后启用，当前可继续使用账号密码登录。';
+  }catch(error){document.getElementById('auth-method-note').textContent='暂时无法读取第三方登录状态';}
+}
+async function startSocialLogin(provider,bind,button){
+  const status=document.getElementById(bind?'profile-status':'auth-err');button.disabled=true;
+  try{
+    const response=await fetch('/api/auth/'+provider+'/start',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({bind,current_password:bind?document.getElementById('profile-current-password').value:''})});
+    const data=await response.json();if(!response.ok) throw new Error(data.error||'授权暂不可用');
+    const target=new URL(data.url);if(!['open.weixin.qq.com','graph.qq.com'].includes(target.hostname)||target.protocol!=='https:') throw new Error('授权地址无效');
+    location.assign(target.href);
+  }catch(error){status.textContent=error.message;button.disabled=false;}
+}
+async function sendEmailCode(button){
+  button.disabled=true;const status=document.getElementById('profile-status');
+  try{
+    await profileRequest('/api/profile/email/send','POST',{email:document.getElementById('profile-email').value,current_password:document.getElementById('profile-current-password').value});
+    status.textContent='验证码已发送，10分钟内有效，请查看邮箱（含垃圾邮件）。';
+    let remaining=60;button.textContent=remaining+'秒后重发';
+    const timer=setInterval(()=>{remaining--;button.textContent=remaining+'秒后重发';if(remaining<=0){clearInterval(timer);button.disabled=false;button.textContent='发送验证码';}},1000);
+  }catch(error){status.textContent=error.message;button.disabled=false;}
+}
+async function verifyEmailCode(button){
+  button.disabled=true;const status=document.getElementById('profile-status');
+  try{
+    await profileRequest('/api/profile/email/verify','POST',{email:document.getElementById('profile-email').value,code:document.getElementById('profile-email-code').value});
+    _profile=await profileRequest('/api/profile','GET');document.getElementById('profile-email-state').textContent='已验证邮箱：'+_profile.email;
+    document.getElementById('profile-email-code').value='';status.textContent='邮箱已验证并绑定，可以使用邮箱及账号密码登录。';
+  }catch(error){status.textContent=error.message;}finally{button.disabled=false;}
+}
 function renderProfileIdentity(){
   if(!_profile) return;
   document.getElementById('sb-name').textContent=_profile.display_name||_profile.username;
@@ -2116,11 +2162,13 @@ async function openProfile(){
     document.getElementById('profile-name').value=_profile.display_name||'';
     document.getElementById('profile-username').value=_profile.username;
     document.getElementById('profile-birthday').value=_profile.birthday||'';
+    document.getElementById('profile-email').value=_profile.email||'';document.getElementById('profile-email-code').value='';
+    document.getElementById('profile-email-state').textContent=_profile.email_verified_at?'已验证邮箱：'+_profile.email:'尚未绑定已验证邮箱';
     document.getElementById('profile-birthday').max=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
     for(const id of ['profile-current-password','profile-new-password','profile-confirm-password','profile-avatar-file']) document.getElementById(id).value='';
     const image=document.getElementById('profile-avatar');image.src=_profileAvatar;image.style.display=_profileAvatar?'block':'none';
     document.getElementById('profile-created').textContent='加入心屿：'+_profile.created_at.slice(0,10);
-    status.textContent='资料仅属于当前账号，生日和姓名可以不填写。';
+    status.textContent=_profile.password_set?'资料仅属于当前账号，生日和姓名可以不填写。':'这是社交创建的账号，刚授权10分钟内可直接首次设置密码；之后重新授权再操作。';
   }catch(error){status.textContent=error.message;}
 }
 async function selectProfileAvatar(file){
@@ -2168,7 +2216,18 @@ function setCookie(name,val,days){
 }
 function delCookie(name){document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';}
 
-function initAuth(){
+async function initAuth(){
+  const callback=new URLSearchParams(location.hash.slice(1));
+  if(callback.has('oauth_ticket')||callback.has('oauth_error')){
+    const ticket=callback.get('oauth_ticket');history.replaceState(null,'',location.pathname+location.search);
+    if(!ticket){document.getElementById('auth-err').textContent=callback.get('oauth_error')==='cancelled'?'已取消授权，可选择其他登录方式':'第三方授权失败，请重试';return;}
+    try{
+      const response=await fetch('/api/auth/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket})});
+      const data=await response.json();if(!response.ok) throw new Error(data.error||'授权已失效');
+      setCookie('auth_token',data.token,7);setCookie('auth_user',data.username,7);
+      await _onLoginSuccess(data.token,data.username,false);return;
+    }catch(error){document.getElementById('auth-err').textContent=error.message;return;}
+  }
   _authToken=getCookie('auth_token');
   _currentUser=getCookie('auth_user');
   if(_authToken&&_currentUser){
@@ -2180,6 +2239,9 @@ function initAuth(){
 }
 
 function switchAuthTab(tab){
+  document.getElementById('auth-identity-label').textContent=tab==='register'?'用户名':'用户名 / 已验证邮箱';
+  document.getElementById('auth-username').maxLength=tab==='register'?20:254;
+  document.getElementById('auth-username').placeholder=tab==='register'?'请输入用户名':'请输入用户名或已验证邮箱';
   document.getElementById('auth-confirm-field').hidden=tab!=='register';
   document.getElementById('auth-title').textContent=tab==='login'?'欢迎回来':'创建你的心屿';
   document.getElementById('auth-sub').textContent=tab==='login'?'登录你的心屿，继续上一次的故事。':'让每一次陪伴，都有迹可循。';
