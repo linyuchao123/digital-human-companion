@@ -4,7 +4,7 @@ from .knowledge_intent import requests_knowledge
 
 def clearly_unrelated(query):
     # Mixed requests about emotional impact still need psychoeducation support.
-    if requests_knowledge(query) or re.search(r'焦虑|难过|悲伤|压力|情绪|心理|孤独|害怕|担心|没兴趣|食欲|吃不下|不想活|自杀|伤害自己|崩溃|心跳|呼吸|迷茫|搞砸|骂自己|无法上班',query):
+    if requests_knowledge(query) or re.search(r'焦虑|难过|悲伤|压力|情绪|心理|孤独|孤单|没人陪|睡不着|睡不好|失眠|害怕|担心|没兴趣|食欲|吃不下|不想活|自杀|伤害自己|崩溃|心跳|呼吸|迷茫|搞砸|骂自己|无法上班',query):
         return False
     return bool(re.search(
         r'天气|气温|下雨|天气预报|几点|几号|星期几|'

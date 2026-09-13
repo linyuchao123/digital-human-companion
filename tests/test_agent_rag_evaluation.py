@@ -26,6 +26,17 @@ class StaticRetriever:
 
 
 class AgentRagEvaluationTests(unittest.IsolatedAsyncioTestCase):
+    def test_mixed_query_dataset_is_valid_and_distinct(self):
+        root=Path(__file__).resolve().parents[1]
+        cases=load_retrieval_eval_cases(root/'eval/rag/mixed_query_cases.json')
+        ids={d['id'] for d in json.loads((root/'data/knowledge/psychology.json').read_text(encoding='utf-8'))}
+        old=load_retrieval_eval_cases(root/'eval/rag/natural_language_cases.json')
+        self.assertEqual(len(cases),24)
+        self.assertEqual(sum(c.expect_no_results for c in cases),12)
+        self.assertEqual(len({c.query for c in cases}),24)
+        self.assertFalse({c.query for c in cases}&{c.query for c in old})
+        self.assertTrue(all(set(c.expected_document_ids)<=ids for c in cases))
+
     async def test_negative_cases_report_false_positives_separately(self):
         report=await evaluate_retriever(StaticRetriever(),[
             RetrievalEvalCase('hit case',('expected',)),

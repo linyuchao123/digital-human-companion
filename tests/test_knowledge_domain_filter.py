@@ -6,6 +6,10 @@ from pathlib import Path
 from services.agent.rag_evaluation import load_retrieval_eval_cases
 
 class FilterTests(unittest.IsolatedAsyncioTestCase):
+    def test_weather_and_music_do_not_hide_loneliness_or_sleep(self):
+        for query in ['下雨天觉得孤单，没人能聊聊天','听歌还是睡不好，越想睡越清醒','推荐一首音乐，我失眠了','查天气，我没人陪']:
+            with self.subTest(query=query):self.assertFalse(clearly_unrelated(query))
+
     def test_mixed_requests_keep_emotional_support(self):
         for query in ['下雨让我很难过','有什么音乐可以缓解压力','食欲不好吃不下东西','担心航班取消，一直睡不着','心跳很快手心出汗','周围很热闹但我像个局外人']:
             with self.subTest(query=query):self.assertFalse(clearly_unrelated(query))
