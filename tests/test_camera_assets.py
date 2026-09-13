@@ -37,5 +37,7 @@ class CameraAssetTests(unittest.TestCase):
                     response = client.get(path)
                     self.assertEqual(response.status_code, 200)
                     self.assertGreater(len(response.content), 100)
+                    if path in ('/static/mediapipe/camera-controller.js', '/static/mediapipe/camera-worker.mjs'):
+                        self.assertEqual(response.headers['cache-control'], 'no-store')
                     if path.endswith('.wasm'):
                         self.assertTrue(response.content.startswith(b'\x00asm'))

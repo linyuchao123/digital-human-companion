@@ -10,10 +10,14 @@
   };
   window.stopCameraPerception = (reason='已关闭') => {
     generation++;
+    // Hide first: cleanup/network failures must never leave the card on screen.
+    document.getElementById('camera-panel').hidden=true;
     clearTimeout(timer); clearTimeout(timeout); clearTimeout(frameTimeout);
-    if(id) chatSend({type:'vision_control',enabled:false,stream_id:id});
-    id=''; worker?.terminate(); worker=null;
-    stream?.getTracks().forEach(t=>t.stop()); stream=null;
+    const previousId=id, previousWorker=worker, previousStream=stream;
+    id='';worker=null;stream=null;busy=false;starting=false;
+    try { previousWorker?.terminate(); } catch {}
+    try { previousStream?.getTracks().forEach(t=>{try{t.stop();}catch{}}); } catch {}
+    try { if(previousId) chatSend({type:'vision_control',enabled:false,stream_id:previousId}); } catch {}
     video().srcObject=null; video().hidden=true; busy=false; starting=false;
     document.getElementById('camera-panel').hidden=true;
     document.getElementById('camera-preview-btn').disabled=true;
@@ -41,6 +45,7 @@
       const acquired=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},frameRate:{ideal:15,max:15}},audio:false});
       if(epoch!==generation){acquired.getTracks().forEach(t=>t.stop());return;}
       stream=acquired; stream.getVideoTracks()[0].onended=()=>stopCameraPerception('摄像头已停止');
+      video().muted=true; video().playsInline=true;
       video().srcObject=stream; video().hidden=false;
       const previewButton=document.getElementById('camera-preview-btn');
       previewButton.disabled=false;previewButton.textContent='隐藏预览';previewButton.setAttribute('aria-expanded','true');
@@ -48,7 +53,7 @@
       if(epoch!==generation) return;
       id=crypto.randomUUID(); seq=0; lastSent=0; interval=125;
       if(!chatSend({type:'vision_control',enabled:true,stream_id:id})) throw Error('connection');
-      worker=new Worker('/static/mediapipe/camera-worker.mjs');
+      worker=new Worker('/static/mediapipe/camera-worker.mjs?v=20260914-2');
       timeout=setTimeout(()=>stopCameraPerception('视觉模型加载超时'),45000);
       const pump=async()=>{
         if(epoch!==generation || !worker) return;

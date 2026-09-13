@@ -24,6 +24,15 @@ vm.createContext(context);vm.runInContext(fs.readFileSync('static/mediapipe/came
   context.document.hidden=true;events.visibilitychange();
   assert.equal(sent.at(-1).enabled,false);assert.equal(el('camera-video').srcObject,null);
   assert.equal(stopped,2);
+  assert.equal(el('camera-video').muted,true);
+  assert.equal(el('camera-video').playsInline,true);
+  context.document.hidden=false;
+  context.chatSend=m=>{if(!m.enabled) throw Error('socket closed');sent.push(m);return true;};
+  const closeFailure=context.toggleCameraPerception();
+  acquire({getTracks:()=>[track],getVideoTracks:()=>[track]});await closeFailure;
+  context.stopCameraPerception();
+  assert.equal(el('camera-panel').hidden,true);assert.equal(el('camera-video').srcObject,null);
+  assert.equal(stopped,3);
   assert.equal(el('camera-panel').hidden,true);
   context.navigator.mediaDevices.getUserMedia=async()=>{throw Object.assign(Error(),{name:'NotAllowedError'});};
   await context.toggleCameraPerception();assert.match(el('camera-status').textContent,/权限被拒绝/);
