@@ -952,7 +952,7 @@ function renderAgentEvent(event){
   const badge=document.getElementById('agent-provider-badge');
   const nodeLabels={
     safety_triage:'安全分诊',safe_response:'安全响应',intent_router:'意图路由',
-    emotion_analyzer:'情绪分析',knowledge_retriever:'知识检索',
+    emotion_analyzer:'情绪分析',knowledge_retriever:'知识检索',web_search:'联网工具查询',
     memory_retriever:'记忆检索',memory_writer:'记忆写入',
     memory_forgetter:'记忆删除',clock_tool:'真实时间查询',activity_planner:'陪伴活动规划',companion:'陪伴回复',avatar_director:'数字人导演'
   };
@@ -984,7 +984,9 @@ function renderAgentEvent(event){
       if(event.data?.emotion_label) details.push(`情绪 ${event.data.emotion_label}`);
       if(event.data?.result_count!==undefined) details.push(`命中 ${event.data.result_count} 条`);
       if(event.data?.motion) details.push(`动作 ${event.data.motion}`);
-      status.textContent=`${nodeLabels[event.node]||event.node} 已完成${details.length?' · '+details.join(' · '):''}`;
+      if(event.data?.tool_name) details.push(event.data.tool_name==='weather_forecast'?'天气服务':event.data.tool_name==='tavily_search'?'联网搜索':event.data.tool_name);
+      if(event.data?.error_code) details.push(`错误类型 ${event.data.error_code}`);
+      status.textContent=`${nodeLabels[event.node]||event.node} ${event.data?.tool_status==='failed'?'执行失败':'已完成'}${details.length?' · '+details.join(' · '):''}`;
     }
     return;
   }
