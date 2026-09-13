@@ -6,6 +6,9 @@ from zoneinfo import ZoneInfo
 
 def is_clock_query(text: str) -> bool:
     text = re.sub(r"[\s，。！？?,.!]", "", text)
+    text = re.sub(r"^(?:你好|小安)", "", text)
+    text = re.sub(r"^(?:你知道|你能告诉我|能告诉我|请问)", "", text)
+    text = re.sub(r"(?:吗|么|呀|啊)$", "", text)
     return bool(re.fullmatch(
         r"(?:请|帮我|告诉我)?(?:一下)?(?:现在|今天|明天|北京时间|上海|北京|纽约|伦敦|东京)?"
         r"(?:现在)?(?:是)?(?:几点(?:了|钟)?|什么时间|几月几号|几号|什么日期|星期几|周几|日期)(?:了|呢|是多少)?",

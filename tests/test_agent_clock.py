@@ -13,7 +13,7 @@ class NeverGenerate:
 
 class ClockTests(unittest.TestCase):
     def test_queries_do_not_match_unrelated_conversation(self):
-        for text in ("现在几点了？", "今天星期几", "明天几号", "纽约几点", "北京时间几点"):
+        for text in ("现在几点了？", "今天星期几", "明天几号", "纽约几点", "北京时间几点", "你知道现在几点吗", "请问现在几点呀"):
             self.assertTrue(is_clock_query(text), text)
         for text in ("我每天几点睡觉比较好", "今天心情很差", "提醒我明天几点开会", "为什么时间过得很慢"):
             self.assertFalse(is_clock_query(text), text)
