@@ -6,6 +6,7 @@ from typing import Any, Protocol, Sequence
 import httpx
 
 from .state import ChatMessage
+from .planning import ROUTING_PROMPT
 
 
 COMPANION_SYSTEM_PROMPT = """你是“数字心屿”中的 AI 情绪陪伴助手小安。
@@ -64,16 +65,24 @@ class OpenAICompatibleCompanionProvider:
         self._client = client
 
     async def generate(self, messages: Sequence[ChatMessage]) -> str:
+        return await self._generate(messages, COMPANION_SYSTEM_PROMPT)
+
+    async def select_tool(self, text: str) -> str:
+        return await self._generate([ChatMessage(role='user',content=text)], ROUTING_PROMPT, routing=True)
+
+    async def _generate(self, messages: Sequence[ChatMessage], system_prompt: str, routing: bool = False) -> str:
         payload = {
             "model": self.config.model,
             "messages": [
-                {"role": "system", "content": COMPANION_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 *(message.model_dump() for message in messages),
             ],
             "temperature": self.config.temperature,
             "max_tokens": self.config.max_tokens,
             **self.config.extra_body,
         }
+        if routing:
+            payload.update(temperature=0, max_tokens=80)
         headers = {"Authorization": f"Bearer {self.config.api_key}"}
         try:
             if self._client is not None:
@@ -108,6 +117,13 @@ class FallbackCompanionProvider:
             return await self._primary.generate(messages)
         except CompanionProviderError:
             return await self._fallback.generate(messages)
+
+    async def select_tool(self, text: str) -> str:
+        # Routing has a short total deadline; do not invoke a second cloud model.
+        selector = getattr(self._primary, 'select_tool', None)
+        if selector is None:
+            return '{"tool":"chat"}'
+        return await selector(text)
 
 
 def create_companion_provider(

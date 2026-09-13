@@ -11,6 +11,7 @@ from .emotion import EmotionAnalyzer
 from .clock import is_clock_query, clock_answer
 from .web_search import search_intent, search_query, tavily_search, SearchUnavailable
 from .weather import weather_request, get_weather
+from .planning import needs_model_routing, select_tool
 from .activities import requests_activities, activity_cards
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
 from .memory import (
@@ -163,6 +164,7 @@ class DigitalXinyuWorkflow:
     async def _route_intent(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
         text = state.get("user_text", "")
+        selected_tool = 'chat'; routing_source = 'rules'
         emotional_keywords = ("难过", "累", "焦虑", "孤独", "压力", "害怕")
         forget_keywords = ("忘掉", "忘记", "不要再记得", "删除关于")
         if any(word in text for word in forget_keywords) or (
@@ -179,11 +181,20 @@ class DigitalXinyuWorkflow:
             intent = "emotional_support" if any(
                 word in text for word in emotional_keywords
             ) else "chat"
+            if intent == 'chat' and needs_model_routing(text):
+                selected_tool, routing_source = await select_tool(self._provider, text)
+                intent = {'clock':'clock_query','weather':'web_search','web_search':'web_search',
+                          'knowledge':'knowledge_query','chat':'chat'}[selected_tool]
+        if routing_source == 'rules':
+            selected_tool = {'clock_query':'clock','web_search':'weather' if weather_request(text,state.get('messages',[])) else 'web_search',
+                             'emotional_support':'knowledge','memory_forget':'memory_forget','activity_plan':'activity_plan'}.get(intent,'chat')
         return self._complete_node(
             state,
             "intent_router",
             started_at,
             intent=intent,
+            selected_tool=selected_tool,
+            routing_source=routing_source,
         )
 
     async def _analyze_emotion(self, state: AgentState) -> dict[str, Any]:
@@ -215,13 +226,13 @@ class DigitalXinyuWorkflow:
             return "activity_planner"
         if state.get("memory_consent") and state.get("user_id") is not None:
             return "memory_retriever"
-        if state.get("intent") == "emotional_support":
+        if state.get("intent") in {"emotional_support", "knowledge_query"}:
             return "knowledge_retriever"
         return "companion"
 
     @staticmethod
     def _select_after_memory(state: AgentState) -> Literal["knowledge_retriever", "companion"]:
-        return "knowledge_retriever" if state.get("intent") == "emotional_support" else "companion"
+        return "knowledge_retriever" if state.get("intent") in {"emotional_support", "knowledge_query"} else "companion"
 
     @staticmethod
     def _select_memory_write_route(
@@ -388,13 +399,16 @@ class DigitalXinyuWorkflow:
     async def _search_web(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
         sources = []; status = 'completed'; error_code = None
-        weather=weather_request(state['user_text'],state.get('messages', []))
+        weather=state.get('selected_tool')=='weather' or weather_request(state['user_text'],state.get('messages', []))
         query = search_query(state['user_text'], state.get('messages', []))
+        if state.get('selected_tool')=='weather':
+            query=search_query(state['user_text']+' 天气', state.get('messages', []))
         if query is None:
             response = '你想查询哪个城市的天气？请告诉我城市名称，例如上海或南京。'
         elif weather:
             try:
-                response,sources=await asyncio.wait_for(get_weather(state['user_text'],state.get('messages', [])), timeout=13)
+                weather_text=state['user_text']+(' 天气' if state.get('selected_tool')=='weather' else '')
+                response,sources=await asyncio.wait_for(get_weather(weather_text,state.get('messages', [])), timeout=13)
             except TimeoutError:
                 response='天气查询超时，请稍后重试；我暂时不能确认天气。';status='failed';error_code='weather_timeout'
             except SearchUnavailable as exc:
@@ -558,6 +572,8 @@ class DigitalXinyuWorkflow:
             data["guard_triggered"] = state["safety"].requires_safe_response
         elif node == "intent_router":
             data["intent"] = state.get("intent", "")
+            data["routing_source"] = state.get("routing_source", "rules")
+            data["selected_tool"] = state.get("selected_tool", "chat")
         elif node == "emotion_analyzer" and state.get("emotion_context"):
             data["emotion"] = state["emotion_context"].emotion
             data["emotion_label"] = state["emotion_context"].label

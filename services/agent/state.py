@@ -105,6 +105,8 @@ class AgentState(TypedDict, total=False):
     user_text: str
     messages: list[ChatMessage]
     intent: str
+    selected_tool: str
+    routing_source: str
     safety: SafetyDecision
     emotion_context: EmotionContext
     retrieved_memories: list[MemoryRecord]
