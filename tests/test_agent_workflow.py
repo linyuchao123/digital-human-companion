@@ -112,7 +112,9 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
             messages=history,
         )
 
-        self.assertLessEqual(len(provider.messages), 39)
+        self.assertLessEqual(len([m for m in provider.messages if m.role != 'system']), 39)
+        self.assertLessEqual(len(provider.messages), 40)  # one bounded session-notes message
+        self.assertLessEqual(len(result['conversation_summary']), 2000)
         self.assertLessEqual(len(result["messages"]), 40)
         self.assertEqual(provider.messages[-1].content, "继续聊天")
 

@@ -1620,6 +1620,7 @@ class SessionState:
         self.pending_motion: Optional[str] = None
         # 智能体短期上下文；登录用户在安全校验后从数据库恢复。
         self.agent_messages: list[dict[str, str]] = []
+        self.conversation_summary = ''
         self.memory_consent: bool = False
 
 # 驱动 WebSocket 客户端集合（供 /ws/drive 广播）
@@ -1749,6 +1750,7 @@ async def ws_main(websocket: WebSocket):
                 state.agent_messages = (
                     _db_load_message_context(db_sid) if db_sid else []
                 )
+                state.conversation_summary = ''
                 state.memory_consent = _memory_enabled_for_user(user_id)
                 print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
                 await _send(websocket, {
@@ -1936,6 +1938,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             trace_id=trace_id,
             session_id=session_id,
             messages=history,
+            conversation_summary=state.conversation_summary,
             user_id=state.user_id,
             memory_consent=state.memory_consent,
             event_sink=send_agent_event,
@@ -1945,6 +1948,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         state.agent_messages = [
             message.model_dump() for message in result.get("messages", [])
         ]
+        state.conversation_summary = result.get('conversation_summary', '')
         if state.user_id is not None:
             _db_save_agent_run(result, state.user_id, _agent_provider_name)
 

@@ -104,6 +104,7 @@ class AgentState(TypedDict, total=False):
     guest_id: str | None
     user_text: str
     messages: list[ChatMessage]
+    conversation_summary: str
     intent: str
     selected_tool: str
     routing_source: str
