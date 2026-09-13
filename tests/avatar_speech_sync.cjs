@@ -18,4 +18,15 @@ vm.runInContext('_speechStartAction=()=>calls++;notifySpeechStarted(0);_ttsGener
 timers[1].fn();
 assert.equal(vm.runInContext('calls',context),1,'Cancelled audio must not trigger stale motion');
 assert(!html.includes('setTimeout(()=>playMotion(msg.motion),200)'));
+assert(html.includes("im.on('beforeModelUpdate',()=>{"),'Apply lips after native motion and physics before core render');
+assert(html.includes('const TTS_STREAM_ENABLED=false'),'Use decoded complete audio until streaming acceptance');
+const lipStart=html.indexOf('function _getLipSyncTarget(');
+const lipEnd=html.indexOf('function toggleTTS()',lipStart);
+const lipContext=vm.createContext({ttsSpeaking:true,_useBrowserTTS:false,_timeDomainData:null,
+  _analyser:{fftSize:256,getByteTimeDomainData:data=>data.fill(128)}});
+vm.runInContext(html.slice(lipStart,lipEnd),lipContext);
+assert.equal(vm.runInContext('_getLipSyncTarget()',lipContext),0,'Silence must close mouth');
+lipContext._analyser.getByteTimeDomainData=data=>data.fill(140);
+const open=vm.runInContext('_getLipSyncTarget()',lipContext);
+assert(open>0&&open<0.85,'Speech energy opens mouth without saturating');
 console.log('Speech-start motion scheduling and cancellation checks passed');

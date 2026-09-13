@@ -1119,7 +1119,7 @@ async function initPixiAndModel(){
     'PARAM_ARM_02_L_01','PARAM_ARM_02_L_02','PARAM_HAND_02_L','PARAM_ARM_02_R_01','PARAM_ARM_02_R_02','PARAM_HAND_02_R'];
 
   // 每帧 ticker
-  pixiApp.ticker.add(()=>{
+  im.on('beforeModelUpdate',()=>{
     if(!live2dModel||!live2dModel.internalModel) return;
     const c=live2dModel.internalModel.coreModel;
     if(!c) return;
@@ -1153,11 +1153,11 @@ async function initPixiAndModel(){
           c.setParameterValueByIndex(formIdx, form);
         }
       }
-    } else if(_mouthSmooth>0.005){
+    } else {
       _mouthSmooth*=0.60;
       const openIdx=c.getParameterIndex('PARAM_MOUTH_OPEN_Y');
       const formIdx=c.getParameterIndex('PARAM_MOUTH_FORM');
-      if(openIdx>=0) c.setParameterValueByIndex(openIdx,_mouthSmooth);
+      if(openIdx>=0) c.setParameterValueByIndex(openIdx,_mouthSmooth>0.005?_mouthSmooth:0);
       if(formIdx>=0) c.setParameterValueByIndex(formIdx,0.7);
     }
   });
@@ -1667,6 +1667,7 @@ let _mouthSmooth=0;
 let _freqData=null;
 let _ttsAbort=null;
 let _ttsGeneration=0;
+const TTS_STREAM_ENABLED=false; // 裸 PCM 流待完成真实播放验收后再开放。
 let _speechStartAction=null,_speechStartTimer=null;
 function notifySpeechStarted(generation,delay=0){
   if(generation!==_ttsGeneration||!_speechStartAction||_speechStartTimer!==null) return;
@@ -1739,6 +1740,13 @@ async function speakText(text,onSpeechStart=null){
   if(generation!==_ttsGeneration) return;
   const ok=useServerTTS?await _speakViaServerTTS(text,generation):false;
   if(!ok&&generation===_ttsGeneration){
+    const selected=document.getElementById('tts-voice-select')?.value||'';
+    if(selected.startsWith('qwen3_tts:')||selected.startsWith('cosyvoice:')){
+      _speechStartAction=null;
+      document.getElementById('tts-btn').title='所选云端音色播放失败，请重试；不会自动切换为其他声音。';
+      console.warn('[TTS] 所选云端音色失败，已停止播报，未切换音色');
+      return;
+    }
     console.info('[TTS] 使用浏览器中文语音');
     _speakViaBrowser(text,generation);
   }
@@ -1815,7 +1823,8 @@ async function _speakViaServerTTS(text,generation){
     if(generation!==_ttsGeneration) return true;
     const select=document.getElementById('tts-voice-select');
     const voice=select&&!select.disabled?select.value:catalog.default_voice;
-    if(voice?.startsWith('qwen3_tts:')){
+    // 稳定模式：先使用带格式的完整音频解码，避免裸 PCM 分片造成断音和变调。
+    if(TTS_STREAM_ENABLED&&voice?.startsWith('qwen3_tts:')){
       const streamed=await _playStreamTTS(text,voice,generation,controller);
       if(streamed) return true;
     }
@@ -1951,7 +1960,7 @@ function _getLipSyncTarget(){
   }
   // Web Audio：时域振幅分析（比频域更精准反映语音能量）
   if(_analyser){
-    if(!_timeDomainData) _timeDomainData=new Uint8Array(_analyser.fftSize);
+    if(!_timeDomainData||_timeDomainData.length!==_analyser.fftSize) _timeDomainData=new Uint8Array(_analyser.fftSize);
     _analyser.getByteTimeDomainData(_timeDomainData);
     // 计算 RMS 振幅（根均方）
     let sumSq=0;
@@ -1961,7 +1970,7 @@ function _getLipSyncTarget(){
     }
     const rms=Math.sqrt(sumSq/_timeDomainData.length);
     // 非线性映射：增益8倍+幂0.5，嘴巴张得更大更明显
-    const mapped=Math.pow(Math.min(1, rms*8.0), 0.5);
+    const mapped=rms<0.012?0:Math.min(0.85,(rms-0.012)*5.0);
     return mapped;
   }
   return 0.4+0.3*Math.sin(Date.now()*0.009);
