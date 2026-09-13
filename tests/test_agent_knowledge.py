@@ -94,7 +94,7 @@ class KnowledgeRetrieverTests(unittest.IsolatedAsyncioTestCase):
             embedding_encoder=SemanticEncoder(),
         )
 
-        results = await retriever.retrieve("焦虑时怎样回到当下", top_k=1)
+        results = await retriever.retrieve("焦虑紧张时怎样做接地练习", top_k=1)
 
         self.assertEqual(mode, "hybrid_with_fallback")
         self.assertEqual(results[0].document_id, "who-grounding")
@@ -105,7 +105,7 @@ class KnowledgeRetrieverTests(unittest.IsolatedAsyncioTestCase):
             embedding_model_path=Path("/missing/local-embedding-model"),
         )
 
-        results = await retriever.retrieve("焦虑时怎样回到当下", top_k=1)
+        results = await retriever.retrieve("焦虑紧张时怎样做接地练习", top_k=1)
 
         self.assertEqual(mode, "bm25_with_fallback")
         self.assertEqual(results[0].document_id, "who-grounding")

@@ -1,4 +1,5 @@
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
@@ -16,6 +17,7 @@ class RagApiTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[1] / "data" / "knowledge" / "psychology.json"
         self.corpus_path = Path(self.temp_dir.name) / "psychology.json"
         self.corpus_path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        self.corpus_count = len(json.loads(source.read_text(encoding='utf-8')))
         integrated_server.KNOWLEDGE_CORPUS_PATH = self.corpus_path
         integrated_server.RAG_ADMIN_TOKEN = "test-admin-token"
         integrated_server.RAG_EMBEDDING_MODEL_PATH = ""
@@ -36,7 +38,7 @@ class RagApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["status"], "ready")
-        self.assertEqual(payload["count"], 10)
+        self.assertEqual(payload["count"], self.corpus_count)
         self.assertIn("psychology.json", payload["db_path"])
         self.assertTrue(payload["mutable"])
 
@@ -46,7 +48,7 @@ class RagApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(len(payload["documents"]), 2)
-        self.assertEqual(payload["total"], 10)
+        self.assertEqual(payload["total"], self.corpus_count)
         self.assertTrue(
             payload["documents"][0]["metadata"]["source_url"].startswith("https://")
         )
