@@ -18,11 +18,39 @@ def city_in(text):
     return next((city for city in CITIES if city in text), None)
 
 
+def resolve_weather_query(text, messages=(), now=None):
+    """Only inherit the immediately preceding dated weather answer, never global state."""
+    explicit = any(w in text for w in ('天气', '气温', '下雨', '降雨'))
+    if len(messages) < 2 or messages[-1].role != 'assistant' or messages[-2].role != 'user':
+        return text if explicit else None
+    previous = messages[-1].content
+    if '你想查询哪个城市的天气' in previous:
+        if city_in(text):
+            # Current city overrides any earlier city; only inherit the date.
+            day = '' if any(w in text for w in ('今天','明天','后天','昨天','下周','下个月')) else ('明天' if '明天' in messages[-2].content else '今天')
+            return f'{text} {day} 天气'
+        return text if explicit else None
+    match = re.match(r'(' + '|'.join(CITIES) + r')，.*?(\d{4}-\d{2}-\d{2})预报', previous)
+    followup = re.fullmatch(r'(?:那|那么)?(?:今天|明天|后天)(?:呢|怎么样)?[？?。！!\s]*', text)
+    outing = re.fullmatch(r'(?:那|那么)?(?:今天|明天)?(?:适合|可以|能)(?:出去|出门)?(?:散步|走走|跑步)(?:吗|么)?[？?。！!\s]*', text)
+    if not match or 'Open-Meteo' not in previous or not (explicit or followup or outing):
+        return text if explicit else None
+    today = (now or datetime.now(ZoneInfo('Asia/Shanghai'))).date()
+    age = (datetime.fromisoformat(match[2]).date() - today).days
+    if age not in (0, 1):
+        return text if explicit else None
+    city = city_in(text) or match[1]
+    day = '' if any(w in text for w in ('今天', '明天', '后天', '昨天', '下周', '下个月')) else ('明天' if age == 1 else '今天')
+    return f'{city} {text} {day} 天气'
+
+
 def search_intent(text, messages=()):
     # 天气闲聊不是查询，不把普通聊天送到第三方。
     if re.search(r'天气(?:真|很|挺|还|太|有点|非常|特别)?(?:不错|好|差|糟糕|冷|热)', text) and not re.search(r'查询|搜索|查一下|吗|[？?]', text):
         return False
     if any(word in text for word in ('天气', '气温', '下雨', '降雨')):
+        return True
+    if resolve_weather_query(text, messages) is not None:
         return True
     if messages and messages[-1].role == 'assistant' and '你想查询哪个城市的天气' in messages[-1].content:
         return bool(city_in(text))
@@ -78,10 +106,9 @@ async def tavily_search(query):
 
 
 def search_query(text, messages=()):
-    weather = any(word in text for word in ('天气', '气温', '下雨', '降雨'))
-    if messages and '你想查询哪个城市的天气' in messages[-1].content:
-        weather = True
-    if weather:
+    resolved = resolve_weather_query(text, messages)
+    if resolved is not None:
+        text = resolved
         city = city_in(text)
         if not city:
             return None

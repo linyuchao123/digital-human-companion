@@ -4,14 +4,13 @@ import math
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import httpx
-from .web_search import city_in, SearchUnavailable
+from .web_search import city_in, SearchUnavailable, resolve_weather_query
 
 ZONE=ZoneInfo('Asia/Shanghai')
 
 
 def weather_request(text, messages=()):
-    return any(w in text for w in ('天气','气温','下雨','降雨')) or bool(
-        messages and messages[-1].role=='assistant' and '你想查询哪个城市的天气' in messages[-1].content)
+    return resolve_weather_query(text, messages) is not None
 
 
 def number(value):
@@ -45,6 +44,17 @@ def format_weather(city,data,text,now=None):
     probability=number(daily['precipitation_probability_max'][index])
     if not 0<=probability<=100 or not -100<=lo<=hi<=70: raise ValueError('invalid forecast')
     forecast=f"{target}预报{weather_label(daily['weather_code'][index])}，气温{lo:g}～{hi:g}°C，最高降雨概率{probability:g}%。"
+    if any(w in text for w in ('散步','走走','跑步')):
+        code=daily['weather_code'][index]
+        if code in (95,96,99):
+            advice='预报有雷暴，建议暂缓户外活动。'
+        elif probability>=50 or code in (45,48,51,53,55,56,57,61,63,65,66,67,71,73,75,77,80,81,82,85,86):
+            advice='可能有降水或能见度不佳，建议优先室内活动。'
+        elif hi>=32 or lo<=5:
+            advice='温度偏高或偏低，建议避开不适时段，缩短户外活动时间。'
+        else:
+            advice='从温度和降水预报看，可以考虑短时间散步。'
+        return f'{city}，{forecast}{advice}出门前仍需查看实际天气、空气质量和当地预警。来源Open-Meteo模型预报，并非实测。'
     if '明天' in text: return f'{city}，{forecast}数据来自Open-Meteo气象模型预报，并非实测。'
     temp=number(current['temperature_2m']);feels=number(current['apparent_temperature'])
     if not -100<=temp<=70 or not -150<=feels<=100: raise ValueError('invalid current')
@@ -52,8 +62,7 @@ def format_weather(city,data,text,now=None):
 
 
 async def get_weather(text,messages=()):
-    if len(messages)>=2 and messages[-1].role=='assistant' and '你想查询哪个城市的天气' in messages[-1].content and messages[-2].role=='user':
-        text=messages[-2].content+' '+text
+    text=resolve_weather_query(text,messages) or text
     city=city_in(text)
     if not city:
         return '你想查询哪个城市的天气？请告诉我城市名称，例如上海或南京。',[]
