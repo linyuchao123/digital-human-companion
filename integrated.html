@@ -1450,8 +1450,9 @@ function handleChatMessage(msg){
       addBubble('ai',cleanText,msg.emotion_label);
       renderActivityCards(msg.activities);
       updateEmotion(msg.emotion,msg.valence,msg.arousal,msg.risk_level);
-      if(ttsEnabled) speakText(cleanText);
-      if(msg.motion&&msg.motion!=='Idle') setTimeout(()=>playMotion(msg.motion),200);
+      const replyMotion=msg.motion&&msg.motion!=='Idle'?()=>playMotion(msg.motion):null;
+      if(ttsEnabled) speakText(cleanText,replyMotion);
+      else if(replyMotion) replyMotion();
       break;
     case 'status':updateModuleStatus(msg.modules,msg.driver_model);break;
     case 'reset_ack':document.getElementById('chat-area').innerHTML='';break;
@@ -1666,6 +1667,16 @@ let _mouthSmooth=0;
 let _freqData=null;
 let _ttsAbort=null;
 let _ttsGeneration=0;
+let _speechStartAction=null,_speechStartTimer=null;
+function notifySpeechStarted(generation,delay=0){
+  if(generation!==_ttsGeneration||!_speechStartAction||_speechStartTimer!==null) return;
+  _speechStartTimer=setTimeout(()=>{
+    _speechStartTimer=null;
+    if(generation!==_ttsGeneration) return;
+    const action=_speechStartAction;_speechStartAction=null;
+    if(action) action();
+  },Math.max(0,delay));
+}
 const _streamSources=new Set();
 let _useBrowserTTS=false;   // 是否当前使用浏览器TTS降级
 let _ttsCapabilityPromise=null;
@@ -1707,6 +1718,8 @@ function _ensureAudioCtx(){
 
 function _stopAudio(){
   _ttsGeneration++;
+  if(_speechStartTimer!==null) clearTimeout(_speechStartTimer);
+  _speechStartTimer=null;_speechStartAction=null;
   for(const source of _streamSources){try{source.stop();}catch(error){}}
   _streamSources.clear();
   if(_ttsAbort){_ttsAbort.abort();_ttsAbort=null;}
@@ -1716,10 +1729,11 @@ function _stopAudio(){
   document.getElementById('speaking-indicator').classList.remove('show');
 }
 
-async function speakText(text){
+async function speakText(text,onSpeechStart=null){
   if(!ttsEnabled||!text) return;
   if(_isListening&&_voiceMode==='server') return; // 避免录音期间采集数字人自己的播报。
   _stopAudio();
+  _speechStartAction=onSpeechStart;
   const generation=_ttsGeneration;
   const useServerTTS=await _canUseServerTTS();
   if(generation!==_ttsGeneration) return;
@@ -1842,6 +1856,7 @@ async function _speakViaServerTTS(text,generation){
     document.getElementById('speaking-indicator').classList.add('show');
     document.getElementById('thinking-bar').classList.remove('show');
     source.start(0);
+    notifySpeechStarted(generation);
     console.log('[TTS] 服务端语音播放中，时长',audioBuf.duration.toFixed(1),'s');
     return true;
   }catch(e){
@@ -1868,7 +1883,9 @@ async function _playStreamTTS(text,voice,generation,controller){
       for(let i=0;i<values.length;i++) values[i]=view.getInt16(i*2,true)/32768;
       const source=ctx.createBufferSource();source.buffer=buffer;source.connect(_analyser);
       _streamSources.add(source);source.onended=()=>{_streamSources.delete(source);source.disconnect();};
-      at=Math.max(at,ctx.currentTime+0.02);source.start(at);at+=buffer.duration;started=true;
+      at=Math.max(at,ctx.currentTime+0.02);source.start(at);
+      if(!started) notifySpeechStarted(generation,(at-ctx.currentTime)*1000);
+      at+=buffer.duration;started=true;
       ttsSpeaking=true;_useBrowserTTS=false;
       document.getElementById('speaking-indicator').classList.add('show');
     };
@@ -1906,6 +1923,7 @@ function _speakViaBrowser(text,generation){
     if(v){ utt.voice=v; console.log('[TTS] 浏览器TTS音色:',v.name); }
     utt.onstart=()=>{
       if(generation!==_ttsGeneration) return;
+      notifySpeechStarted(generation);
       _useBrowserTTS=true;
       ttsSpeaking=true;
       _startLipSync(text); // 启动字符时序口型
