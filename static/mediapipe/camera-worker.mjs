@@ -1,4 +1,7 @@
-import {FaceLandmarker, FilesetResolver} from './tasks-vision/vision_bundle.mjs';
+/* Classic Worker is required by this release's WASM importScripts loader. */
+const exports = {};
+importScripts('./tasks-vision/vision_bundle.js');
+const {FaceLandmarker, FilesetResolver} = exports;
 let detector;
 const qualityCanvas = new OffscreenCanvas(32,24);
 const qualityContext = qualityCanvas.getContext('2d',{willReadFrequently:true});
@@ -12,7 +15,7 @@ self.onmessage = async ({data}) => {
         minFaceDetectionConfidence: .6, minFacePresenceConfidence: .6, minTrackingConfidence: .6,
       });
       self.postMessage({type: 'ready'});
-    } catch { self.postMessage({type: 'error'}); }
+    } catch(error) { self.postMessage({type: 'error', stage: 'init', detail: String(error.message || '初始化失败').slice(0,300)}); }
     return;
   }
   if (data.type !== 'frame') return;
@@ -38,6 +41,6 @@ self.onmessage = async ({data}) => {
     const inside = points.length && points.every(p=>p.x>=0 && p.x<=1 && p.y>=0 && p.y<=1);
     self.postMessage({type: 'result', face_count: count, quality: width > .16 && inside && matrix && brightness>35 && brightness<235 ? 'good' : 'poor',
       features, duration: performance.now()-started});
-  } catch { self.postMessage({type: 'error'}); }
+  } catch(error) { self.postMessage({type: 'error', stage: 'frame', detail: String(error.message || '推理失败').slice(0,300)}); }
   finally { data.bitmap.close(); }
 };

@@ -30,7 +30,7 @@
       if(epoch!==generation) return;
       id=crypto.randomUUID(); seq=0; lastSent=0; interval=125;
       if(!chatSend({type:'vision_control',enabled:true,stream_id:id})) throw Error('connection');
-      worker=new Worker('/static/mediapipe/camera-worker.mjs',{type:'module'});
+      worker=new Worker('/static/mediapipe/camera-worker.mjs');
       timeout=setTimeout(()=>stopCameraPerception('视觉模型加载超时'),45000);
       const pump=async()=>{
         if(epoch!==generation || !worker) return;

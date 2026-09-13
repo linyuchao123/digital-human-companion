@@ -26,6 +26,11 @@
 - vision_wasm_nosimd_internal.wasm: 924274fcd5ac8985f6570a8573e7971b7bd2d580ba1b8f3beb0ba8f95db6347c
 - face_landmarker.task: 64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff
 
+Worker 使用官方同版本 vision_bundle.cjs 的原始内容，重命名为 vision_bundle.js 以确保浏览器 JavaScript MIME 类型。
+该版本 WASM 加载器依赖 importScripts，因此使用经典 Worker，不使用模块 Worker。
+vision_bundle.js SHA-256: 43c65a77825c5d5af7456d4781a64cd15cb3e53f479ff1f923c12b5adecf2b44。
+可打开 /static/mediapipe/camera-smoke.html 验证本地模型加载及空白帧推理，不调用摄像头。
+
 ## 人工验收（尚未完成）
 
 - 实际摄像头：微笑、皱眉、转头、闭眼、离开、多人与暗光。

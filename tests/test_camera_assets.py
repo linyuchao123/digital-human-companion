@@ -29,6 +29,7 @@ class CameraAssetTests(unittest.TestCase):
             paths = ['/api/vision/face-landmarker-model', '/static/mediapipe/camera-worker.mjs',
                      '/static/mediapipe/camera-controller.js',
                      '/static/mediapipe/tasks-vision/vision_bundle.mjs',
+                     '/static/mediapipe/tasks-vision/vision_bundle.js',
                      '/static/mediapipe/tasks-vision/wasm/vision_wasm_internal.wasm',
                      '/static/mediapipe/tasks-vision/wasm/vision_wasm_nosimd_internal.wasm']
             for path in paths:
