@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Protocol, Sequence
 
 from .state import KnowledgeSnippet
+from .knowledge_relevance import DomainFilteredKnowledgeRetriever
 
 
 class KnowledgeRetriever(Protocol):
@@ -387,7 +388,7 @@ def create_knowledge_retriever(
     try:
         lexical = BM25KnowledgeRetriever(corpus_path)
     except (OSError, ValueError):
-        return fallback, "builtin_fallback"
+        return DomainFilteredKnowledgeRetriever(fallback), "builtin_fallback"
     encoder = embedding_encoder
     if encoder is None and embedding_model_path is not None:
         try:
@@ -397,7 +398,7 @@ def create_knowledge_retriever(
     if encoder is not None:
         try:
             primary: KnowledgeRetriever = HybridKnowledgeRetriever(lexical, encoder)
-            return FallbackKnowledgeRetriever(primary, fallback), "hybrid_with_fallback"
+            return DomainFilteredKnowledgeRetriever(FallbackKnowledgeRetriever(primary, fallback)), "hybrid_with_fallback"
         except (OSError, RuntimeError, TypeError, ValueError):
             pass
-    return FallbackKnowledgeRetriever(lexical, fallback), "bm25_with_fallback"
+    return DomainFilteredKnowledgeRetriever(FallbackKnowledgeRetriever(lexical, fallback)), "bm25_with_fallback"
