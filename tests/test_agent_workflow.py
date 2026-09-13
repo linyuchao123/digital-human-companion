@@ -106,7 +106,7 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
         history = [ChatMessage(role="user", content=f"消息{i}") for i in range(60)]
 
         result = await workflow.run(
-            user_text="最新消息",
+            user_text="继续聊天",
             trace_id="trace-bounded",
             session_id="session-bounded",
             messages=history,
@@ -114,7 +114,7 @@ class DigitalXinyuWorkflowTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertLessEqual(len(provider.messages), 39)
         self.assertLessEqual(len(result["messages"]), 40)
-        self.assertEqual(provider.messages[-1].content, "最新消息")
+        self.assertEqual(provider.messages[-1].content, "继续聊天")
 
     async def test_emotion_node_directs_anxious_avatar_to_listen(self):
         provider = RecordingProvider()

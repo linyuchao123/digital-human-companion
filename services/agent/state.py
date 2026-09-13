@@ -119,3 +119,4 @@ class AgentState(TypedDict, total=False):
     memory_consent: bool
     errors: list[str]
     execution_path: list[str]
+    web_sources: list[dict[str, str]]
