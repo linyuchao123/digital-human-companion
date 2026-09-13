@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import httpx
 from .planning import external_tools_disabled
+from .knowledge_intent import requests_knowledge
 
 
 CITIES = ('北京', '上海', '广州', '深圳', '南京', '杭州', '苏州', '镇江', '成都', '重庆',
@@ -56,6 +57,12 @@ def search_intent(text, messages=()):
     if re.search(r'天气(?:真|很|挺|还|太|有点|非常|特别)?(?:不错|好|差|糟糕|冷|热)', text) and not re.search(r'查询|搜索|查一下|吗|[？?]', text):
         return False
     if any(word in text for word in ('天气', '气温', '下雨', '降雨')):
+        # Personal distress containing weather words is not itself a forecast request.
+        # Explicit forecast/search questions still take precedence.
+        if requests_knowledge(text) and not re.search(
+            r'查|搜|预报|气温|会不会|会下雨|下雨吗|天气.*(?:怎么样|如何|多少|吗|[？?])', text
+        ):
+            return False
         return True
     if resolve_weather_query(text, messages) is not None:
         return True
