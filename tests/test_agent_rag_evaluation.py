@@ -26,6 +26,31 @@ class StaticRetriever:
 
 
 class AgentRagEvaluationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_negative_cases_report_false_positives_separately(self):
+        report=await evaluate_retriever(StaticRetriever(),[
+            RetrievalEvalCase('hit case',('expected',)),
+            RetrievalEvalCase('unrelated question',(),expect_no_results=True)])
+        self.assertEqual(report.hit_rate,1)
+        self.assertEqual(report.mean_reciprocal_rank,0.5)
+        self.assertEqual(report.negative_case_count,1)
+        self.assertEqual(report.false_positive_rate,1)
+        self.assertEqual(report.failures[0]['failure_type'],'false_positive')
+
+    async def test_all_negative_empty_retriever_has_no_division_error(self):
+        class Empty:
+            async def retrieve(self,query,top_k=3):return []
+        report=await evaluate_retriever(Empty(),[RetrievalEvalCase('unrelated',(),True)])
+        self.assertEqual(report.false_positive_rate,0)
+        self.assertEqual(report.hit_rate,0)
+        self.assertEqual(report.failures,())
+
+    def test_natural_language_dataset_ids_exist(self):
+        root=Path(__file__).resolve().parents[1]
+        cases=load_retrieval_eval_cases(root/'eval/rag/natural_language_cases.json')
+        ids={d['id'] for d in json.loads((root/'data/knowledge/psychology.json').read_text(encoding='utf-8'))}
+        self.assertEqual(len(cases),16)
+        self.assertEqual(sum(c.expect_no_results for c in cases),4)
+        self.assertTrue(all(set(c.expected_document_ids)<=ids for c in cases))
     async def test_evaluation_computes_hit_rate_and_mrr(self):
         cases = [
             RetrievalEvalCase("hit case", ("expected",)),

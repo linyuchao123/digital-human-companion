@@ -20,6 +20,13 @@ from services.agent.rag_evaluation import (
 )
 
 
+def probability(value: str) -> float:
+    result=float(value)
+    if not 0<=result<=1:
+        raise argparse.ArgumentTypeError('比例必须在0到1之间')
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="评测智能体 RAG 检索质量")
     parser.add_argument(
@@ -35,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--min-hit-rate", type=float, default=0.85)
     parser.add_argument("--min-mrr", type=float, default=0.7)
+    parser.add_argument('--max-false-positive-rate',type=probability,default=0.0,
+                        help='无关问题误命中的最高比例，默认0；仅对负例生效')
     parser.add_argument(
         "--embedding-model",
         type=Path,
@@ -74,6 +83,7 @@ async def run() -> int:
         report.hit_rate >= args.min_hit_rate
         and report.mean_reciprocal_rank >= args.min_mrr
         and provider_requirement_met
+        and report.false_positive_rate <= args.max_false_positive_rate
     )
     return 0 if passed else 1
 

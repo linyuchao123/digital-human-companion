@@ -12,6 +12,7 @@ from .knowledge import KnowledgeRetriever
 class RetrievalEvalCase:
     query: str
     expected_document_ids: tuple[str, ...]
+    expect_no_results: bool = False
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,8 @@ class RetrievalEvalReport:
     hit_rate: float
     mean_reciprocal_rank: float
     failures: tuple[dict[str, object], ...]
+    negative_case_count: int = 0
+    false_positive_rate: float = 0.0
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -36,11 +39,13 @@ def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
             raise ValueError(f"RAG 评测集第 {index + 1} 条不是对象")
         query = str(item.get("query", "")).strip()
         expected = item.get("expected_document_ids", [])
-        if not query or not isinstance(expected, list) or not expected:
+        negative = item.get('expect_no_results', False)
+        if type(negative) is not bool or not query or not isinstance(expected, list) or (not expected and not negative) or (expected and negative):
             raise ValueError(f"RAG 评测集第 {index + 1} 条缺少问题或期望文档")
         cases.append(RetrievalEvalCase(
             query=query,
             expected_document_ids=tuple(str(value) for value in expected),
+            expect_no_results=negative,
         ))
     return cases
 
@@ -58,9 +63,16 @@ async def evaluate_retriever(
     hit_count = 0
     reciprocal_rank_total = 0.0
     failures: list[dict[str, object]] = []
+    negative_count = 0; false_positives = 0
     for case in cases:
         results = list(await retriever.retrieve(case.query, top_k=top_k))
         returned_ids = [item.document_id for item in results if item.document_id]
+        if case.expect_no_results:
+            negative_count += 1
+            if results:
+                false_positives += 1
+                failures.append({'query':case.query, 'failure_type':'false_positive', 'returned_document_ids':returned_ids})
+            continue
         expected_ids = set(case.expected_document_ids)
         rank = next(
             (
@@ -80,10 +92,13 @@ async def evaluate_retriever(
             hit_count += 1
             reciprocal_rank_total += 1 / rank
     case_count = len(cases)
+    positive_count = case_count - negative_count
     return RetrievalEvalReport(
         case_count=case_count,
         top_k=top_k,
-        hit_rate=hit_count / case_count,
-        mean_reciprocal_rank=reciprocal_rank_total / case_count,
+        hit_rate=hit_count / positive_count if positive_count else 0.0,
+        mean_reciprocal_rank=reciprocal_rank_total / positive_count if positive_count else 0.0,
         failures=tuple(failures),
+        negative_case_count=negative_count,
+        false_positive_rate=false_positives / negative_count if negative_count else 0.0,
     )

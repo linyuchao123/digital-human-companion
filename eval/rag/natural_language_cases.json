@@ -1,0 +1,18 @@
+[
+  {"query":"整晚脑子停不下来，明天的事情一直在想", "expected_document_ids":["nhs-sleep-worry","nhs-worry-time","who-unhooking"]},
+  {"query":"越想睡越睡不着，该怎么办", "expected_document_ids":["nhs-sleep-not-force"]},
+  {"query":"我总怕别人不高兴，不敢拒绝他们", "expected_document_ids":["nih-relationship-boundaries"]},
+  {"query":"一件事没做好，我就觉得自己彻底失败了", "expected_document_ids":["nhs-cbt-black-white","who-self-kindness"]},
+  {"query":"还没面试就觉得肯定会失败", "expected_document_ids":["nhs-cbt-evidence"]},
+  {"query":"亲人去世后一直很悲痛", "expected_document_ids":["nih-grief","who-making-room"]},
+  {"query":"每天照顾老人，我也需要休息", "expected_document_ids":["nih-caregiver-stress"]},
+  {"query":"好多工作堆在一起，不知道先做哪件", "expected_document_ids":["nimh-priorities","nhs-problem-plan"]},
+  {"query":"和伴侣说着说着就吵架了，怎么沟通", "expected_document_ids":["nih-relationship-conflict"]},
+  {"query":"每天躺着不想动，什么都没兴趣，什么时候该找专业人士", "expected_document_ids":["nimh-seeking-help","who-professional-help"]},
+  {"query":"什么是正念，需要把大脑放空吗", "expected_document_ids":["nih-mindfulness"]},
+  {"query":"朋友很难过，我该怎么安慰她", "expected_document_ids":["who-listening"]},
+  {"query":"推荐几首周杰伦的歌", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"明天上海会下雨吗", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"这个电脑怎么连接打印机", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"今天中午吃什么好", "expected_document_ids":[], "expect_no_results":true}
+]
