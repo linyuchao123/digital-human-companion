@@ -154,6 +154,8 @@ def _init_db():
         for name in ("display_name", "birthday", "avatar"):
             if name not in user_columns:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+        from apps.api.external_auth import init_auth_tables
+        init_auth_tables(conn)
         conn.commit()
         print("[DB] 数据库初始化完成")
     finally:
@@ -870,7 +872,7 @@ async def auth_login(request: Request):
         return JSONResponse({"error": "用户名和密码不能为空"}, status_code=400)
     conn = _get_db()
     try:
-        row = conn.execute("SELECT id,password_hash FROM users WHERE username=?", (username,)).fetchone()
+        row = conn.execute("SELECT id,password_hash,username FROM users WHERE username=? OR (email=? AND email_verified_at<>'')", (username,username.lower())).fetchone()
         if not row or not _check_password(password, row["password_hash"]):
             return JSONResponse({"error": "用户名或密码错误"}, status_code=401)
         token = str(uuid.uuid4())
@@ -878,7 +880,7 @@ async def auth_login(request: Request):
         conn.execute("INSERT OR REPLACE INTO auth_tokens(token,user_id,expires_at) VALUES(?,?,?)",
                      (token, row["id"], expires))
         conn.commit()
-        return JSONResponse({"token": token, "username": username, "user_id": row["id"]})
+        return JSONResponse({"token": token, "username": row['username'], "user_id": row["id"]})
     finally:
         conn.close()
 
@@ -909,7 +911,7 @@ class ProfileUpdate(BaseModel):
 
 
 class PasswordUpdate(BaseModel):
-    current_password: str = Field(min_length=1,max_length=64)
+    current_password: str = Field(default="",max_length=64)
     new_password: str = Field(min_length=8,max_length=64)
 
 
@@ -919,7 +921,7 @@ async def get_profile(request: Request):
     if user_id is None:
         return JSONResponse({"error":"请先登录"},status_code=401)
     with _get_db() as conn:
-        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at FROM users WHERE id=?",(user_id,)).fetchone()
+        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at,email,email_verified_at,password_set FROM users WHERE id=?",(user_id,)).fetchone()
     return JSONResponse(dict(row))
 
 
@@ -965,13 +967,19 @@ async def update_password(payload: PasswordUpdate,request: Request):
     if len(payload.new_password.encode())>72:
         return JSONResponse({"error":"密码UTF-8长度不能超过72字节"},status_code=400)
     with _get_db() as conn:
-        row=conn.execute("SELECT password_hash FROM users WHERE id=?",(user_id,)).fetchone()
-        if not _check_password(payload.current_password,row['password_hash']):
+        row=conn.execute("SELECT password_hash,password_set FROM users WHERE id=?",(user_id,)).fetchone()
+        session=conn.execute("SELECT source,issued_at FROM auth_tokens WHERE token=?",(request.headers.get('X-Auth-Token',''),)).fetchone()
+        fresh_social=not row['password_set'] and session and session['source']=='oauth' and session['issued_at']>time.time()-600
+        if not fresh_social and not _check_password(payload.current_password,row['password_hash']):
             return JSONResponse({"error":"当前密码不正确"},status_code=403)
-        conn.execute("UPDATE users SET password_hash=? WHERE id=?",(_hash_password(payload.new_password),user_id))
+        conn.execute("UPDATE users SET password_hash=?,password_set=1 WHERE id=?",(_hash_password(payload.new_password),user_id))
         conn.execute("DELETE FROM auth_tokens WHERE user_id=?",(user_id,))
         conn.commit()
     return JSONResponse({"ok":True,"reauthenticate":True})
+
+
+from apps.api.external_auth import install_external_auth
+install_external_auth(app,_get_db,_verify_auth_token,_hash_password,_check_password)
 
 
 def _session_belongs_to_user(session_id: str, user_id: int) -> bool:
