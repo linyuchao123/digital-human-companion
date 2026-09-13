@@ -314,6 +314,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 .camera-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;font-size:13px;font-weight:600}
 .camera-close{border:0;background:rgba(90,110,150,.08);color:var(--text2);border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:18px}
 #camera-status{font-size:11px;color:var(--text2);margin-bottom:10px}
+#camera-observation{font-size:11px;line-height:1.6;color:var(--text);padding:8px 10px;margin-bottom:10px;border-radius:10px;background:rgba(100,140,210,.07)}
 #camera-video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:13px;transform:scaleX(-1);background:rgba(100,130,170,.08)}
 .camera-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .camera-actions .tb-chip{font-size:11px;padding:0 10px}
@@ -1446,7 +1447,7 @@ function handleChatMessage(msg){
       window.stopCameraPerception?.('会话已切换，摄像头已关闭');
       break;
     case 'vision_status':
-      document.getElementById('camera-status').textContent=msg.status;
+      window.handleCameraStatus?.(msg);
       break;
     case 'live2d_params':
       // /ws/main 同时推送驱动参数，当 /ws/drive 无数据时作为备用
@@ -2641,11 +2642,12 @@ async function deleteSession(sessionId){
 <aside id="camera-panel" hidden aria-label="摄像头感知预览">
   <div class="camera-heading"><span>👁 摄像头感知</span><button type="button" class="camera-close" aria-label="关闭摄像头" onclick="stopCameraPerception()">×</button></div>
   <div id="camera-status" role="status" aria-live="polite">已关闭</div>
+  <div id="camera-observation" role="status" aria-live="polite">尚未形成稳定观察</div>
   <video id="camera-video" autoplay muted playsinline hidden></video>
   <div class="camera-actions"><button type="button" id="camera-preview-btn" class="tb-chip" disabled aria-expanded="false" onclick="toggleCameraPreview()">显示预览</button>
   <button type="button" class="tb-chip" onclick="stopCameraPerception()">关闭摄像头</button>
   </div><small class="camera-note">画面仅本机处理<br>表情不等于真实情绪</small>
 </aside>
-<script src="/static/mediapipe/camera-controller.js?v=20260914-2"></script>
+<script src="/static/mediapipe/camera-controller.js?v=20260914-3"></script>
 </body>
 </html>

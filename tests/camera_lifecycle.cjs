@@ -4,7 +4,7 @@ const el=id=>{if(!elements.has(id)) elements.set(id,{textContent:'',hidden:false
 let acquire,stopped=0;
 const context={document:{hidden:false,getElementById:el,addEventListener:(k,f)=>events[k]=f},navigator:{mediaDevices:{getUserMedia:()=>new Promise(r=>acquire=r)}},
   chatWsReady:true,chatSend:m=>{sent.push(m);return true;},confirm:()=>true,setTimeout,clearTimeout,
-  crypto:require('node:crypto'),performance,createImageBitmap:async()=>({close(){}}),Worker:class {postMessage(){} terminate(){}},};
+  crypto:require('node:crypto'),performance,createImageBitmap:async()=>({close(){}}),Worker:class {constructor(){context.worker=this;}postMessage(){} terminate(){}},};
 context.window=context;context.addEventListener=(k,f)=>events[k]=f;
 vm.createContext(context);vm.runInContext(fs.readFileSync('static/mediapipe/camera-controller.js','utf8'),context);
 (async()=>{
@@ -18,12 +18,20 @@ vm.createContext(context);vm.runInContext(fs.readFileSync('static/mediapipe/came
   acquire({getTracks:()=>[track],getVideoTracks:()=>[track]});await ready;
   assert.equal(sent.at(-1).type,'vision_control');assert.equal(sent.at(-1).enabled,true);
   assert.equal(el('camera-panel').hidden,false);assert.equal(el('camera-video').hidden,false);
+  context.worker.onmessage({data:{type:'result',face_count:1,quality:'good',reason:'观察中',duration:10,features:{}}});
+  const activeId=sent.findLast(m=>m.type==='vision_control'&&m.enabled).stream_id;
+  context.handleCameraStatus({stream_id:activeId,observation:'嘴角持续上扬，可能在微笑'});
+  assert.match(el('camera-observation').textContent,/微笑/);
+  context.handleCameraStatus({stream_id:'old',observation:'错误观察'});
+  assert.match(el('camera-observation').textContent,/微笑/);
   context.toggleCameraPreview();assert.equal(el('camera-video').hidden,true);
   assert.equal(el('camera-preview-btn').textContent,'显示预览');
   context.toggleCameraPreview();assert.equal(el('camera-video').hidden,false);
   context.document.hidden=true;events.visibilitychange();
   assert.equal(sent.at(-1).enabled,false);assert.equal(el('camera-video').srcObject,null);
   assert.equal(stopped,2);
+  context.handleCameraStatus({stream_id:activeId,observation:'迟到观察'});
+  assert.equal(el('camera-observation').textContent,'尚未形成稳定观察');
   assert.equal(el('camera-video').muted,true);
   assert.equal(el('camera-video').playsInline,true);
   context.document.hidden=false;

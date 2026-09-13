@@ -45,7 +45,7 @@ def install_http_security(app, verify, public):
                     return JSONResponse({'error':'请求内容过大'},status_code=413)
             request._body=bytes(body)
         response=await call_next(request)
-        if path in {'/static/mediapipe/camera-controller.js', '/static/mediapipe/camera-worker.mjs'}:
+        if path in {'/static/mediapipe/camera-controller.js', '/static/mediapipe/camera-worker.mjs', '/static/mediapipe/camera-quality.js'}:
             response.headers['Cache-Control']='no-store'
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='same-origin'

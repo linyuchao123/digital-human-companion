@@ -1,6 +1,7 @@
 /* Classic Worker is required by this release's WASM importScripts loader. */
 const exports = {};
 importScripts('./tasks-vision/vision_bundle.js');
+importScripts('./camera-quality.js?v=20260914-3');
 const {FaceLandmarker, FilesetResolver} = exports;
 let detector;
 const qualityCanvas = new OffscreenCanvas(32,24);
@@ -23,9 +24,6 @@ self.onmessage = async ({data}) => {
   try {
     qualityContext.drawImage(data.bitmap,0,0,32,24);
     const pixels = qualityContext.getImageData(0,0,32,24).data;
-    let brightness=0;
-    for(let i=0;i<pixels.length;i+=4) brightness+=(pixels[i]+pixels[i+1]+pixels[i+2])/3;
-    brightness/=pixels.length/4;
     const result = detector.detectForVideo(data.bitmap, data.timestamp);
     const count = result.faceLandmarks.length;
     const scores = Object.fromEntries((result.faceBlendshapes[0]?.categories || []).map(c => [c.categoryName, c.score]));
@@ -37,9 +35,17 @@ self.onmessage = async ({data}) => {
       pitch: matrix ? Math.atan2(matrix[6],matrix[10])*deg : 0,
       roll: matrix ? Math.atan2(matrix[1],matrix[0])*deg : 0};
     const points = result.faceLandmarks[0] || [];
-    const width = points.length ? Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x)) : 0;
-    const inside = points.length && points.every(p=>p.x>=0 && p.x<=1 && p.y>=0 && p.y<=1);
-    self.postMessage({type: 'result', face_count: count, quality: width > .16 && inside && matrix && brightness>35 && brightness<235 ? 'good' : 'poor',
+    // Measure the face region, not the whole room (dark backgrounds are common).
+    let brightness=0, samples=0;
+    const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+    const left=Math.max(0,Math.floor(Math.min(...xs)*32)),right=Math.min(32,Math.ceil(Math.max(...xs)*32));
+    const top=Math.max(0,Math.floor(Math.min(...ys)*24)),bottom=Math.min(24,Math.ceil(Math.max(...ys)*24));
+    for(let y=top;y<bottom;y++) for(let x=left;x<right;x++) {
+      const i=(y*32+x)*4;brightness+=(pixels[i]+pixels[i+1]+pixels[i+2])/3;samples++;
+    }
+    brightness=samples?brightness/samples:0;
+    const assessment=self.cameraQuality(points,matrix,brightness,count,Object.keys(scores).length>0);
+    self.postMessage({type: 'result', face_count: count, ...assessment,
       features, duration: performance.now()-started});
   } catch(error) { self.postMessage({type: 'error', stage: 'frame', detail: String(error.message || '推理失败').slice(0,300)}); }
   finally { data.bitmap.close(); }

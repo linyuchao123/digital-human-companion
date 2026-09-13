@@ -1737,9 +1737,12 @@ async def ws_main(websocket: WebSocket):
                         raise ValueError('payload_too_large')
                     status = (state.camera_observation.control(msg) if msg_type == 'vision_control'
                               else state.camera_observation.update(msg))
-                    await _send(websocket, {'type': 'vision_status', 'status': status})
+                    await _send(websocket, {'type': 'vision_status', 'status': status,
+                        'stream_id': msg.get('stream_id'), 'seq': state.camera_observation.seq,
+                        'observation': state.camera_observation.summary()})
                 except ValueError as error:
-                    await _send(websocket, {'type': 'vision_status', 'status': '观察暂停', 'code': str(error)})
+                    await _send(websocket, {'type': 'vision_status', 'status': '观察暂停', 'code': str(error),
+                        'stream_id': msg.get('stream_id') if isinstance(msg.get('stream_id'),str) else None})
                 continue
 
             if msg_type == "init":

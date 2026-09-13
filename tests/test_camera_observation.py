@@ -57,5 +57,22 @@ class CameraTests(unittest.TestCase):
         self.camera.update(self.sample(0, quality='poor'))
         self.assertEqual('', self.camera.summary())
 
+    def test_single_blink_is_not_sustained_closed_eyes(self):
+        for seq in range(7):
+            self.now=seq*.6
+            features=self.sample(seq)['features']
+            features['eye_closed']=1 if seq==2 else 0
+            self.camera.update(self.sample(seq,features=features))
+        self.assertNotIn('闭眼',self.camera.summary())
+
+    def test_quality_loss_removes_previous_observation(self):
+        for seq in range(5):
+            self.now=seq*.6
+            self.camera.update(self.sample(seq))
+        self.assertIn('微笑',self.camera.summary())
+        self.now+=.6
+        self.camera.update(self.sample(5,quality='poor'))
+        self.assertEqual('',self.camera.summary())
+
 if __name__ == '__main__':
     unittest.main()
