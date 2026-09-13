@@ -309,6 +309,16 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 @media(max-width:600px){#chat-panel{width:calc(100vw - 32px)}#bottom-bar{width:calc(100vw - 32px)}#agent-debug{width:calc(100vw - 32px)}}
 
 /* ══ 左侧历史对话栏 ══ */
+#camera-panel{position:fixed;top:74px;left:calc(var(--sb-width,240px) + 16px);z-index:35;width:220px;max-width:calc(100vw - 32px);padding:14px;border-radius:20px;background:rgba(255,255,255,.86);border:1px solid rgba(255,255,255,.8);box-shadow:0 12px 36px rgba(40,65,100,.13);backdrop-filter:blur(16px);color:var(--text)}
+#camera-panel[hidden],#camera-video[hidden]{display:none!important}
+.camera-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;font-size:13px;font-weight:600}
+.camera-close{border:0;background:rgba(90,110,150,.08);color:var(--text2);border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:18px}
+#camera-status{font-size:11px;color:var(--text2);margin-bottom:10px}
+#camera-video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:13px;transform:scaleX(-1);background:rgba(100,130,170,.08)}
+.camera-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.camera-actions .tb-chip{font-size:11px;padding:0 10px}
+.camera-note{display:block;margin-top:10px;font-size:10px;line-height:1.6;color:var(--text2)}
+@media(max-width:700px){#camera-panel{left:16px;top:110px;width:190px}}
 #sidebar{position:fixed;left:0;top:0;width:240px;height:100%;z-index:30;
   background:rgba(255,255,255,0.30);backdrop-filter:blur(20px) saturate(1.6);
   -webkit-backdrop-filter:blur(20px) saturate(1.6);
@@ -2628,12 +2638,13 @@ async function deleteSession(sessionId){
 }
 
 </script>
-<aside id="camera-panel" hidden style="position:fixed;bottom:90px;left:285px;z-index:50;background:rgba(255,255,255,.92);padding:12px;border-radius:18px;box-shadow:0 8px 30px #18234422;width:200px;max-width:50vw">
+<aside id="camera-panel" hidden aria-label="摄像头感知预览">
+  <div class="camera-heading"><span>👁 摄像头感知</span><button type="button" class="camera-close" aria-label="关闭摄像头" onclick="stopCameraPerception()">×</button></div>
   <div id="camera-status" role="status" aria-live="polite">已关闭</div>
-  <video id="camera-video" autoplay muted playsinline style="width:100%;border-radius:12px;transform:scaleX(-1)"></video>
-  <button type="button" class="tb-chip" onclick="toggleCameraPreview()">显示/隐藏预览</button>
+  <video id="camera-video" autoplay muted playsinline hidden></video>
+  <div class="camera-actions"><button type="button" id="camera-preview-btn" class="tb-chip" disabled aria-expanded="false" onclick="toggleCameraPreview()">显示预览</button>
   <button type="button" class="tb-chip" onclick="stopCameraPerception()">关闭摄像头</button>
-  <small style="display:block;margin-top:8px">画面仅本机处理 · 表情不等于真实情绪</small>
+  </div><small class="camera-note">画面仅本机处理<br>表情不等于真实情绪</small>
 </aside>
 <script src="/static/mediapipe/camera-controller.js"></script>
 </body>

@@ -2,23 +2,38 @@
 (() => {
   let generation=0, stream=null, worker=null, timer=null, busy=false, lastSent=0, seq=0, id='', interval=125, timeout=null, starting=false, frameTimeout=null;
   const video=()=>document.getElementById('camera-video');
-  const status=text=>{document.getElementById('camera-status').textContent=text;};
+  const status=text=>{
+    document.getElementById('camera-status').textContent=text;
+    const button=document.getElementById('camera-btn');
+    button.title='摄像头感知：'+text;
+    button.setAttribute('aria-label','摄像头感知：'+text);
+  };
   window.stopCameraPerception = (reason='已关闭') => {
     generation++;
     clearTimeout(timer); clearTimeout(timeout); clearTimeout(frameTimeout);
     if(id) chatSend({type:'vision_control',enabled:false,stream_id:id});
     id=''; worker?.terminate(); worker=null;
     stream?.getTracks().forEach(t=>t.stop()); stream=null;
-    video().srcObject=null; busy=false; starting=false;
+    video().srcObject=null; video().hidden=true; busy=false; starting=false;
+    document.getElementById('camera-panel').hidden=true;
+    document.getElementById('camera-preview-btn').disabled=true;
+    document.getElementById('camera-preview-btn').textContent='显示预览';
+    document.getElementById('camera-preview-btn').setAttribute('aria-expanded','false');
     document.getElementById('camera-btn').classList.remove('on'); status(reason);
   };
-  window.toggleCameraPreview=()=>{video().hidden=!video().hidden;};
+  window.toggleCameraPreview=()=>{
+    if(!stream) return;
+    video().hidden=!video().hidden;
+    const button=document.getElementById('camera-preview-btn');
+    button.textContent=video().hidden?'显示预览':'隐藏预览';
+    button.setAttribute('aria-expanded',String(!video().hidden));
+  };
   window.toggleCameraPerception=async()=>{
     document.getElementById('camera-panel').hidden=false;
     if(worker || stream || starting){stopCameraPerception();return;}
     if(!chatWsReady){status('请先连接数字人');return;}
     if(!navigator.mediaDevices?.getUserMedia){status('请使用 localhost 或 HTTPS 打开页面');return;}
-    if(!confirm('摄像头画面仅在本机处理，不上传、不录制、不保存。数值特征发往项目后端；简短观察描述可能随对话发送给当前大模型。是否开启？')) return;
+    if(!confirm('摄像头画面仅在本机处理，不上传、不录制、不保存。数值特征发往项目后端；简短观察描述可能随对话发送给当前大模型。是否开启？')) {stopCameraPerception();return;}
     const epoch=++generation; starting=true; status('加载中');
     document.getElementById('camera-panel').hidden=false;
     document.getElementById('camera-btn').classList.add('on');
@@ -26,7 +41,10 @@
       const acquired=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},frameRate:{ideal:15,max:15}},audio:false});
       if(epoch!==generation){acquired.getTracks().forEach(t=>t.stop());return;}
       stream=acquired; stream.getVideoTracks()[0].onended=()=>stopCameraPerception('摄像头已停止');
-      video().srcObject=stream; await video().play();
+      video().srcObject=stream; video().hidden=false;
+      const previewButton=document.getElementById('camera-preview-btn');
+      previewButton.disabled=false;previewButton.textContent='隐藏预览';previewButton.setAttribute('aria-expanded','true');
+      await video().play();
       if(epoch!==generation) return;
       id=crypto.randomUUID(); seq=0; lastSent=0; interval=125;
       if(!chatSend({type:'vision_control',enabled:true,stream_id:id})) throw Error('connection');
