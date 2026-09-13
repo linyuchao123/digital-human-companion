@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from .emotion import EmotionAnalyzer
 from .clock import is_clock_query, clock_answer
 from .web_search import search_intent, search_query, tavily_search, SearchUnavailable
+from .weather import weather_request, get_weather
 from .activities import requests_activities, activity_cards
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
 from .memory import (
@@ -386,9 +387,15 @@ class DigitalXinyuWorkflow:
     async def _search_web(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
         sources = []; status = 'completed'
+        weather=weather_request(state['user_text'],state.get('messages', []))
         query = search_query(state['user_text'], state.get('messages', []))
         if query is None:
             response = '你想查询哪个城市的天气？请告诉我城市名称，例如上海或南京。'
+        elif weather:
+            try:
+                response,sources=await get_weather(state['user_text'],state.get('messages', []))
+            except SearchUnavailable as exc:
+                response=str(exc);status='failed'
         else:
             try:
                 sources = await tavily_search(query)
@@ -404,7 +411,7 @@ class DigitalXinyuWorkflow:
             final_response=response, web_sources=sources,
             messages=[*state.get('messages', []), ChatMessage(role='user',content=state['user_text']),
                       ChatMessage(role='assistant',content=response)][-MAX_CONTEXT_MESSAGES:],
-            tool_calls=[*state.get('tool_calls', []), ToolCallRecord(name='tavily_search',
+            tool_calls=[*state.get('tool_calls', []), ToolCallRecord(name='weather_forecast' if weather else 'tavily_search',
                 reason='获取外部资料或确认天气城市，不使用模型猜测实时信息', status=status,
                 elapsed_ms=round((perf_counter()-started_at)*1000,3))])
 

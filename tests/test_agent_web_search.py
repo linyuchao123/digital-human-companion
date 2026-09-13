@@ -22,7 +22,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
     async def test_search_source_and_failure(self):
         sources=[{'title':'天气','url':'https://example.org/weather','content':'上海今天晴'}]
         with patch('services.agent.workflow.tavily_search',new=AsyncMock(return_value=sources)):
-            result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='上海天气',trace_id='w',session_id='w')
+            result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='联网搜索上海旅游资料',trace_id='w',session_id='w')
         self.assertEqual(result['web_sources'],sources)
         self.assertIn('web_search',result['execution_path'])
         with patch('services.agent.workflow.tavily_search',new=AsyncMock(side_effect=SearchUnavailable('未配置'))):
