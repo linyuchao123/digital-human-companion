@@ -2004,6 +2004,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "emotion_label": emo_result["emotion_label"],
         }
         msg["activities"] = [card.model_dump() for card in result.get("activities", [])]
+        msg["sources"] = result.get("web_sources", [])
         if motion_name:
             msg["motion"] = motion_name
         await _send(ws, msg)

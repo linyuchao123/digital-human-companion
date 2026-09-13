@@ -1448,6 +1448,7 @@ function handleChatMessage(msg){
       showThinking(false);
       const cleanText=msg.text.replace(/\[MOTION:[^\]]+\]/gi,'').trim();
       addBubble('ai',cleanText,msg.emotion_label);
+      renderWebSources(msg.sources);
       renderActivityCards(msg.activities);
       updateEmotion(msg.emotion,msg.valence,msg.arousal,msg.risk_level);
       const replyMotion=msg.motion&&msg.motion!=='Idle'?()=>playMotion(msg.motion):null;
@@ -2007,6 +2008,22 @@ function updateEmotion(emotion){
 }
 function showThinking(show){
   document.getElementById('thinking-bar').classList.toggle('show',show);
+}
+function renderWebSources(sources){
+  if(!Array.isArray(sources)||!sources.length) return;
+  const bubble=document.querySelector('#chat-area .bubble-row:last-child .bubble');
+  if(!bubble) return;
+  const box=document.createElement('div');box.style.cssText='margin-top:10px;font-size:12px;line-height:1.8';
+  sources.slice(0,3).forEach((source,index)=>{
+    try{
+      const url=new URL(source.url);
+      if(!['https:','http:'].includes(url.protocol)||url.username||url.password) return;
+      const link=document.createElement('a');link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';
+      link.textContent='['+(index+1)+'] '+(source.title||url.hostname);
+      link.style.color='#4977c3';box.appendChild(link);box.appendChild(document.createElement('br'));
+    }catch(error){}
+  });
+  bubble.appendChild(box);
 }
 function addBubble(role,text,label){
   showThinking(false);
