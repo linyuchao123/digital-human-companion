@@ -37,6 +37,18 @@ services:
       - ALL
     environment:
       - PUBLIC_DEPLOYMENT=true
+      - OAUTH_PUBLIC_BASE_URL=${OAUTH_PUBLIC_BASE_URL:-}
+      - WECHAT_APP_ID=${WECHAT_APP_ID:-}
+      - WECHAT_APP_SECRET=${WECHAT_APP_SECRET:-}
+      - QQ_APP_ID=${QQ_APP_ID:-}
+      - QQ_APP_SECRET=${QQ_APP_SECRET:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_SECURITY=${SMTP_SECURITY:-ssl}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - EMAIL_VERIFICATION_SECRET=${EMAIL_VERIFICATION_SECRET:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://127.0.0.1:8800,http://localhost:8800}
       # 对话模型：DeepSeek 主模型 → 千问备用模型 → 离线兜底
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
