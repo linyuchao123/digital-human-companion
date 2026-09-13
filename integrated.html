@@ -178,6 +178,11 @@ html,body{height:100%;overflow:hidden;
 #chat-area::-webkit-scrollbar-thumb{background:rgba(79,142,247,.25);border-radius:2px}
 .bubble-row{display:flex;flex-direction:column;animation:fade-in .3s ease}
 .bubble-row.ai{align-items:flex-start}.bubble-row.user{align-items:flex-end}
+.knowledge-followups{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.knowledge-followups button{border:1px solid #d6e4f4;border-radius:14px;background:rgba(255,255,255,.75);color:var(--text);padding:5px 9px;font-size:11px;cursor:pointer}
+.knowledge-followups button:hover{background:#edf4ff}
+.knowledge-followups button:focus-visible{outline:2px solid #4f8ef7;outline-offset:2px}
+.knowledge-followup-hint{width:100%;font-size:10px;color:var(--text2);line-height:1.5}
 .bubble-meta{font-size:9px;color:var(--text2);margin-bottom:3px;padding:0 4px}
 .bubble{max-width:88%;padding:9px 13px;border-radius:14px;font-size:12px;line-height:1.6;word-break:break-all}
 .bubble.user{background:linear-gradient(135deg,rgba(79,142,247,.75),rgba(60,110,230,.7));
@@ -1453,6 +1458,7 @@ function handleChatMessage(msg){
       addBubble('ai',cleanText,msg.emotion_label);
       renderWebSources(msg.sources);
       renderKnowledgeSources(msg.knowledge_sources);
+      renderKnowledgeFollowups(msg.knowledge_sources);
       renderActivityCards(msg.activities);
       updateEmotion(msg.emotion,msg.valence,msg.arousal,msg.risk_level);
       const replyMotion=msg.motion&&msg.motion!=='Idle'?()=>playMotion(msg.motion):null;
@@ -2028,6 +2034,29 @@ function renderWebSources(sources){
     }catch(error){}
   });
   bubble.appendChild(box);
+}
+function renderKnowledgeFollowups(sources){
+  if(!Array.isArray(sources)||!sources.some(source=>source&&typeof source.excerpt==='string'&&source.excerpt.trim())) return;
+  const bubble=document.querySelector('#chat-area .bubble-row:last-child.ai .bubble');
+  if(!bubble) return;
+  const row=bubble.parentElement;
+  const box=document.createElement('div');box.className='knowledge-followups';
+  const hint=document.createElement('div');hint.className='knowledge-followup-hint';hint.setAttribute('role','status');
+  hint.textContent='点击填入追问，可修改后发送；不会自动提交。';
+  for(const [label,question] of [['继续解释','再详细解释一下'],['举个例子','能举个例子吗'],['具体怎么做','具体怎么做']]){
+    const button=document.createElement('button');button.type='button';button.textContent=label;
+    button.title='填入输入框，由你确认发送';
+    button.addEventListener('click',()=>{
+      if(document.querySelector('#chat-area .bubble-row:last-child')!==row){hint.textContent='这条回复已不是最新话题，请在当前输入框说明要追问的内容。';return;}
+      if(document.getElementById('thinking-bar').classList.contains('show')){hint.textContent='小安正在回复，请稍后再选择追问。';return;}
+      const input=document.getElementById('text-input');
+      if(input.value.trim()){hint.textContent='输入框已有草稿，已保留；请先发送或清空草稿。';input.focus();return;}
+      input.value=question;input.focus();
+      hint.textContent='已填入追问，你可以修改后点击发送。';
+    });
+    box.appendChild(button);
+  }
+  box.appendChild(hint);bubble.appendChild(box);
 }
 function renderKnowledgeSources(sources){
   if(!Array.isArray(sources)||!sources.length) return;
