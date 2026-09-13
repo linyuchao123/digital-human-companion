@@ -112,7 +112,9 @@ class AgentState(TypedDict, total=False):
     emotion_context: EmotionContext
     retrieved_memories: list[MemoryRecord]
     retrieved_knowledge: list[KnowledgeSnippet]
-    knowledge_status: Literal["retrieved", "empty", "failed"]
+    knowledge_status: Literal["not_requested", "retrieved", "empty", "failed"]
+    knowledge_query: str
+    knowledge_context_used: bool
     tool_calls: list[ToolCallRecord]
     activities: list[ActivityCard]
     draft_response: str

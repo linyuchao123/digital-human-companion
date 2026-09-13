@@ -14,7 +14,8 @@ from .web_search import search_intent, search_query, tavily_search, SearchUnavai
 from .weather import weather_request, get_weather
 from .planning import needs_model_routing, select_tool
 from .context import compact_context
-from .knowledge_intent import requests_knowledge, declines_knowledge
+from .knowledge_intent import requests_knowledge, declines_knowledge, EMOTIONAL_SUPPORT_KEYWORDS
+from .knowledge_followup import resolve_knowledge_followup
 from .knowledge_context import knowledge_context
 from .activities import requests_activities, activity_cards
 from .knowledge import BuiltInKnowledgeRetriever, KnowledgeRetriever
@@ -173,7 +174,8 @@ class DigitalXinyuWorkflow:
         started_at = perf_counter()
         text = state.get("user_text", "")
         selected_tool = 'chat'; routing_source = 'rules'
-        emotional_keywords = ("难过", "累", "焦虑", "孤独", "压力", "害怕")
+        emotional_keywords = EMOTIONAL_SUPPORT_KEYWORDS
+        followup_query = resolve_knowledge_followup(text, state.get("messages", []))
         forget_keywords = ("忘掉", "忘记", "不要再记得", "删除关于")
         if any(word in text for word in forget_keywords) or (
             "清空" in text and "记忆" in text
@@ -186,7 +188,7 @@ class DigitalXinyuWorkflow:
         elif requests_activities(text):
             intent = "activity_plan"
         else:
-            intent = "emotional_support" if not declines_knowledge(text) and (requests_knowledge(text) or any(
+            intent = "emotional_support" if not declines_knowledge(text) and (followup_query or requests_knowledge(text) or any(
                 word in text for word in emotional_keywords
             )) else "chat"
             if intent == 'chat' and not declines_knowledge(text) and needs_model_routing(text):
@@ -203,6 +205,8 @@ class DigitalXinyuWorkflow:
             intent=intent,
             selected_tool=selected_tool,
             routing_source=routing_source,
+            knowledge_query=followup_query if intent == "emotional_support" and followup_query else text,
+            knowledge_context_used=bool(followup_query and intent == "emotional_support"),
             conversation_summary='' if intent=='memory_forget' else state.get('conversation_summary',''),
         )
 
@@ -377,7 +381,7 @@ class DigitalXinyuWorkflow:
         error_code = None
         try:
             snippets = list(await asyncio.wait_for(
-                self._knowledge_retriever.retrieve(state["user_text"], top_k=3),
+                self._knowledge_retriever.retrieve(state.get("knowledge_query", state["user_text"]), top_k=3),
                 timeout=self._knowledge_timeout_seconds,
             ))[:3]
         except TimeoutError:
@@ -489,6 +493,11 @@ class DigitalXinyuWorkflow:
         ][-(MAX_CONTEXT_MESSAGES - 1):]
         knowledge = state.get("retrieved_knowledge", [])
         provider_messages = list(conversation_messages)
+        if state.get("knowledge_context_used"):
+            provider_messages.insert(0, ChatMessage(role="system", content=(
+                "本轮是对最近心理话题的短追问。结合用户前文理解，但如果‘这个练习’可能指向多个方法，"
+                "或前文没有明确提到具体方法，应先温和澄清，不要猜测用户指的是哪一个。"
+                "检索候选只是参考，不等于前文已推荐过的方法。")))
         if declines_knowledge(state['user_text']):
             provider_messages.insert(0, ChatMessage(role='system', content=(
                 '本轮用户明确希望倾诉而非科普或建议。优先倾听、承认感受，必要时温和澄清，'
@@ -588,6 +597,9 @@ class DigitalXinyuWorkflow:
             "execution_path": [],
             "node_timings_ms": {},
             "retrieved_knowledge": [],
+            "knowledge_status": "not_requested",
+            "knowledge_query": user_text,
+            "knowledge_context_used": False,
             "tool_calls": [],
             "activities": [],
             "web_sources": [],
@@ -611,6 +623,7 @@ class DigitalXinyuWorkflow:
             data["intent"] = state.get("intent", "")
             data["routing_source"] = state.get("routing_source", "rules")
             data["selected_tool"] = state.get("selected_tool", "chat")
+            data["knowledge_context_used"] = state.get("knowledge_context_used", False)
         elif node == "emotion_analyzer" and state.get("emotion_context"):
             data["emotion"] = state["emotion_context"].emotion
             data["emotion_label"] = state["emotion_context"].label

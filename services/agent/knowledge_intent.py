@@ -1,6 +1,8 @@
 """Conservative local signals for psychoeducation, without a classification API call."""
 import re
 
+EMOTIONAL_SUPPORT_KEYWORDS = ("难过", "累", "焦虑", "孤独", "压力", "害怕")
+
 def declines_knowledge(text):
     return bool(re.search(r'不要科普|不用科普|别讲道理|只(?:想|要)?(?:让你)?听我说|不需要建议|不要建议|只想倾诉',text))
 
