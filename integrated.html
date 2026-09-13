@@ -1667,7 +1667,14 @@ let _mouthSmooth=0;
 let _freqData=null;
 let _ttsAbort=null;
 let _ttsGeneration=0;
-const TTS_STREAM_ENABLED=false; // 裸 PCM 流待完成真实播放验收后再开放。
+const TTS_STREAM_ENABLED=true;
+function streamChunkBytes(sampleRate,started){
+  return Math.ceil(sampleRate*(started?0.16:0.32))*2;
+}
+function streamStartTime(currentTime,queuedUntil,started){
+  // 首段及缓冲耗尽后留出安全余量，正常续播严格沿用音频时钟。
+  return queuedUntil>currentTime+0.015?queuedUntil:currentTime+(started?0.20:0.08);
+}
 let _speechStartAction=null,_speechStartTimer=null;
 function notifySpeechStarted(generation,delay=0){
   if(generation!==_ttsGeneration||!_speechStartAction||_speechStartTimer!==null) return;
@@ -1823,7 +1830,7 @@ async function _speakViaServerTTS(text,generation){
     if(generation!==_ttsGeneration) return true;
     const select=document.getElementById('tts-voice-select');
     const voice=select&&!select.disabled?select.value:catalog.default_voice;
-    // 稳定模式：先使用带格式的完整音频解码，避免裸 PCM 分片造成断音和变调。
+    // 流式路径校验格式并保留首段缓冲；首音频失败才使用同音色完整音频。
     if(TTS_STREAM_ENABLED&&voice?.startsWith('qwen3_tts:')){
       const streamed=await _playStreamTTS(text,voice,generation,controller);
       if(streamed) return true;
@@ -1883,8 +1890,9 @@ async function _playStreamTTS(text,voice,generation,controller){
     if(!response.ok) return false;
     if(generation!==_ttsGeneration) return true;
     const ctx=_ensureAudioCtx(),reader=response.body.getReader();
-    let pending=new Uint8Array(0),at=ctx.currentTime+0.12;
-    const sampleRate=Number(response.headers.get('X-Audio-Sample-Rate'))||24000;
+    let pending=new Uint8Array(0),at=0;
+    const sampleRate=Number(response.headers.get('X-Audio-Sample-Rate'));
+    if(sampleRate!==24000){await reader.cancel();return false;}
     if(_analyser) _analyser.disconnect();
     _analyser=ctx.createAnalyser();_analyser.fftSize=256;_analyser.connect(ctx.destination);
     const schedule=(bytes)=>{
@@ -1892,18 +1900,24 @@ async function _playStreamTTS(text,voice,generation,controller){
       for(let i=0;i<values.length;i++) values[i]=view.getInt16(i*2,true)/32768;
       const source=ctx.createBufferSource();source.buffer=buffer;source.connect(_analyser);
       _streamSources.add(source);source.onended=()=>{_streamSources.delete(source);source.disconnect();};
-      at=Math.max(at,ctx.currentTime+0.02);source.start(at);
-      if(!started) notifySpeechStarted(generation,(at-ctx.currentTime)*1000);
+      at=streamStartTime(ctx.currentTime,at,started);source.start(at);
+      if(!started){
+        const delay=(at-ctx.currentTime)*1000;
+        notifySpeechStarted(generation,delay);
+        setTimeout(()=>{
+          if(generation!==_ttsGeneration) return;
+          ttsSpeaking=true;_useBrowserTTS=false;
+          document.getElementById('speaking-indicator').classList.add('show');
+        },Math.max(0,delay));
+      }
       at+=buffer.duration;started=true;
-      ttsSpeaking=true;_useBrowserTTS=false;
-      document.getElementById('speaking-indicator').classList.add('show');
     };
     while(true){
       const {value,done}=await reader.read();
       if(generation!==_ttsGeneration){await reader.cancel();return true;}
       if(value){const joined=new Uint8Array(pending.length+value.length);joined.set(pending);joined.set(value,pending.length);pending=joined;}
       const length=pending.length-pending.length%2;
-      if(length>=5760||done&&length){schedule(pending.slice(0,length));pending=pending.slice(length);}
+      if(length>=streamChunkBytes(sampleRate,started)||done&&length){schedule(pending.slice(0,length));pending=pending.slice(length);}
       if(done) break;
     }
     if(!started) return false;

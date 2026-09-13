@@ -19,7 +19,10 @@ timers[1].fn();
 assert.equal(vm.runInContext('calls',context),1,'Cancelled audio must not trigger stale motion');
 assert(!html.includes('setTimeout(()=>playMotion(msg.motion),200)'));
 assert(html.includes("im.on('beforeModelUpdate',()=>{"),'Apply lips after native motion and physics before core render');
-assert(html.includes('const TTS_STREAM_ENABLED=false'),'Use decoded complete audio until streaming acceptance');
+assert.equal(vm.runInContext('streamChunkBytes(24000,false)',context),15360);
+assert.equal(vm.runInContext('streamChunkBytes(24000,true)',context),7680);
+assert.equal(vm.runInContext('streamStartTime(1,2,true)',context),2,'Continuous chunks must not insert gaps');
+assert.equal(vm.runInContext('streamStartTime(3,2,true)',context),3.2,'Buffer starvation must rebuffer');
 const lipStart=html.indexOf('function _getLipSyncTarget(');
 const lipEnd=html.indexOf('function toggleTTS()',lipStart);
 const lipContext=vm.createContext({ttsSpeaking:true,_useBrowserTTS:false,_timeDomainData:null,
