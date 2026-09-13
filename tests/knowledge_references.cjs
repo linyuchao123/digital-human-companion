@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const html=fs.readFileSync('integrated.html','utf8');
+const code=html.slice(html.indexOf('function renderKnowledgeSources('),html.indexOf('function addBubble(',html.indexOf('function renderKnowledgeSources(')));
+function element(tag){return {tag,style:{},children:[],appendChild(child){this.children.push(child);}};}
+const bubble=element('bubble');
+const document={createElement:element,querySelector:()=>bubble};
+const context=vm.createContext({document,URL});vm.runInContext(code,context);
+context.sources=[{source:'<img onerror=alert(1)>',excerpt:'<script>danger</script>',url:'javascript:alert(1)'}];
+vm.runInContext('renderKnowledgeSources(sources)',context);
+const details=bubble.children[0];
+assert.equal(details.tag,'details');
+assert(details.children.some(e=>e.textContent==='<script>danger</script>'));
+assert(!details.children.some(e=>e.tag==='a'),'Reject script URLs');
+context.sources=[{source:'NHS',excerpt:'参考',url:'https://www.nhs.uk/'}];
+vm.runInContext('renderKnowledgeSources(sources)',context);
+const link=bubble.children[1].children.find(e=>e.tag==='a');
+assert.equal(link.rel,'noopener noreferrer');
+assert(!code.includes('innerHTML'),'Never interpret reference text as HTML');
+assert(html.includes('renderKnowledgeSources(msg.knowledge_sources)'));
+assert(html.includes('speakText(cleanText,replyMotion)'),'TTS uses reply only, not reference DOM');
+console.log('Knowledge reference rendering and speech separation checks passed');

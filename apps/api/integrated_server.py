@@ -2009,6 +2009,8 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         }
         msg["activities"] = [card.model_dump() for card in result.get("activities", [])]
         msg["sources"] = result.get("web_sources", [])
+        from services.agent.references import knowledge_references
+        msg['knowledge_sources'] = knowledge_references(result.get('retrieved_knowledge', []))
         if motion_name:
             msg["motion"] = motion_name
         await _send(ws, msg)

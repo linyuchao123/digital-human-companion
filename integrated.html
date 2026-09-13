@@ -1452,6 +1452,7 @@ function handleChatMessage(msg){
       const cleanText=msg.text.replace(/\[MOTION:[^\]]+\]/gi,'').trim();
       addBubble('ai',cleanText,msg.emotion_label);
       renderWebSources(msg.sources);
+      renderKnowledgeSources(msg.knowledge_sources);
       renderActivityCards(msg.activities);
       updateEmotion(msg.emotion,msg.valence,msg.arousal,msg.risk_level);
       const replyMotion=msg.motion&&msg.motion!=='Idle'?()=>playMotion(msg.motion):null;
@@ -2027,6 +2028,28 @@ function renderWebSources(sources){
     }catch(error){}
   });
   bubble.appendChild(box);
+}
+function renderKnowledgeSources(sources){
+  if(!Array.isArray(sources)||!sources.length) return;
+  const bubble=document.querySelector('#chat-area .bubble-row:last-child.ai .bubble');
+  if(!bubble) return;
+  const details=document.createElement('details');details.className='knowledge-references';
+  details.style.cssText='margin-top:10px;border-top:1px solid #d6e4f4;padding-top:8px;font-size:12px;line-height:1.7';
+  const summary=document.createElement('summary');summary.textContent='📚 本轮参考知识（'+Math.min(sources.length,3)+'条）';summary.style.cursor='pointer';
+  details.appendChild(summary);
+  const note=document.createElement('p');note.textContent='以下为本轮检索参考，未逐句核验回复，不用于诊断或替代专业服务。';details.appendChild(note);
+  sources.slice(0,3).forEach(source=>{
+    if(!source||typeof source.source!=='string'||typeof source.excerpt!=='string') return;
+    const title=document.createElement('strong');title.textContent=source.source.slice(0,200);details.appendChild(title);
+    const excerpt=document.createElement('p');excerpt.textContent=source.excerpt.slice(0,400);details.appendChild(excerpt);
+    try{
+      const url=new URL(source.url);
+      if(url.protocol!=='https:'||url.username||url.password) return;
+      const link=document.createElement('a');link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';link.textContent='查看原始来源 ↗';details.appendChild(link);
+    }catch(error){}
+    details.appendChild(document.createElement('hr'));
+  });
+  bubble.appendChild(details);
 }
 function addBubble(role,text,label){
   showThinking(false);

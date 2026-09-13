@@ -74,6 +74,11 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.assertEqual(len(state.agent_messages), 2)
+        reply=next(m for m in websocket.messages if m['type']=='llm_reply')
+        self.assertTrue(reply['knowledge_sources'])
+        self.assertLessEqual(len(reply['knowledge_sources']),3)
+        self.assertIn('excerpt',reply['knowledge_sources'][0])
+        self.assertNotIn('score',reply['knowledge_sources'][0])
 
     async def test_websocket_chat_keeps_context_between_turns(self):
         state = integrated_server.SessionState("guest-context")
