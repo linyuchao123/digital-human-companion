@@ -130,6 +130,7 @@ html,body{height:100%;overflow:hidden;
   box-shadow:0 8px 40px rgba(100,150,220,.20),0 2px 8px rgba(0,0,0,.08);
   min-width:420px;max-width:680px;width:56vw}
 #bottom-bar.show{display:flex}
+#text-send-feedback{position:absolute;bottom:calc(100% + 7px);left:12px;right:12px;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,.95);color:var(--danger);font-size:11px;line-height:1.5}
 #text-input{flex:1;height:38px;background:rgba(255,255,255,.6);border:1px solid rgba(200,220,255,.7);
   border-radius:19px;padding:0 16px;color:var(--text);font-size:13px;font-family:inherit;outline:none;
   transition:all .2s;box-shadow:inset 0 1px 4px rgba(100,150,220,.1)}
@@ -644,9 +645,10 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <!-- ══ 底部控制栏 ══ -->
 <div id="bottom-bar">
   <button class="ctrl-btn" id="mic-btn" onclick="toggleMic()" title="语音输入">🎤</button>
-  <input type="text" id="text-input" placeholder="和小安说点什么..."
+  <input type="text" id="text-input" placeholder="和小安说点什么..." aria-describedby="text-send-feedback"
     onkeydown="if(event.key==='Enter'){event.preventDefault();sendText()}"/>
   <button id="send-btn" onclick="sendText()" title="发送">➤</button>
+  <div id="text-send-feedback" role="status" hidden></div>
 </div>
 
 <!-- ══ Live2D SDK（本地加载）══ -->
@@ -1422,7 +1424,10 @@ function connectChatWS(){
   chatWs.onerror=()=>{};
   chatWs.onmessage=(e)=>{try{handleChatMessage(JSON.parse(e.data));}catch(err){}};
 }
-function chatSend(data){if(chatWs&&chatWs.readyState===WebSocket.OPEN) chatWs.send(JSON.stringify(data));}
+function chatSend(data){
+  if(!chatWs||chatWs.readyState!==WebSocket.OPEN) return false;
+  try{chatWs.send(JSON.stringify(data));return true;}catch(error){return false;}
+}
 
 function handleChatMessage(msg){
   switch(msg.type){
@@ -2188,9 +2193,14 @@ function renderActivityCards(cards,target){
 }
 function sendText(){
   const input=document.getElementById('text-input');
-  const text=input.value.trim();if(!text) return;
-  input.value='';addBubble('user',text);
-  chatSend({type:'text_input',text});
+  const text=input.value.trim();if(!text) return false;
+  const feedback=document.getElementById('text-send-feedback');
+  if(!chatSend({type:'text_input',text})){
+    feedback.textContent='对话连接尚未就绪或已断开，草稿已保留。请重新连接后再发送。';
+    feedback.hidden=false;input.focus();return false;
+  }
+  feedback.hidden=true;feedback.textContent='';
+  input.value='';addBubble('user',text);return true;
 }
 
 /* ═══════════ 窗口自适应 ═══════════ */
