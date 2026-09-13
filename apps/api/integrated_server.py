@@ -644,6 +644,7 @@ app.add_middleware(
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
 from apps.api.security import install_http_security, allow_request
+from services.vision.observation import CameraObservation
 def _public_deployment():
     return os.getenv("PUBLIC_DEPLOYMENT","false").lower()=="true"
 install_http_security(app,_verify_auth_token,_public_deployment)
@@ -1596,6 +1597,7 @@ async def api_tts(payload: TtsRequest):
 # ══════════════════════════════════════════════════════════════
 class SessionState:
     def __init__(self, session_id: str):
+        self.camera_observation = CameraObservation()
         self.session_id = session_id
         self.user_id: Optional[int] = None  # 登录用户ID（未登录时为None）
         self.db_session_id: Optional[str] = None  # 对应数据库的 chat_sessions.id
@@ -1707,8 +1709,10 @@ async def ws_main(websocket: WebSocket):
             except Exception:
                 continue
 
+            if not isinstance(msg, dict):
+                continue
             msg_type = msg.get("type", "")
-            if msg_type in {'audio','text_input','frame'}:
+            if msg_type in {'audio','text_input','frame','vision_control','vision_features'}:
                 if getattr(state,'auth_token',None) and _verify_auth_token(state.auth_token)!=state.user_id:
                     await _send(websocket,{'type':'error','code':'unauthorized','message':'登录状态已失效'})
                     await websocket.close(code=1008)
@@ -1716,9 +1720,21 @@ async def ws_main(websocket: WebSocket):
                 if _public_deployment() and state.user_id is None:
                     await _send(websocket,{'type':'error','code':'unauthorized','message':'请先登录'})
                     continue
-                if not allow_request(('ws',websocket.client.host,state.user_id,msg_type),60 if msg_type!='frame' else 1800):
+                limit = 240 if msg_type == 'vision_features' else 1800 if msg_type == 'frame' else 60
+                if not allow_request(('ws',websocket.client.host,state.user_id,msg_type), limit):
                     await _send(websocket,{'type':'error','code':'rate_limited','message':'请求过于频繁'})
                     continue
+
+            if msg_type in {'vision_control', 'vision_features'}:
+                try:
+                    if len(raw.encode('utf-8')) > 4096:
+                        raise ValueError('payload_too_large')
+                    status = (state.camera_observation.control(msg) if msg_type == 'vision_control'
+                              else state.camera_observation.update(msg))
+                    await _send(websocket, {'type': 'vision_status', 'status': status})
+                except ValueError as error:
+                    await _send(websocket, {'type': 'vision_status', 'status': '观察暂停', 'code': str(error)})
+                continue
 
             if msg_type == "init":
                 # 前端登录后绑定 user_id 和 db_session_id
@@ -1744,6 +1760,7 @@ async def ws_main(websocket: WebSocket):
                 await asyncio.gather(*pending_tasks,return_exceptions=True)
                 pending_tasks.clear()
                 state.feature_buffer.clear()
+                state.camera_observation.clear()
                 state.user_id = user_id
                 state.auth_token = token
                 state.db_session_id = db_sid if db_sid else None
@@ -1787,6 +1804,7 @@ async def ws_main(websocket: WebSocket):
         traceback.print_exc()
     finally:
         preload_task.cancel()
+        state.camera_observation.clear()
         for task in list(pending_tasks): task.cancel()
         await asyncio.gather(preload_task,*pending_tasks,return_exceptions=True)
         drive_task.cancel()
@@ -1939,6 +1957,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             session_id=session_id,
             messages=history,
             conversation_summary=state.conversation_summary,
+            visual_observation=state.camera_observation.summary(),
             user_id=state.user_id,
             memory_consent=state.memory_consent,
             event_sink=send_agent_event,

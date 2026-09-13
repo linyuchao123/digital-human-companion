@@ -105,6 +105,7 @@ class AgentState(TypedDict, total=False):
     user_text: str
     messages: list[ChatMessage]
     conversation_summary: str
+    visual_observation: str
     intent: str
     selected_tool: str
     routing_source: str
