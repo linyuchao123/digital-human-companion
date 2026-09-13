@@ -41,6 +41,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(safe_url(url))
         self.assertTrue(safe_url('https://example.org'))
         self.assertFalse(search_intent('今天我有点累'))
+        self.assertFalse(search_intent('今天的天气不错'))
 
     async def test_vendor_request_and_secret_not_in_body(self):
         response=httpx.Response(200,json={'results':[{'url':'https://example.org','title':'source','content':'data'}]},request=httpx.Request('POST','https://api.tavily.com/search'))

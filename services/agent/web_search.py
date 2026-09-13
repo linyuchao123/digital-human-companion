@@ -19,6 +19,9 @@ def city_in(text):
 
 
 def search_intent(text, messages=()):
+    # 天气闲聊不是查询，不把普通聊天送到第三方。
+    if re.search(r'天气(?:真|很|挺|还|太|有点|非常|特别)?(?:不错|好|差|糟糕|冷|热)', text) and not re.search(r'查询|搜索|查一下|吗|[？?]', text):
+        return False
     if any(word in text for word in ('天气', '气温', '下雨', '降雨')):
         return True
     if messages and messages[-1].role == 'assistant' and '你想查询哪个城市的天气' in messages[-1].content:
