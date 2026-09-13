@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from html import escape
 from time import perf_counter
 from typing import Any, Awaitable, Callable, Literal, Sequence
@@ -52,7 +53,11 @@ class DigitalXinyuWorkflow:
         knowledge_retriever: KnowledgeRetriever | None = None,
         memory_store: MemoryStore | None = None,
         checkpointer: Any | None = None,
+        knowledge_timeout_seconds: float = 3.0,
     ) -> None:
+        if not math.isfinite(knowledge_timeout_seconds) or knowledge_timeout_seconds <= 0:
+            raise ValueError("knowledge_timeout_seconds 必须是有限正数")
+        self._knowledge_timeout_seconds = knowledge_timeout_seconds
         self._provider = provider or FakeCompanionProvider()
         self._safety_triage = safety_triage or SafetyTriage()
         self._emotion_analyzer = emotion_analyzer or EmotionAnalyzer()
@@ -366,19 +371,39 @@ class DigitalXinyuWorkflow:
 
     async def _retrieve_knowledge(self, state: AgentState) -> dict[str, Any]:
         started_at = perf_counter()
-        snippets = list(await self._knowledge_retriever.retrieve(state["user_text"], top_k=3))
+        errors = list(state.get("errors", []))
+        status = "completed"
+        error_code = None
+        try:
+            snippets = list(await asyncio.wait_for(
+                self._knowledge_retriever.retrieve(state["user_text"], top_k=3),
+                timeout=self._knowledge_timeout_seconds,
+            ))[:3]
+        except TimeoutError:
+            snippets = []
+            status = "failed"
+            error_code = "knowledge_timeout"
+        except Exception:
+            snippets = []
+            status = "failed"
+            error_code = "knowledge_error"
+        if error_code:
+            errors.append(f"knowledge_retriever:{error_code}")
         elapsed_ms = round((perf_counter() - started_at) * 1000, 3)
         return self._complete_node(
             state,
             "knowledge_retriever",
             started_at,
             retrieved_knowledge=snippets,
+            knowledge_status="failed" if error_code else ("retrieved" if snippets else "empty"),
+            errors=errors,
             tool_calls=[
                 *state.get("tool_calls", []),
                 ToolCallRecord(
                     name="psychology_knowledge",
                     reason=state.get("intent", ""),
-                    status="completed",
+                    status=status,
+                    error_code=error_code,
                     elapsed_ms=elapsed_ms,
                 ),
             ],
@@ -600,6 +625,14 @@ class DigitalXinyuWorkflow:
                 else "retrieved_memories"
             )
             data["result_count"] = len(state.get(key, []))
+            if node == "knowledge_retriever":
+                data["retrieval_outcome"] = state.get("knowledge_status", "empty")
+                calls = state.get("tool_calls", [])
+                if calls:
+                    data["tool_name"] = calls[-1].name
+                    data["tool_status"] = calls[-1].status
+                    if calls[-1].error_code:
+                        data["error_code"] = calls[-1].error_code
         elif node in {"memory_writer", "memory_forgetter", "clock_tool", "activity_planner", "web_search"}:
             tool_calls = state.get("tool_calls", [])
             if tool_calls:
