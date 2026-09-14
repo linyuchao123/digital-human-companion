@@ -1,0 +1,98 @@
+import unittest
+import asyncio
+from unittest.mock import AsyncMock, patch
+from services.agent.workflow import DigitalXinyuWorkflow
+from services.agent.web_search import search_intent, search_query, safe_url, SearchUnavailable
+from services.agent.state import ChatMessage
+from services.agent.web_search import tavily_search
+import httpx
+
+class Provider:
+    async def generate(self, messages):
+        return '上海今日天气资料见[1]，请以预报发布时间为准。'
+
+class WebSearchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_deadline_cancels_hanging_search(self):
+        cancelled=asyncio.Event()
+        async def hanging(query):
+            try: await asyncio.Event().wait()
+            finally: cancelled.set()
+        original_wait_for=asyncio.wait_for
+        async def short_deadline(awaitable,timeout):
+            return await original_wait_for(awaitable,timeout=0.01)
+        with patch('services.agent.workflow.tavily_search',new=hanging),patch('services.agent.workflow.asyncio.wait_for',new=short_deadline):
+            result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='联网搜索最新消息',trace_id='w',session_id='w')
+        self.assertTrue(cancelled.is_set())
+        self.assertEqual(result['tool_calls'][0].error_code,'search_timeout')
+
+    async def test_stage_failures_keep_sources_and_publish_safe_status(self):
+        sources=[{'title':'资料','url':'https://example.org','content':'测试资料'}]
+        for failure,code in [(TimeoutError('secret-token'),'answer_timeout'),(RuntimeError('secret-token'),'answer_error')]:
+            provider=Provider();provider.generate=AsyncMock(side_effect=failure)
+            events=[]
+            async def sink(event): events.append(event)
+            with patch('services.agent.workflow.tavily_search',new=AsyncMock(return_value=sources)):
+                result=await DigitalXinyuWorkflow(provider=provider).run(user_text='联网搜索最新消息',trace_id='w',session_id='w',event_sink=sink)
+            self.assertEqual(result['web_sources'],sources)
+            self.assertEqual(result['tool_calls'][0].error_code,code)
+            event=next(e for e in events if e.node=='web_search')
+            self.assertEqual(event.data['tool_status'],'failed')
+            self.assertEqual(event.data['error_code'],code)
+            self.assertNotIn('secret-token',str(event.data)+result['final_response'])
+
+    async def test_search_timeout_and_unexpected_error_are_not_generation_failure(self):
+        for failure,code in [(TimeoutError(),'search_timeout'),(RuntimeError('secret-token'),'search_error')]:
+            with patch('services.agent.workflow.tavily_search',new=AsyncMock(side_effect=failure)):
+                result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='联网搜索最新消息',trace_id='w',session_id='w')
+            self.assertEqual(result['tool_calls'][0].error_code,code)
+            self.assertEqual(result['web_sources'],[])
+            self.assertNotIn('已取得',result['final_response'])
+            self.assertNotIn('secret-token',result['final_response'])
+
+    async def test_city_confirmation_and_followup(self):
+        with patch('services.agent.workflow.tavily_search',new=AsyncMock()) as search:
+            result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='今天天气怎么样',trace_id='w',session_id='w')
+            search.assert_not_called()
+        self.assertIn('哪个城市',result['final_response'])
+        self.assertTrue(search_intent('上海',result['messages']))
+        self.assertIn('上海',search_query('上海',result['messages']))
+
+    async def test_search_source_and_failure(self):
+        sources=[{'title':'天气','url':'https://example.org/weather','content':'上海今天晴'}]
+        with patch('services.agent.workflow.tavily_search',new=AsyncMock(return_value=sources)):
+            result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='联网搜索上海旅游资料',trace_id='w',session_id='w')
+        self.assertEqual(result['web_sources'],sources)
+        self.assertIn('web_search',result['execution_path'])
+        with patch('services.agent.workflow.tavily_search',new=AsyncMock(side_effect=SearchUnavailable('未配置'))):
+            result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='联网查最新消息',trace_id='w',session_id='w')
+        self.assertEqual(result['final_response'],'未配置')
+        self.assertEqual(result['tool_calls'][0].status,'failed')
+
+    async def test_safety_priority(self):
+        with patch('services.agent.workflow.tavily_search',new=AsyncMock()) as search:
+            result=await DigitalXinyuWorkflow(provider=Provider()).run(user_text='联网搜索，我想自杀',trace_id='w',session_id='w')
+            search.assert_not_called()
+        self.assertIn('safe_response',result['execution_path'])
+
+    def test_safe_links_and_no_search_for_normal_chat(self):
+        for url in ['javascript:alert(1)','http://localhost','http://127.0.0.1','https://x:y@example.org','file:///etc/passwd']:
+            self.assertFalse(safe_url(url))
+        self.assertTrue(safe_url('https://example.org'))
+        self.assertFalse(search_intent('今天我有点累'))
+        self.assertFalse(search_intent('今天的天气不错'))
+
+    async def test_vendor_request_and_secret_not_in_body(self):
+        response=httpx.Response(200,json={'results':[{'url':'https://example.org','title':'source','content':'data'}]},request=httpx.Request('POST','https://api.tavily.com/search'))
+        client=AsyncMock();client.post.return_value=response
+        with patch.dict('os.environ',{'TAVILY_API_KEY':'test-secret'}),patch('services.agent.web_search.httpx.AsyncClient') as factory:
+            factory.return_value.__aenter__.return_value=client
+            result=await tavily_search('上海天气')
+        self.assertEqual(len(result),1)
+        args=client.post.call_args
+        self.assertEqual(args.args[0],'https://api.tavily.com/search')
+        self.assertNotIn('test-secret',str(args.kwargs['json']))
+        self.assertEqual(args.kwargs['json']['max_results'],3)
+
+    async def test_missing_key(self):
+        with patch.dict('os.environ',{'TAVILY_API_KEY':''}):
+            with self.assertRaises(SearchUnavailable): await tavily_search('天气')

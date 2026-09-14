@@ -8,6 +8,10 @@
 
 ### 核心能力
 
+当前账号、安全及部署整改的实现与验收限制见 [账号与部署说明](docs/account-security-deployment.md)。
+新版登录注册及个人资料入口已接入：新注册密码至少8位；生日、姓名和头像可选填，密码仅能验证修改，不展示。
+Docker已改用当前 `pyproject.toml` 依赖及独立数据卷；下方旧版赛题部署说明仅作历史参考，实际以该说明和 `infra/docker/` 配置为准。
+
 - **表现力丰富的数字人形象**：支持2D/3D数字人，具备自然流畅的语音对话（TTS）、精准的口型同步（Lip-sync）、丰富的面部表情和适度的肢体动作
 - **多模态情感感知**：集成摄像头、麦克风等设备，实时采集并分析用户语音、文本、视觉特征，形成统一、稳健的心理状态理解
 - **智能情感对话**：基于大语言模型与心理学知识库，针对焦虑倾向、抑郁倾向、双向情感障碍风险等生成富有共情力和专业性的对话内容
@@ -33,6 +37,163 @@
   - [情感对话与心理评估引擎](./需求说明书/情感对话与心理评估引擎模块需求分析说明书.md)
   - [数字人面部行为驱动模型](./需求说明书/数字人面部行为驱动模型需求分析说明书.md)
 - 通信协议：[protocols.md](./protocols.md)
+
+### 智能体 RAG 质量门禁
+
+心理知识存放在 `data/knowledge/psychology.json`，每条记录都包含稳定文档 ID、来源名称和来源链接。智能体使用本地 BM25 检索，并在语料不可用或没有命中时回退到最小内置知识集。
+
+运行固定检索评测：
+
+```bash
+.venv-model/bin/python scripts/evaluate_agent_rag.py
+```
+
+评测集位于 `eval/rag/cases.json`，当前门槛为 `Hit@3 ≥ 0.85`、`MRR@3 ≥ 0.70`。更换分词、向量模型或知识语料后应先通过该门禁，再合并到主开发分支。
+
+如需评测混合检索，可显式指定已经下载到本机或服务器的语义模型目录：
+
+```bash
+.venv-model/bin/python scripts/download_rag_embedding_model.py
+.venv-model/bin/python scripts/evaluate_agent_rag.py \
+  --embedding-model models/embedding/bge-small-zh-v1.5
+```
+
+评测报告中的 `provider` 会标明实际使用的是 `hybrid_with_fallback` 还是
+`bm25_with_fallback`，避免把模型缺失后的降级结果误认为语义检索结果。运行服务时使用同一
+目录设置 `RAG_EMBEDDING_MODEL_PATH` 即可启用混合检索；服务不会隐式联网下载模型。
+
+针对“脑内小剧场”“被世界遗忘”等低词面重合的真实口语表达，项目另设语义挑战集。评测
+本地模型时必须同时要求混合提供者，模型加载失败会直接让命令失败：
+
+```bash
+.venv-model/bin/python scripts/evaluate_agent_rag.py \
+  --cases eval/rag/semantic_challenge_cases.json \
+  --embedding-model /absolute/path/to/sentence-transformers-model \
+  --require-provider hybrid_with_fallback
+```
+
+项目当前验证模型为 `BAAI/bge-small-zh-v1.5`，下载脚本固定远端 revision 以保证复现。
+在 11 条口语化挑战样本上，纯 BM25 的 `Hit@3 / MRR@3` 为 `0.818 / 0.621`，混合
+检索提升至 `1.000 / 0.894`；原有 8 条标准集仍保持 `1.000 / 1.000`。模型权重目录
+已被 Git 忽略，仓库只保存下载和评测方法。
+
+知识库浏览和检索测试页面位于 `/rag`。页面默认只读；确需在线维护自定义条目时，
+在服务端环境变量中设置高强度随机 `RAG_ADMIN_TOKEN`，并在管理页面临时输入。令牌不会写入
+浏览器存储，内置权威条目也不能通过接口删除。公网部署时还应在反向代理层限制 `/rag` 和
+知识库写接口的访问来源，真实令牌不得写入 `.env.example` 或提交到 Git。
+
+### 陪伴活动卡片
+
+问“有点无聊，推荐几个小活动”或“无聊怎么办”，工作流会调用
+`companion_activity_plan`，提供三个自愿选择的日常任务：整理小角落、写一句心情、听歌。
+卡片可以点击选择并标记完成，开发者模式显示 `activity_planner` 节点和工具耗时。
+本阶段使用固定活动模板，不承诺治疗效果；高风险表达优先走安全响应，不提供活动卡片。
+登录后选择的活动和完成状态保存到 SQLite，可通过顶部“活动记录”查看最近50条，
+刷新或重启服务后仍保留。记录归当前账号所有，不与长期记忆授权混用；重复保存请求
+不会产生重复任务，完成标记不会重复改变完成时间。游客仅在当前页面体验。
+活动历史不恢复到原聊天气泡；不会自动播放音乐或存储心情文字。
+活动记录面板展示全部未移除任务的已选择、已完成、进行中数量（不限于列表最近50条）。
+“移除记录”是可恢复的软移除：从列表与统计排除，但数据库仍保留，不等同永久删除。
+已移除记录不能继续标记完成；旧重复保存请求也不会悄悄恢复记录。
+个性化活动推荐、恢复界面和永久清理隐私数据仍待开发。统计不代表心理状态或治疗效果。
+
+### 智能体时钟工具
+
+直接询问“现在几点”“今天星期几”“明天几号”时，工作流路由到 `clock_tool`，
+读取真实系统时钟，不调用大模型猜时间。默认明确回答北京时间；支持显式询问纽约、
+伦敦、东京当地时间，并按时区处理日期和夏令时。在开发者模式可查看节点、耗时和
+`current_datetime` 工具记录。高风险表达仍优先走安全响应；提醒设置、日程管理和
+复杂时间推算尚未实现，不会把工具回答伪装成已创建提醒。
+
+### 服务端录音识别
+
+云端识别已支持百炼 `qwen-audio-3.0-asr-flash` 句级 HTTP 接口（非实时流式）。
+在后端 `.env` 设置：
+
+```env
+ASR_PROVIDER=qwen
+ASR_API_KEY=
+ASR_CLOUD_MODEL=qwen-audio-3.0-asr-flash
+ASR_CLOUD_URL=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+ASR_FALLBACK_LOCAL=true
+```
+
+独立密钥为空时依次复用 `DASHSCOPE_API_KEY`、`TTS_API_KEY`、`QWEN_API_KEY`，
+不会使用 DeepSeek 密钥。需保证密钥的地域和模型权限匹配；新工作空间域名也可配置。
+密钥只在后端使用。录音以 Base64 发送到阿里云，会涉及云端数据处理和音频时长计费，
+项目不会长期保存录音。界面显示本次“百炼云端”或“本地备用”；悬浮可查看降级原因。
+设置 `ASR_FALLBACK_LOCAL=false` 可以关闭自动降级，便于单独验收云端质量。
+设置 `ASR_PROVIDER=funasr` 可完全关闭云端上传。配置修改后需重启后端。
+接口字段参考[百炼 ASR 官方文档](https://help.aliyun.com/en/model-studio/fun-asr-flash-recorded-speech-recognition-http-api)。
+
+原界面的麦克风现支持句级语音对话：点击开始录音，再次点击结束并发送（最长 30 秒）。
+浏览器将录音转换为 16 kHz 单声道 PCM WAV，后端识别完成后自动进入智能体回复流程。
+录音开始会停止当前播报；断开连接会释放麦克风并丢弃未发送录音。
+
+安装项目的 speech 可选依赖后，首次使用前可显式准备模型：
+
+```bash
+.venv-model/bin/python scripts/prepare_asr_models.py
+```
+
+模型默认缓存到被 Git 忽略的 `models/asr/`，不提交权重。`.env` 可设置
+`ASR_MODEL=paraformer-zh`、`ASR_DEVICE=cpu`；Docker 使用独立持久缓存卷。
+`/api/status` 的 `asr` 区分依赖已安装与模型已就绪。模型不可用时可回退到浏览器识别。
+这仍是录音完成后识别，不是流式 ASR，也尚未实现自动停顿检测或连续免点击对话。
+
+录音使用低通重采样减少高频混叠，识别合并短停顿片段以保留句内上下文。
+可在 `.env` 添加 `ASR_HOTWORDS=小安 数字心屿`，用空格或逗号分隔少量常用专有词；
+设置为空可关闭热词。热词过多可能产生误偏置，不建议加入整句对话或自动收录聊天内容。
+重启后端后生效。转录不经过大模型改写，以保留否定词和用户真实表达。
+这些是音频链路优化，实际准确率需用同一组人工标注录音对比，不能仅凭合成语音推断。
+
+### 多提供者 TTS 与语音降级策略
+
+前端通过 `/api/tts/voices` 读取服务端音色目录，可在原界面顶部选择音色并记住选择。
+默认 `TTS_PROVIDER=auto`，按以下方式提供语音：
+
+1. 配置 DashScope 时优先提供 Qwen3 角色音色：`Chelsie`（二次元少女）、
+   `Momo`（活泼俏皮）、`Cherry`（阳光自然）；
+2. 如已安装对应 SDK，也可继续使用 CosyVoice；
+3. macOS 开发机同时提供系统安装的中文音色，并由后端生成 24kHz WAV；
+4. 没有可用服务端提供者或合成失败时，最终降级为浏览器中文语音。
+
+Qwen3 默认使用 `qwen3-tts-instruct-flash`，服务端会根据角色音色附加表达指令，
+让 Chelsie 更可爱灵动、Momo 更活泼元气、Cherry 更温柔自然。模型与音色兼容范围见
+[阿里云 Qwen-TTS 官方音色列表](https://help.aliyun.com/en/model-studio/qwen-tts-voice-list)。
+
+macOS 本地开发无需 API Key 即可使用服务端系统语音。部署到 Linux 服务器时没有 `say`
+命令，应配置 CosyVoice，并安装 cloud 可选依赖：
+
+```bash
+.venv-model/bin/pip install -e '.[cloud]'
+```
+
+本地开发时复制 `.env.example` 为 `.env`，后端启动时会自动加载。对话模型按
+`DeepSeek → 千问 → 离线回复` 的顺序降级；TTS 独立使用千问语音密钥。`.env` 已被 Git
+忽略，不能删除对应忽略规则。
+
+```env
+DASHSCOPE_API_KEY=                     # 可选：千问对话与 TTS 共用密钥
+DEEPSEEK_API_KEY=                      # 主对话模型密钥
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+QWEN_API_KEY=                          # 可选：千问备用对话模型专用密钥
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-plus
+TTS_API_KEY=                           # 可选：TTS 专用密钥
+TTS_PROVIDER=auto
+TTS_DEFAULT_VOICE=qwen3_tts:Chelsie
+TTS_QWEN3_MODEL=qwen3-tts-instruct-flash
+TTS_RATE=185
+```
+
+生产服务器不应依赖磁盘 `.env`，应由部署平台的 Secret/环境变量功能注入；系统环境变量的
+优先级高于 `.env`，因此不会被本地文件覆盖。
+
+TTS 文本通过 `POST /api/tts` 的 JSON 请求体传输，不进入 URL、浏览器历史或默认访问日志；
+接口限制单次 500 字。音色必须来自服务端白名单目录，音频及错误响应均设置
+`Cache-Control: no-store`。公网部署时密钥只能由服务端密钥管理注入，不能放进前端或提交到仓库。
 
 ---
 
@@ -482,7 +643,7 @@ observability：
 
 - [ ] **情感对话与心理评估引擎**
   - [ ] 大语言模型（LLM）集成
-  - [ ] 心理学知识库（RAG）
+  - [x] 心理学知识库（本地 BM25 RAG 基线、来源引用与检索评测）
   - [ ] 焦虑倾向识别与应对
   - [ ] 抑郁倾向识别与应对
   - [ ] 双向情感障碍风险识别

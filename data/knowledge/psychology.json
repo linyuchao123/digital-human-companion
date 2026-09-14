@@ -1,0 +1,222 @@
+[
+  {
+    "id": "who-grounding",
+    "keywords": ["焦虑", "紧张", "压力", "慌张", "接地练习"],
+    "content": "情绪强烈时，可以先注意脚与地面的接触、放慢呼吸，再依次说出眼前能看到、听到和触碰到的事物，把注意力带回当下。如果不适持续或影响生活，应寻求专业帮助。",
+    "source": "WHO《Doing What Matters in Times of Stress》",
+    "source_url": "https://www.who.int/publications/i/item/9789240003927"
+  },
+  {
+    "id": "who-unhooking",
+    "keywords": ["反复想", "负面想法", "担忧", "停不下来", "解离想法"],
+    "content": "当担忧反复出现时，可以先在心里为它命名，例如“我注意到自己正在担心”，再把注意力放回当前正在做的事情。目标不是强行消除想法，而是减少被它牵着走。",
+    "source": "WHO《Doing What Matters in Times of Stress》",
+    "source_url": "https://www.who.int/publications/i/item/9789240003927"
+  },
+  {
+    "id": "who-values",
+    "keywords": ["迷茫", "没有动力", "目标", "价值", "行动"],
+    "content": "感到迷茫时，可以先确认自己重视的人或事情，再选择一个很小、当天能够完成的行动。小行动不需要立刻改变情绪，但能帮助生活重新朝重视的方向移动。",
+    "source": "WHO《Doing What Matters in Times of Stress》",
+    "source_url": "https://www.who.int/publications/i/item/9789240003927"
+  },
+  {
+    "id": "who-self-kindness",
+    "keywords": ["自责", "否定自己", "失败", "没用", "自我关怀"],
+    "content": "遭遇挫折时，可以尝试像安慰一位朋友那样对自己说话，承认此刻确实很难，并选择一个照顾自己的小行动。善待自己不等于忽视问题。",
+    "source": "WHO《Doing What Matters in Times of Stress》",
+    "source_url": "https://www.who.int/publications/i/item/9789240003927"
+  },
+  {
+    "id": "who-making-room",
+    "keywords": ["难过", "悲伤", "痛苦", "压抑", "接受情绪"],
+    "content": "面对难受的情绪，可以先允许它暂时存在，注意它在身体中的感觉，并给这种体验留出一点空间。无需逼迫自己马上振作；若持续难以承受，可以联系可信任的人或专业人员。",
+    "source": "WHO《Doing What Matters in Times of Stress》",
+    "source_url": "https://www.who.int/publications/i/item/9789240003927"
+  },
+  {
+    "id": "who-social-connection",
+    "keywords": ["孤独", "孤单", "没人陪", "社交", "支持"],
+    "content": "当你感到孤独、像被落下或与周围格格不入时，可以从低压力的连接开始，例如给一位可信任的人发消息、参加熟悉的社区活动，或约定一次短时间通话。稳定的社会连接有助于心理健康。",
+    "source": "WHO《Mental health: strengthening our response》",
+    "source_url": "https://www.who.int/news-room/fact-sheets/detail/mental-health-strengthening-our-response"
+  },
+  {
+    "id": "who-routine",
+    "keywords": ["生活混乱", "作息", "压力", "日常", "规律"],
+    "content": "压力较大时，尽量维持可预测的日常节奏，例如固定起床、进餐、活动和休息时间。先恢复一两个最容易做到的环节，比一次改变全部生活更可行。",
+    "source": "WHO《Doing What Matters in Times of Stress》",
+    "source_url": "https://www.who.int/publications/i/item/9789240003927"
+  },
+  {
+    "id": "who-listening",
+    "keywords": ["倾听", "陪伴", "朋友难过", "怎么安慰", "共情"],
+    "content": "陪伴情绪低落的人时，可以耐心倾听、承认对方的感受，并询问此刻需要怎样的帮助。避免急着评判、诊断或用“想开点”否定感受。",
+    "source": "WHO《Psychological first aid: Guide for field workers》",
+    "source_url": "https://www.who.int/publications/i/item/9789241548205"
+  },
+  {
+    "id": "who-professional-help",
+    "keywords": ["影响生活", "持续难受", "心理咨询", "专业帮助", "就医"],
+    "content": "如果情绪困扰持续存在，已经明显影响睡眠、学习、工作或人际生活，可以考虑联系正规医疗机构或合格的心理健康专业人员进行评估。AI 陪伴不能替代专业服务。",
+    "source": "WHO《Mental health: strengthening our response》",
+    "source_url": "https://www.who.int/news-room/fact-sheets/detail/mental-health-strengthening-our-response"
+  },
+  {
+    "id": "who-immediate-danger",
+    "keywords": [
+      "立即危险",
+      "伤害自己",
+      "自杀",
+      "轻生",
+      "危机",
+      "不想活",
+      "活不下去",
+      "结束生命",
+      "不想继续"
+    ],
+    "content": "当一个人可能立即伤害自己或他人时，应尽快联系当地紧急服务，并请可信任的人在安全前提下陪伴，不要只依赖线上或 AI 支持。",
+    "source": "WHO《Suicide》事实清单",
+    "source_url": "https://www.who.int/news-room/fact-sheets/detail/suicide"
+  },
+  {
+    "id": "nhs-cbt-cycle", "category": "CBT",
+    "keywords": ["CBT", "认知行为", "想法情绪行为", "恶性循环"],
+    "content": "认知行为方法关注想法、情绪与行为的相互影响。可以记录一件事发生后自己怎么想、怎么感受、怎么行动，从一个可改变的小环节入手，而不是要求自己立刻变积极。这是自助科普，不等同于接受专业治疗。",
+    "source": "NHS Every Mind Matters：Reframing unhelpful thoughts（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/reframing-unhelpful-thoughts/"
+  },
+  {
+    "id": "nhs-cbt-evidence", "category": "CBT",
+    "keywords": ["灾难化", "最坏结果", "肯定失败", "检查证据", "面试失败"],
+    "content": "当你认定事情一定会失败时，先区分已发生的事实和对未来的预测。问自己：支持这个判断的证据是什么？还有哪些可能结果？若朋友遇到同样情况，我会怎样回应？目标是更平衡地看问题，不是否定担忧。",
+    "source": "NHS Every Mind Matters：Reframing unhelpful thoughts（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/reframing-unhelpful-thoughts/"
+  },
+  {
+    "id": "nhs-cbt-black-white", "category": "CBT",
+    "keywords": ["非黑即白", "不完美就是失败", "全有全无", "完美主义"],
+    "content": "把结果分成完美或彻底失败，可能忽略中间的进步。可以写下做到了什么、还需改进什么，形成更具体的评价。一次表现不理想不能概括全部能力。不能马上改变想法也没关系，先识别它即可。",
+    "source": "NHS Every Mind Matters：Reframing unhelpful thoughts（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/reframing-unhelpful-thoughts/"
+  },
+  {
+    "id": "nhs-cbt-thought-record", "category": "CBT",
+    "keywords": ["思维记录", "记录想法", "负面思维", "认知重评"],
+    "content": "思维记录可以帮助观察不利想法：记下事件、当时的想法与感受，再检查证据并寻找较平衡的解释。不要把记录变成责备自己的任务；它需要练习，也不一定每次都能改变情绪。",
+    "source": "NHS Every Mind Matters：Reframing unhelpful thoughts（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/reframing-unhelpful-thoughts/"
+  },
+  {
+    "id": "nhs-worry-time", "category": "anxiety",
+    "keywords": ["担忧时间", "一直担心", "胡思乱想", "反复担忧"],
+    "content": "担忧占据整天时，可以尝试安排每日短暂的担忧时间，例如10到15分钟，把担心写下并考虑可行办法。其他时候注意到担忧，提醒自己稍后再处理，再回到当前活动。若练习让不适加重，可以停止并寻求支持。",
+    "source": "NHS Every Mind Matters：Tackling your worries（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/tackling-your-worries/"
+  },
+  {
+    "id": "nhs-worry-control", "category": "anxiety",
+    "keywords": ["可控不可控", "假设性担忧", "万一怎么办", "担忧树"],
+    "content": "将担忧区分为能采取实际行动的问题和暂时无法控制的假设。前者写下具体下一步及时间；后者承认不确定性，再把注意力转回当下。不是所有问题都能立即解决，也无需反复推演所有可能。",
+    "source": "NHS Every Mind Matters：Tackling your worries（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/tackling-your-worries/"
+  },
+  {
+    "id": "nhs-sleep-routine", "category": "sleep",
+    "keywords": ["失眠", "睡眠卫生", "起床时间", "熬夜", "睡眠规律"],
+    "content": "改善睡眠可以先尝试相近的入睡和起床时间，休息日也尽量保持节奏。睡前安排安静的过渡，减少屏幕干扰，让卧室较暗、安静、舒适。持续睡不好或影响白天生活时，应咨询专业人员。",
+    "source": "NHS Every Mind Matters：How to fall asleep faster and sleep better（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/how-to-fall-asleep-faster-and-sleep-better/"
+  },
+  {
+    "id": "nhs-sleep-not-force", "category": "sleep",
+    "keywords": ["越想睡越睡不着", "强迫入睡", "躺着清醒", "睡不着怎么办"],
+    "content": "清醒躺着时，不必强迫自己立刻睡着。若一直睡不着，可以暂时到舒适安全的地方做安静活动，例如阅读，困了再回床。不要把入睡时间当成考试；长期失眠需要评估，自助技巧不能代替治疗。",
+    "source": "NHS Every Mind Matters：How to fall asleep faster and sleep better（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/how-to-fall-asleep-faster-and-sleep-better/"
+  },
+  {
+    "id": "nhs-sleep-worry", "category": "sleep",
+    "keywords": ["睡前想事情", "睡前担忧", "明天任务", "咖啡睡眠"],
+    "content": "睡前反复想明天的事，可以把待办和担忧写下，给它们一个稍后处理的位置。留意咖啡因、酒精及临睡前大量进食对睡眠的影响。选择适合自己的放松方式，不把喝酒当助眠方法。",
+    "source": "NHS Every Mind Matters：How to fall asleep faster and sleep better（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/how-to-fall-asleep-faster-and-sleep-better/"
+  },
+  {
+    "id": "nih-grief", "category": "grief",
+    "keywords": ["哀伤", "亲人去世", "丧亲", "失去亲人", "悲痛"],
+    "content": "失去亲人后的哀伤没有唯一正确的表达方式。允许感受变化，维持基本作息，并向可信任的人或哀伤支持团体求助。若明显难以完成日常活动，应联系专业人员，不要求自己按固定时间恢复。",
+    "source": "NIH Emotional Wellness Toolkit：Navigating grief（中文整理）",
+    "source_url": "https://www.nih.gov/health-information/your-healthiest-self-wellness-toolkits/emotional-wellness-toolkit"
+  },
+  {
+    "id": "nih-mindfulness", "category": "mindfulness",
+    "keywords": ["正念", "当下觉察", "身体扫描", "注意力练习"],
+    "content": "正念是有意识地留意当下体验。可以在走路时注意脚步和周围声音，或安静观察身体各处感觉；走神后再温和回到当前体验。练习不要求清空大脑；若引起不适，可暂停并选择其他方法。",
+    "source": "NIH Emotional Wellness Toolkit：Be mindful（中文整理）",
+    "source_url": "https://www.nih.gov/health-information/your-healthiest-self-wellness-toolkits/emotional-wellness-toolkit"
+  },
+  {
+    "id": "nih-resilience", "category": "self_acceptance",
+    "keywords": ["心理韧性", "恢复力", "挫折恢复", "韧性"],
+    "content": "心理韧性与应对困难和从支持资源中获得帮助有关，不是永远不难过。规律睡眠、适量活动、做喜欢的事及请求支持，都可以作为培养恢复力的日常起点。",
+    "source": "NIH Emotional Wellness Toolkit：Build resilience（中文整理）",
+    "source_url": "https://www.nih.gov/health-information/your-healthiest-self-wellness-toolkits/emotional-wellness-toolkit"
+  },
+  {
+    "id": "nih-relationship-boundaries", "category": "relationships",
+    "keywords": ["人际边界", "拒绝别人", "讨好", "不会说不", "关系边界"],
+    "content": "健康关系允许表达需求和设置边界。可以具体说明自己愿意做什么、不愿意做什么，尊重彼此的拒绝。若关系包含暴力或虐待，应优先保护安全并寻求现实支持，而不只是努力沟通。",
+    "source": "NIH Social Wellness Toolkit：Build healthy relationships（中文整理）",
+    "source_url": "https://www.nih.gov/health-information/your-healthiest-self-wellness-toolkits/social-wellness-toolkit"
+  },
+  {
+    "id": "nih-relationship-conflict", "category": "relationships",
+    "keywords": ["吵架", "冲突沟通", "表达需要", "人际关系", "伴侣沟通"],
+    "content": "有分歧时，诚实表达感受和具体需要，听对方解释而不急着归责。讨论事情本身，避免人身攻击，寻找双方能接受的安排。尊重和诚实应是双向的，妥协不意味着接受伤害。",
+    "source": "NIH Social Wellness Toolkit：Build healthy relationships（中文整理）",
+    "source_url": "https://www.nih.gov/health-information/your-healthiest-self-wellness-toolkits/social-wellness-toolkit"
+  },
+  {
+    "id": "nih-caregiver-stress", "category": "caregiving",
+    "keywords": ["照护压力", "照顾老人", "照顾家人", "照顾别人很累", "照护者"],
+    "content": "照顾家人也需要照顾自己。可以列出别人能帮忙的具体事项，安排短暂休息，尽量保留兴趣和基本作息。照护者支持团体有助于交流经验；求助不代表不负责任。",
+    "source": "NIH Social Wellness Toolkit：Take care of yourself while caring for others（中文整理）",
+    "source_url": "https://www.nih.gov/health-information/your-healthiest-self-wellness-toolkits/social-wellness-toolkit"
+  },
+  {
+    "id": "nimh-self-care", "category": "self_care",
+    "keywords": ["自我照顾", "自助", "照顾自己", "心理健康习惯"],
+    "content": "自我照顾可以从规律进餐、补水、适合自己的活动和休息开始，不必一次做到全部。不同人的有效方法不同，可以尝试并观察感受；自助不能替代必要的专业支持。",
+    "source": "NIMH Caring for Your Mental Health（中文整理）",
+    "source_url": "https://www.nimh.nih.gov/health/topics/caring-for-your-mental-health"
+  },
+  {
+    "id": "nimh-priorities", "category": "stress",
+    "keywords": ["任务太多", "学习压力", "工作压力", "优先级", "不堪重负"],
+    "content": "任务过多时，区分现在必须完成和可以等待的事情。负担已满时可以拒绝新增任务，并在一天结束时注意已经完成的部分，而不只盯着遗漏。若压力持续难以应对，及时请求帮助。",
+    "source": "NIMH Caring for Your Mental Health（中文整理）",
+    "source_url": "https://www.nimh.nih.gov/health/topics/caring-for-your-mental-health"
+  },
+  {
+    "id": "nimh-seeking-help", "category": "professional_help",
+    "keywords": ["什么时候求助", "持续两周", "兴趣下降", "注意力困难", "需要心理帮助"],
+    "content": "明显痛苦、睡眠或食欲改变、兴趣下降及日常任务困难持续两周以上时，建议寻求专业评估。两周不是必须等待的门槛；症状严重、恶化或出现伤害自己的念头时，应更早或立即求助。不能仅凭症状清单自行诊断。",
+    "source": "NIMH My Mental Health: Do I Need Help?（中文整理）",
+    "source_url": "https://www.nimh.nih.gov/health/publications/my-mental-health-do-i-need-help"
+  },
+  {
+    "id": "nhs-problem-plan", "category": "problem_solving",
+    "keywords": ["问题解决", "拆解问题", "行动计划", "不知道从哪开始"],
+    "content": "问题很多时，先选一个重要且能采取行动的问题。列出几个可行办法，比较利弊、所需资源，再明确做什么、何时做、需要谁支持。先尝试一个小步骤，不要求一次解决全部。",
+    "source": "NHS Every Mind Matters：Problem solving（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/problem-solving/"
+  },
+  {
+    "id": "nhs-problem-review", "category": "problem_solving",
+    "keywords": ["复盘", "行动没效果", "解决办法", "调整计划"],
+    "content": "尝试解决办法后，记录哪些有效、哪些需要调整，把经历作为下次的参考。办法不合适时可以换一个，而不必据此否定自己。短暂放松和喜欢的活动也能给处理问题留出空间。",
+    "source": "NHS Every Mind Matters：Problem solving（中文整理）",
+    "source_url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/problem-solving/"
+  }
+]

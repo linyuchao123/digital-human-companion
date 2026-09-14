@@ -7,6 +7,12 @@ dist/
 build/
 *.egg
 .eggs/
+.venv*/
+
+# 本地环境变量与密钥（示例文件允许提交）
+.env
+.env.*
+!.env.example
 
 # Conda环境
 D:/Anaconda3/
@@ -19,6 +25,8 @@ node_modules/
 *.zip.filepart
 
 # 大文件/模型文件（超过100MB）
+models/embedding/
+models/asr/
 *.pt
 *.pth
 *.pth.tar
@@ -69,6 +77,8 @@ Thumbs.db
 dist/
 *.tsbuildinfo
 *.mjs
+!static/mediapipe/camera-worker.mjs
+!static/mediapipe/tasks-vision/vision_bundle.mjs
 
 # 临时文件
 __TEMP__/

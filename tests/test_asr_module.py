@@ -5,6 +5,7 @@
 """
 
 import sys
+import unittest
 import wave
 from pathlib import Path
 
@@ -14,10 +15,13 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from services.asr.audio_pipeline import AudioPipeline, AudioPipelineConfig, load_audio_file
-from services.asr.vad.fsmn_vad import FsmnVad, FsmnVadConfig
-from services.asr.inference.paraformer_zh import ParaformerZh, ParaformerConfig
-from services.asr.inference.acoustic_features import AcousticFeaturesExtractor, AcousticFeaturesConfig
+try:
+    from services.asr.audio_pipeline import AudioPipeline, AudioPipelineConfig, load_audio_file
+    from services.asr.vad.fsmn_vad import FsmnVad, FsmnVadConfig
+    from services.asr.inference.paraformer_zh import ParaformerZh, ParaformerConfig
+    from services.asr.inference.acoustic_features import AcousticFeaturesExtractor, AcousticFeaturesConfig
+except ModuleNotFoundError as exc:
+    raise unittest.SkipTest(f"听觉模块可选依赖未安装: {exc.name}") from exc
 
 
 def test_vad_only():

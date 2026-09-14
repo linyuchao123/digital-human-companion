@@ -1,0 +1,26 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>本地视觉模型兼容性验收</title>
+<h1>本地视觉模型兼容性验收</h1>
+<p>仅生成空白测试帧，不读取摄像头、不上传图像。</p>
+<button id="run">运行模型加载测试</button><pre id="result" role="status">未运行</pre>
+<script type="module">
+const output=document.getElementById('result');
+document.getElementById('run').onclick=()=>{
+  const button=document.getElementById('run'); button.disabled=true;output.textContent='模型加载中';
+  const worker=new Worker('./camera-worker.mjs');
+  const finish=text=>{clearTimeout(timeout);worker.terminate();output.textContent=text;button.disabled=false;};
+  const timeout=setTimeout(()=>finish('失败：模型加载超时'),45000);
+  worker.onerror=event=>finish('失败：'+event.message);
+  worker.onmessage=async({data})=>{
+    if(data.type==='error'){finish('失败：'+(data.detail || '本地模型无法运行'));return;}
+    if(data.type==='ready'){
+      output.textContent='模型加载完成，验证空白测试帧';
+      const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;
+      canvas.getContext('2d').fillRect(0,0,640,480);
+      const bitmap=await createImageBitmap(canvas);
+      worker.postMessage({type:'frame',bitmap,timestamp:performance.now()},[bitmap]);
+    }
+    if(data.type==='result') finish(data.face_count===0?'通过：Worker、本地WASM、现有模型加载兼容；空白帧无虚构人脸':'失败：空白帧检测到人脸');
+  };
+  worker.postMessage({type:'init'});
+};
+</script></html>

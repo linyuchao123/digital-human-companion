@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const context={self:{}};vm.createContext(context);
+vm.runInContext(fs.readFileSync('static/mediapipe/camera-quality.js','utf8'),context);
+const matrix=Array.from({length:16},(_,i)=>i%5===0?1:0);
+const face=[{x:.4,y:.3},{x:.6,y:.7}];
+const check=(points,light,count=1,pose=matrix,expressions=true)=>context.self.cameraQuality(points,pose,light,count,expressions);
+assert.equal(check(face,100).quality,'good');
+assert.match(check(face,10).reason,/偏暗/);assert.match(check(face,250).reason,/过亮/);
+assert.match(check([{x:.49,y:.4},{x:.51,y:.6}],100).reason,/距离/);
+assert.match(check([{x:-.1,y:.3},{x:.6,y:.7}],100).reason,/完整/);
+assert.match(check([],0,0).reason,/未检测/);assert.match(check(face,100,2).reason,/多人/);
+assert.match(check(face,100,1,null).reason,/未就绪/);
+assert.equal(check([{x:.4,y:.3},{x:.55,y:.7}],100).quality,'good');
+assert.equal(check(Array.from({length:20},(_,i)=>i===0?{x:-.021,y:.5}:{x:i%2?.4:.6,y:.5}),100).quality,'good');
+assert.match(check([{x:NaN,y:.5}],100).reason,/不稳定/);
+console.log('摄像头质量原因、距离、边缘容忍与无效特征测试通过');

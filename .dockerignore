@@ -28,12 +28,17 @@ build/
 
 # ── 虚拟环境 ────────
 .venv/
+.venv*/
 venv/
 env/
 .conda/
 
 # ── 敏感配置 ────────
 .env
+.env.*
+!.env.example
+data/users.db*
+data/kb/
 *.env.local
 
 # ── 大文件/模型（使用 volume 挂载代替打包）────────
@@ -41,6 +46,9 @@ env/
 digital_human_engine/checkpoints_v2/
 checkpoints_v2/
 models/
+!models/
+models/*
+!models/face_landmarker.task
 *.pth
 *.pt
 *.ckpt

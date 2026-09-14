@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hmac
+import importlib.util
 import io
 import json
 import os
@@ -20,12 +22,16 @@ import re
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import uuid
+from datetime import date
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+from urllib.parse import quote
 
 ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT))
@@ -34,8 +40,15 @@ from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisc
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 import numpy as np
+
+from services.tts import MacOSSayProvider, Qwen3TtsProvider, TtsProviderError
+from services.asr import cloud_provider as cloud_asr
+
+load_dotenv(ROOT / ".env", override=False)
 
 # ── 线程池（CPU密集型推理用）──────────────────────────────────
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -50,7 +63,7 @@ try:
     HAS_BCRYPT = True
 except ImportError:
     HAS_BCRYPT = False
-    print("[Auth] 警告: bcrypt 未安装，密码将使用明文存储（不安全）")
+    print("[Auth] bcrypt 未安装，已禁用密码认证与注册")
 
 def _get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH))
@@ -90,10 +103,59 @@ def _init_db():
                 emotion_label TEXT DEFAULT '',
                 ts TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS user_memory_settings (
+                user_id INTEGER PRIMARY KEY,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS user_memories (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'context',
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS agent_runs (
+                trace_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                risk_level TEXT NOT NULL,
+                emotion TEXT NOT NULL,
+                execution_path TEXT NOT NULL,
+                tool_calls TEXT NOT NULL,
+                node_timings_ms TEXT NOT NULL,
+                total_latency_ms REAL NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS activity_tasks (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                client_id TEXT NOT NULL,
+                template_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'started',
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                removed_at TEXT,
+                UNIQUE(user_id,client_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_tasks_user ON activity_tasks(user_id,created_at);
             CREATE INDEX IF NOT EXISTS idx_sessions_user ON chat_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
             CREATE INDEX IF NOT EXISTS idx_tokens_user ON auth_tokens(user_id);
+            CREATE INDEX IF NOT EXISTS idx_memories_user ON user_memories(user_id);
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id, created_at);
         """)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(activity_tasks)")}
+        if "removed_at" not in columns:
+            conn.execute("ALTER TABLE activity_tasks ADD COLUMN removed_at TEXT")
+        user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        for name in ("display_name", "birthday", "avatar"):
+            if name not in user_columns:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+        from apps.api.external_auth import init_auth_tables
+        init_auth_tables(conn)
         conn.commit()
         print("[DB] 数据库初始化完成")
     finally:
@@ -102,7 +164,7 @@ def _init_db():
 def _hash_password(pwd: str) -> str:
     if HAS_BCRYPT:
         return _bcrypt.hashpw(pwd.encode(), _bcrypt.gensalt()).decode()
-    return pwd  # 降级明文
+    raise RuntimeError("bcrypt 不可用，禁止不安全密码存储")
 
 def _check_password(pwd: str, hashed: str) -> bool:
     if HAS_BCRYPT:
@@ -110,7 +172,7 @@ def _check_password(pwd: str, hashed: str) -> bool:
             return _bcrypt.checkpw(pwd.encode(), hashed.encode())
         except Exception:
             return False
-    return pwd == hashed
+    return False
 
 def _verify_auth_token(token: str) -> Optional[int]:
     """验证 token，返回 user_id 或 None"""
@@ -146,6 +208,69 @@ def _db_save_message(session_id: str, role: str, content: str, emotion_label: st
     except Exception as e:
         print(f"[DB] 保存消息失败: {e}")
 
+
+def _db_load_message_context(session_id: str, limit: int = 40) -> list[dict[str, str]]:
+    """按时间顺序加载最近的对话上下文。调用前必须完成会话归属校验。"""
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            """SELECT role, content FROM (
+                   SELECT id, role, content FROM chat_messages
+                   WHERE session_id=? AND role IN ('user', 'assistant')
+                   ORDER BY id DESC LIMIT ?
+               ) ORDER BY id ASC""",
+            (session_id, limit),
+        ).fetchall()
+        return [{"role": row["role"], "content": row["content"]} for row in rows]
+    finally:
+        conn.close()
+
+
+def _memory_enabled_for_user(user_id: int) -> bool:
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT enabled FROM user_memory_settings WHERE user_id=?", (user_id,)
+        ).fetchone()
+        return bool(row["enabled"]) if row else False
+    finally:
+        conn.close()
+
+
+def _db_save_agent_run(result: dict[str, Any], user_id: int, provider: str) -> None:
+    """保存脱敏运行摘要；不记录用户原文和模型回复。"""
+    try:
+        timings = result.get("node_timings_ms", {})
+        conn = _get_db()
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO agent_runs(
+                       trace_id,session_id,user_id,provider,risk_level,emotion,
+                       execution_path,tool_calls,node_timings_ms,total_latency_ms,created_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    result["trace_id"],
+                    result["session_id"],
+                    user_id,
+                    provider,
+                    result["safety"].risk_level.value,
+                    result["emotion_context"].emotion,
+                    json.dumps(result.get("execution_path", []), ensure_ascii=False),
+                    json.dumps(
+                        [item.model_dump(mode="json") for item in result.get("tool_calls", [])],
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(timings, ensure_ascii=False),
+                    round(sum(float(value) for value in timings.values()), 3),
+                    time.strftime("%Y-%m-%dT%H:%M:%S"),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"[DB] 保存智能体运行摘要失败: {type(exc).__name__}")
+
 # 初始化数据库
 _init_db()
 
@@ -166,65 +291,21 @@ try:
 except Exception as e:
     print(f"[IntegratedServer] emotion_to_live2d 不可用: {e}")
 
-# ── RAG 心理学知识库 ──────────────────────────────────────────
-_rag_engine = None
-HAS_RAG = False
-
-def _init_rag():
-    """延迟初始化 RAG 引擎 + 心理学知识库"""
-    global _rag_engine, HAS_RAG
-    try:
-        from services.llm.rag_engine import RAGEngine, PsychologyKnowledgeBase
-        _rag_engine = RAGEngine()
-        PsychologyKnowledgeBase.initialize_kb(_rag_engine)
-        HAS_RAG = True
-        stats = _rag_engine.get_stats()
-        print(f"[RAG] 心理学知识库就绪，文档数: {stats.get('count', 0)}")
-    except Exception as e:
-        print(f"[RAG] 初始化失败（降级运行）: {e}")
-        _rag_engine = None
-
 # ══════════════════════════════════════════════════════════════
 # 模块懒加载（允许部分模块缺失时降级运行）
 # ══════════════════════════════════════════════════════════════
 
-# 1. FaceBehaviorModel（数字人面部行为驱动）
+# 1. 正式情感反应 Transformer（数字人面部行为驱动）
 _face_driver = None
 _face_driver_lock = asyncio.Lock()
 HAS_DRIVER = False
 try:
-    import torch
-    import torch.nn as nn
-
-    class FaceBehaviorModel(nn.Module):
-        def __init__(self, input_dim=25, hidden_dim=512, num_layers=6,
-                     num_candidates=10, dropout=0.2):
-            super().__init__()
-            self.num_candidates = num_candidates
-            self.encoder = nn.Sequential(
-                nn.Linear(input_dim, hidden_dim), nn.LayerNorm(hidden_dim),
-                nn.ReLU(), nn.Dropout(dropout)
-            )
-            encoder_layer = nn.TransformerEncoderLayer(
-                d_model=hidden_dim, nhead=8, dim_feedforward=hidden_dim * 4,
-                dropout=dropout, batch_first=True
-            )
-            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-            self.decoders = nn.ModuleList([
-                nn.Sequential(
-                    nn.Linear(hidden_dim, hidden_dim // 2), nn.LayerNorm(hidden_dim // 2),
-                    nn.ReLU(), nn.Dropout(dropout), nn.Linear(hidden_dim // 2, input_dim)
-                ) for _ in range(num_candidates)
-            ])
-
-        def forward(self, x):
-            h = self.encoder(x)
-            h = self.transformer(h)
-            outputs = [dec(h) for dec in self.decoders]
-            return torch.stack(outputs, dim=1)
-
+    from services.avatar.emotion_reaction_model import EmotionReactionModel, torch
     HAS_DRIVER = True
-    print("[IntegratedServer] FaceBehaviorModel 定义成功")
+    if torch is None:
+        HAS_DRIVER = False
+        raise ImportError("PyTorch 未安装")
+    print("[IntegratedServer] 正式情感反应模型运行时可用")
 except Exception as e:
     print(f"[IntegratedServer] torch不可用，驱动模型降级: {e}")
 
@@ -252,41 +333,62 @@ LIVE2D_PARAMS = {
 
 def _load_face_driver():
     """同步加载驱动模型，在线程池中执行"""
+    global _face_driver
     if not HAS_DRIVER:
         return None
-    model_path = ROOT / "digital_human_engine" / "checkpoints_v2" / "best_model.pt"
-    if not model_path.exists():
-        print(f"[Driver] 模型文件不存在: {model_path}")
-        return None
+    if _face_driver is not None:
+        return _face_driver
     try:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = FaceBehaviorModel().to(device)
-        ckpt = torch.load(str(model_path), map_location=device, weights_only=False)
-        model.load_state_dict(ckpt['model_state_dict'])
-        model.eval()
-        print(f"[Driver] 模型加载成功，设备: {device}")
-        return (model, device)
+        _face_driver = EmotionReactionModel()
+        metadata = _face_driver.metadata
+        print(
+            f"[Driver] 正式模型加载成功，epoch={metadata.epoch}, "
+            f"val_loss={metadata.val_loss:.4f}, 设备={metadata.device}"
+        )
+        return _face_driver
     except Exception as e:
         print(f"[Driver] 模型加载失败: {e}")
         return None
 
-def _infer_live2d_params(model_device, feature_seq: np.ndarray) -> Dict[str, float]:
-    """推理Live2D参数，在线程池中执行"""
-    model, device = model_device
+
+def _driver_runtime_payload(reaction_model) -> Dict[str, Any]:
+    """构建前端可展示的正式模型运行状态。"""
+    if reaction_model is None:
+        return {
+            "ready": False,
+            "mode": "fallback",
+            "epoch": None,
+            "device": None,
+            "message": "正式模型未加载，使用规则驱动",
+        }
+    metadata = reaction_model.metadata
+    fallback_reason = getattr(metadata, "device_fallback_reason", None)
+    return {
+        "ready": True,
+        "mode": "official",
+        "epoch": metadata.epoch,
+        "device": metadata.device,
+        "device_fallback": bool(fallback_reason),
+        "message": (
+            f"正式模型已加载（第 {metadata.epoch} 轮，MPS 不兼容算子已切换 CPU）"
+            if fallback_reason
+            else f"正式模型已加载（第 {metadata.epoch} 轮）"
+        ),
+    }
+
+
+def _infer_live2d_params(
+    reaction_model, emotion_seq: np.ndarray, intensity: float
+) -> Optional[Dict[str, float]]:
+    """用正式模型预测倾听者情绪，并映射为 Live2D 参数。"""
     try:
-        with torch.no_grad():
-            t = torch.FloatTensor(feature_seq).unsqueeze(0).to(device)  # [1,T,25]
-            pred = model(t)  # [1,K,T,25]
-            p = pred[0, 0, -1].cpu().numpy()  # [25]
-        param_names = list(LIVE2D_PARAMS.keys())
-        result = {}
-        for i, name in enumerate(param_names):
-            lo, hi = LIVE2D_PARAMS[name]
-            raw = float(np.clip(p[i % len(p)], -1, 1))
-            result[name] = round((raw + 1) / 2 * (hi - lo) + lo, 3)
-        return result
+        prediction = reaction_model.predict(emotion_seq, num_candidates=1, seed=42)
+        emotion_25 = prediction[0, -1]
+        params = _emo25_to_live2d(emotion_25, intensity=intensity)
+        return _live2d_to_dict(params)
     except Exception as e:
-        return _default_live2d_params()
+        print(f"[Driver] 正式模型推理失败: {type(e).__name__}: {e}")
+        return None
 
 def _default_live2d_params() -> Dict[str, float]:
     """返回默认静止姿态参数"""
@@ -391,169 +493,167 @@ def blendshape_smile_approx(lm) -> float:
 # 3. FunASR
 _asr_model = None
 HAS_ASR = False
+ASR_DEPENDENCY_AVAILABLE = importlib.util.find_spec("funasr") is not None
+ASR_LAST_ERROR: str | None = None
+_asr_inference_lock = threading.Lock()
 
 def _get_asr_model():
-    global _asr_model, HAS_ASR
+    global _asr_model, HAS_ASR, ASR_LAST_ERROR
+    if not ASR_DEPENDENCY_AVAILABLE:
+        ASR_LAST_ERROR = "dependency_missing"
+        return None
     if _asr_model is None:
         try:
+            os.environ.setdefault("MODELSCOPE_CACHE", str(ROOT / "models" / "asr"))
             from funasr import AutoModel
             _asr_model = AutoModel(
-                model="paraformer-zh",
+                model=os.environ.get("ASR_MODEL", "paraformer-zh"),
                 vad_model="fsmn-vad",
                 punc_model="ct-punc",
+                device=os.environ.get("ASR_DEVICE", "cpu"),
+                disable_update=True,
             )
             HAS_ASR = True
+            ASR_LAST_ERROR = None
             print("[IntegratedServer] FunASR AutoModel 初始化成功")
         except Exception as e:
             print(f"[IntegratedServer] FunASR不可用: {e}")
             _asr_model = None
+            HAS_ASR = False
+            ASR_LAST_ERROR = type(e).__name__
     return _asr_model
+
+
+def _asr_status_payload() -> Dict[str, Any]:
+    if os.environ.get("ASR_PROVIDER", "funasr") == "qwen":
+        configured = bool(cloud_asr.api_key())
+        return {"available": configured, "ready": False, "provider": "qwen_cloud",
+                "reason": None if configured else "key_missing",
+                "message": "百炼云端ASR已配置，录音将发送到阿里云" if configured else "未配置ASR密钥"}
+    if not ASR_DEPENDENCY_AVAILABLE:
+        return {
+            "available": False,
+            "ready": False,
+            "provider": "browser_speech_recognition",
+            "reason": "dependency_missing",
+            "message": "FunASR 依赖未安装，使用浏览器语音识别",
+        }
+    if HAS_ASR and _asr_model is not None:
+        return {
+            "available": True,
+            "ready": True,
+            "provider": "funasr_paraformer",
+            "reason": None,
+            "message": "FunASR 服务端语音识别已就绪",
+        }
+    return {
+        "available": True,
+        "ready": False,
+        "provider": "funasr_paraformer",
+        "reason": ASR_LAST_ERROR,
+        "message": (
+            f"FunASR 初始化失败：{ASR_LAST_ERROR}"
+            if ASR_LAST_ERROR
+            else "FunASR 将在首次录音时加载"
+        ),
+    }
+
+def _recognize_audio(audio_path):
+    if os.environ.get("ASR_PROVIDER", "funasr") != "qwen":
+        return _run_asr(audio_path), "funasr_paraformer", None
+    try:
+        return cloud_asr.transcribe(audio_path, _asr_hotwords()), "qwen_cloud", None
+    except cloud_asr.CloudAsrError as exc:
+        reason = str(exc)
+        if os.environ.get("ASR_FALLBACK_LOCAL", "true").lower() == "true" and ASR_DEPENDENCY_AVAILABLE:
+            return _run_asr(audio_path), "funasr_paraformer", reason
+        raise
+
+
+def _asr_hotwords() -> str:
+    """只传递有限的词语，避免 FunASR 将配置误解释为路径或 URL。"""
+    words = re.split(r"[,，;；\s]+", os.environ.get("ASR_HOTWORDS", "小安 数字心屿"))
+    return " ".join(dict.fromkeys(
+        word for word in words if re.fullmatch(r"[\w\u4e00-\u9fff]{1,20}", word)
+    ))[:400]
+
 
 def _run_asr(audio_path: str) -> str:
     """同步运行ASR，在线程池中执行"""
-    model = _get_asr_model()
-    if model is None:
-        return ""
-    try:
-        res = model.generate(input=audio_path, batch_size_s=300)
-        if res and isinstance(res, list):
-            return "".join(str(item.get("text", "")) for item in res if isinstance(item, dict)).strip()
-        return ""
-    except Exception as e:
-        print(f"[ASR] 识别失败: {e}")
-        return ""
-
-# 4. Qwen API
-QWEN_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-81e2a139a4ed42c3a004fd2d67f5de7f")
-QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-QWEN_MODEL = "qwen-plus"
-_session_histories: Dict[str, list] = {}
-
-_SYSTEM_PROMPT = """你是一位专业的心理陪护助手，名叫小安，外表是温柔的动漫女孩形象。
-
-【核心职责】
-- 共情倾听：感受用户情绪，给予真诚回应
-- 情感支持：用温暖、积极的语言帮助用户舒缓情绪
-- 识别危机：当用户出现自伤、轻生等信号时，立即提供危机热线
-
-【安全红线】
-- 不进行医疗诊断，不提供药物建议
-- 不做出无法兑现的承诺
-
-【回复格式要求】
-每次回复须包含两部分（严格按此格式）：
-1. 正文：温暖共情的回复，2-3句话，不超过80字，用中文
-2. 动作标签：在正文末尾另起一行，根据对话情感选择最合适的一个动作标签：
-   - [MOTION:FlickUp] —— 用户表达悲伤、感动、哭泣时
-   - [MOTION:Tap] —— 用户表达惊喜、害羞、意外时
-   - [MOTION:Flick3] —— 用户自我否定、需要鼓励或摇头安慰时
-   - [MOTION:Idle] —— 正常倾听、对话平稳时（默认）
-
-【示例】
-用户说"我最近很难过，总是哭"
-回复：
-我听到你了，最近一定承受了很多。哭出来没什么不好，这是你在释放情绪。我陪着你。
-[MOTION:FlickUp]"""
-
-EMOTION_RULES = [
-    (r'压力|焦虑|紧张|烦躁|烦恼', 'Anxiety', -0.3, 0.5, 'medium', '关切'),
-    (r'难过|伤心|悲伤|哭|失落|痛苦', 'Sad', -0.5, -0.2, 'medium', '温柔'),
-    (r'开心|高兴|快乐|棒|好消息|很好|很棒', 'Happy', 0.7, 0.4, 'low', '喜悦'),
-    (r'睡不着|失眠|睡眠|睡不好', 'Anxiety', -0.2, 0.2, 'low', '关心'),
-    (r'孤独|孤单|没人|一个人', 'Sad', -0.3, -0.3, 'low', '陪伴'),
-    (r'想死|不想活|轻生|自杀|放弃生命', 'Fear', -0.9, 0.3, 'high', '紧急'),
-    (r'抑郁|抑郁症|双相|躁郁', 'Sad', -0.5, -0.1, 'medium', '专注'),
-]
-
-def _local_analyze(text: str) -> Dict[str, Any]:
-    for pattern, emotion, valence, arousal, risk, label in EMOTION_RULES:
-        if re.search(pattern, text):
-            return {"emotion": emotion, "valence": valence,
-                    "arousal": arousal, "risk_level": risk, "emotion_label": label}
-    return {"emotion": "Neutral", "valence": 0.05,
-            "arousal": 0.0, "risk_level": "low", "emotion_label": "平静"}
-
-def _get_rag_context(text: str) -> str:
-    """从RAG知识库检索相关心理学知识，构建上下文"""
-    if not HAS_RAG or _rag_engine is None:
-        return ""
-    try:
-        context = _rag_engine.build_context(text, top_k=3)
-        return context
-    except Exception:
-        return ""
-
-_SAFETY_KEYWORDS = re.compile(r'想死|不想活|轻生|自杀|结束生命|活不下去|去死|死了算了')
-
-def _check_crisis(text: str) -> bool:
-    """危机信号检测"""
-    return bool(_SAFETY_KEYWORDS.search(text))
-
-async def _qwen_reply(text: str, session_id: str) -> Optional[str]:
-    if not QWEN_API_KEY:
-        return None
-    try:
-        import httpx
-        # 危机信号优先处理
-        if _check_crisis(text):
-            crisis_reply = ("我非常担心你现在的状态，你说的话让我很揪心。"
-                           "请立即拨打心理援助热线：400-161-9995 或 12320。"
-                           "你不是一个人在承受这些，我陪着你。\n[MOTION:FlickUp]")
-            history = _session_histories.setdefault(session_id, [])
-            history.append({"role": "user", "content": text})
-            history.append({"role": "assistant", "content": crisis_reply})
-            return crisis_reply
-
-        # RAG 检索心理学知识
-        rag_context = _get_rag_context(text)
-
-        # 构建增强系统提示词
-        if rag_context:
-            system_content = _SYSTEM_PROMPT + f"\n\n{rag_context}\n\n请结合以上知识给出更专业的回应。"
-            enable_search = False   # RAG 已有上下文，无需联网
-        else:
-            system_content = _SYSTEM_PROMPT
-            enable_search = True    # 知识库无相关内容，启用联网搜索补充
-
-        history = _session_histories.setdefault(session_id, [])
-        history.append({"role": "user", "content": text})
-        if len(history) > 20:
-            history[:] = history[-20:]
-        messages = [{"role": "system", "content": system_content}] + history
-        # 构建请求体，RAG无结果时启用联网搜索
-        request_body = {
-            "model": QWEN_MODEL,
-            "messages": messages,
-            "max_tokens": 250,
-            "temperature": 0.75,
-        }
-        if enable_search:
-            request_body["enable_search"] = True
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{QWEN_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {QWEN_API_KEY}"},
-                json=request_body
+    with _asr_inference_lock:
+        model = _get_asr_model()
+        if model is None:
+            return ""
+        try:
+            # 合并短停顿的 VAD 片段，为识别保留句内上下文；热词只影响声学解码，
+            # 不用 LLM 改写转录，以免改变用户的否定词、情绪和风险表达。
+            res = model.generate(
+                input=audio_path, batch_size_s=30,
+                merge_vad=True, merge_length_s=15,
+                hotword=_asr_hotwords(),
             )
-            data = resp.json()
-            reply = data["choices"][0]["message"]["content"].strip()
-            history.append({"role": "assistant", "content": reply})
-            return reply
-    except Exception as e:
-        print(f"[Qwen API] 失败: {e}")
-        return None
+            if res and isinstance(res, list):
+                return "".join(str(item.get("text", "")) for item in res if isinstance(item, dict)).strip()
+            return ""
+        except Exception as e:
+            print(f"[ASR] 识别失败: {type(e).__name__}")
+            return ""
+
+# 4. 大模型与语音 API。专用密钥为空时回退到共用 DashScope 密钥。
+DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+DEEPSEEK_API_KEY = (
+    os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    or os.environ.get("LLM_API_KEY", "").strip()
+)
+QWEN_API_KEY = os.environ.get("QWEN_API_KEY", "").strip() or DASHSCOPE_API_KEY
+TTS_API_KEY = os.environ.get("TTS_API_KEY", "").strip() or DASHSCOPE_API_KEY
+TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "auto").strip().lower()
+TTS_DEFAULT_VOICE = os.environ.get("TTS_DEFAULT_VOICE", "").strip()
+TTS_QWEN3_MODEL = os.environ.get("TTS_QWEN3_MODEL", "qwen3-tts-instruct-flash").strip()
+try:
+    TTS_RATE = min(max(int(os.environ.get("TTS_RATE", "185")), 120), 260)
+except ValueError:
+    TTS_RATE = 185
+DEEPSEEK_BASE_URL = os.environ.get(
+    "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
+).rstrip("/")
+DEEPSEEK_MODEL = (
+    os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
+    or "deepseek-v4-flash"
+)
+QWEN_BASE_URL = os.environ.get(
+    "QWEN_BASE_URL",
+    os.environ.get(
+        "LLM_BASE_URL",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    ),
+).rstrip("/")
+QWEN_MODEL = (
+    os.environ.get("QWEN_MODEL", "").strip()
+    or os.environ.get("LLM_MODEL", "").strip()
+    or "qwen-plus"
+)
+RAG_EMBEDDING_MODEL_PATH = os.environ.get("RAG_EMBEDDING_MODEL_PATH", "").strip()
 
 # ══════════════════════════════════════════════════════════════
 # FastAPI 应用
 # ══════════════════════════════════════════════════════════════
 app = FastAPI(title="AI数字人情感陪护全功能整合", version="2.0.0")
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"],
+    CORSMiddleware, allow_origins=[x.strip() for x in os.getenv("ALLOWED_ORIGINS", "http://127.0.0.1:8801,http://localhost:8801").split(",") if x.strip()],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
+from apps.api.security import install_http_security, allow_request
+from services.vision.observation import CameraObservation
+def _public_deployment():
+    return os.getenv("PUBLIC_DEPLOYMENT","false").lower()=="true"
+install_http_security(app,_verify_auth_token,_public_deployment)
 
 # 托管 MediaPipe 本地文件（避免 CDN 访问不稳定）
 MEDIAPIPE_STATIC_DIR = ROOT / "static" / "mediapipe"
+@app.get('/api/vision/face-landmarker-model')
+async def browser_face_landmarker_model():
+    return FileResponse(ROOT / 'models' / 'face_landmarker.task', media_type='application/octet-stream')
 if MEDIAPIPE_STATIC_DIR.exists():
     app.mount("/static/mediapipe", StaticFiles(directory=str(MEDIAPIPE_STATIC_DIR)), name="mediapipe-static")
     print(f"[IntegratedServer] MediaPipe 本地静态资源挂载: {MEDIAPIPE_STATIC_DIR}")
@@ -573,13 +673,6 @@ if SHIZUKU_DIR.exists():
     print(f"[IntegratedServer] Live2D资产挂载: {SHIZUKU_DIR}")
 else:
     print("[IntegratedServer] 警告: shizuku 目录未找到")
-
-@app.on_event("startup")
-async def _on_startup():
-    """应用启动时在后台线程初始化 RAG"""
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(_executor, _init_rag)
-    print("[IntegratedServer] 后台 RAG 初始化已启动")
 
 INTEGRATED_HTML = ROOT / "integrated.html"
 VISION_DEMO_HTML = ROOT / "vision_demo.html"
@@ -605,17 +698,127 @@ async def vision_demo():
     return HTMLResponse("<h1>vision_demo.html 未找到</h1>", status_code=404)
 
 @app.get("/api/status")
-async def api_status():
+async def api_status(request: Request):
+    from services.avatar.model_assets import inspect_face_driver_checkpoint
+
+    checkpoint_status = inspect_face_driver_checkpoint()
     return JSONResponse({
         "status": "running",
         "modules": {
             "vision_mediapipe": HAS_MEDIAPIPE,
-            "asr_funasr": HAS_ASR,
-            "driver_model": HAS_DRIVER,
+            "asr_funasr": ASR_DEPENDENCY_AVAILABLE,
+            "driver_model": HAS_DRIVER and checkpoint_status.ready,
+            "deepseek_api": bool(DEEPSEEK_API_KEY),
             "qwen_api": bool(QWEN_API_KEY),
+            "tts_cosyvoice": HAS_TTS and bool(TTS_API_KEY),
+            "tts_qwen3": bool(TTS_API_KEY),
+            "agent_provider": _configured_agent_provider_name(),
         },
-        "port": 8800,
+        "tts": _tts_status_payload(),
+        "asr": _asr_status_payload(),
+        "model_assets": {
+            "face_driver": checkpoint_status.to_public_dict(),
+        },
+        "port": request.scope.get("server", (None, None))[1],
     })
+
+
+@app.get('/api/health/ready')
+async def readiness():
+    if not HAS_BCRYPT:
+        return JSONResponse({'ready':False,'reason':'password_dependency_unavailable'},status_code=503)
+    try:
+        with _get_db() as conn: conn.execute('SELECT 1 FROM users LIMIT 1')
+    except sqlite3.Error:
+        return JSONResponse({'ready':False,'reason':'database_unavailable'},status_code=503)
+    return JSONResponse({'ready':True})
+
+
+class AgentChatRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    session_id: str | None = None
+
+
+class MemorySettingsRequest(BaseModel):
+    enabled: bool
+
+
+_agent_workflow = None
+_agent_provider_name = "offline"
+_agent_knowledge_provider_name = "uninitialized"
+
+
+def _configured_agent_provider_name() -> str:
+    if DEEPSEEK_API_KEY and QWEN_API_KEY:
+        return "deepseek_with_qwen_fallback"
+    if DEEPSEEK_API_KEY:
+        return "deepseek_with_offline_fallback"
+    if QWEN_API_KEY:
+        return "qwen_with_offline_fallback"
+    return "offline"
+
+
+def _get_agent_workflow():
+    global _agent_knowledge_provider_name, _agent_provider_name, _agent_workflow
+    if _agent_workflow is None:
+        from services.agent import (
+            DigitalXinyuWorkflow,
+            SQLiteMemoryStore,
+            create_companion_provider,
+        )
+
+        provider, _agent_provider_name = create_companion_provider(
+            api_key=DEEPSEEK_API_KEY,
+            base_url=DEEPSEEK_BASE_URL,
+            model=DEEPSEEK_MODEL,
+            provider_name="deepseek",
+            fallback_api_key=QWEN_API_KEY,
+            fallback_base_url=QWEN_BASE_URL,
+            fallback_model=QWEN_MODEL,
+            fallback_name="qwen",
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        knowledge_retriever, _agent_knowledge_provider_name = (
+            _get_rag_search_retriever()
+        )
+        _agent_workflow = DigitalXinyuWorkflow(
+            provider=provider,
+            knowledge_retriever=knowledge_retriever,
+            memory_store=SQLiteMemoryStore(_get_db),
+        )
+    return _agent_workflow
+
+
+@app.post("/api/agent/chat")
+async def agent_chat(payload: AgentChatRequest):
+    """使用离线 Provider 运行一次可观测的智能体工作流。"""
+    try:
+        trace_id = str(uuid.uuid4())
+        session_id = payload.session_id or str(uuid.uuid4())
+        result = await _get_agent_workflow().run(
+            user_text=payload.text,
+            trace_id=trace_id,
+            session_id=session_id,
+        )
+        return JSONResponse({
+            "trace_id": trace_id,
+            "session_id": session_id,
+            "provider": _agent_provider_name,
+            "knowledge_provider": _agent_knowledge_provider_name,
+            "response": result["final_response"],
+            "activities": [card.model_dump() for card in result.get("activities", [])],
+            "safety": result["safety"].model_dump(mode="json"),
+            "emotion": result["emotion_context"].model_dump(mode="json"),
+            "knowledge": [item.model_dump(mode="json") for item in result["retrieved_knowledge"]],
+            "avatar": result["avatar_command"].model_dump(mode="json"),
+            "execution_path": result["execution_path"],
+            "node_timings_ms": result["node_timings_ms"],
+        })
+    except ImportError as exc:
+        return JSONResponse(
+            {"error": "agent_dependencies_unavailable", "detail": str(exc)},
+            status_code=503,
+        )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -623,15 +826,22 @@ async def api_status():
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/auth/register")
 async def auth_register(request: Request):
-    body = await request.json()
+    try: body = await request.json()
+    except ValueError: return JSONResponse({'error':'请求格式不正确'},status_code=400)
+    if not isinstance(body,dict) or not isinstance(body.get("username"),str) or not isinstance(body.get("password"),str):
+        return JSONResponse({"error":"请填写有效用户名和密码"},status_code=400)
     username = (body.get("username") or "").strip()
-    password = (body.get("password") or "").strip()
+    password = body.get("password") or ""
+    if not HAS_BCRYPT:
+        return JSONResponse({"error":"密码服务不可用"}, status_code=503)
     if not username or not password:
         return JSONResponse({"error": "用户名和密码不能为空"}, status_code=400)
     if len(username) < 2 or len(username) > 20:
         return JSONResponse({"error": "用户名长度须2-20位"}, status_code=400)
-    if len(password) < 4:
-        return JSONResponse({"error": "密码至少4位"}, status_code=400)
+    if not 8 <= len(password) <= 64 or len(password.encode()) > 72:
+        return JSONResponse({"error": "密码须8-64位，UTF-8长度不超过72字节"}, status_code=400)
+    if not re.fullmatch(r"[\w-]{2,20}",username):
+        return JSONResponse({"error":"用户名仅支持文字、数字、下划线和连字符"},status_code=400)
     conn = _get_db()
     try:
         exists = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
@@ -654,14 +864,19 @@ async def auth_register(request: Request):
 
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
-    body = await request.json()
+    try: body = await request.json()
+    except ValueError: return JSONResponse({'error':'请求格式不正确'},status_code=400)
+    if not isinstance(body,dict) or not isinstance(body.get("username"),str) or not isinstance(body.get("password"),str):
+        return JSONResponse({"error":"用户名或密码错误"},status_code=401)
     username = (body.get("username") or "").strip()
-    password = (body.get("password") or "").strip()
+    password = body.get("password") or ""
+    if not isinstance(password,str) or len(password.encode())>72:
+        return JSONResponse({"error":"用户名或密码错误"},status_code=401)
     if not username or not password:
         return JSONResponse({"error": "用户名和密码不能为空"}, status_code=400)
     conn = _get_db()
     try:
-        row = conn.execute("SELECT id,password_hash FROM users WHERE username=?", (username,)).fetchone()
+        row = conn.execute("SELECT id,password_hash,username FROM users WHERE username=? OR (email=? AND email_verified_at<>'')", (username,username.lower())).fetchone()
         if not row or not _check_password(password, row["password_hash"]):
             return JSONResponse({"error": "用户名或密码错误"}, status_code=401)
         token = str(uuid.uuid4())
@@ -669,7 +884,7 @@ async def auth_login(request: Request):
         conn.execute("INSERT OR REPLACE INTO auth_tokens(token,user_id,expires_at) VALUES(?,?,?)",
                      (token, row["id"], expires))
         conn.commit()
-        return JSONResponse({"token": token, "username": username, "user_id": row["id"]})
+        return JSONResponse({"token": token, "username": row['username'], "user_id": row["id"]})
     finally:
         conn.close()
 
@@ -689,6 +904,313 @@ async def auth_logout(request: Request):
 def _get_user_id_from_request(request: Request) -> Optional[int]:
     token = request.headers.get("X-Auth-Token", "")
     return _verify_auth_token(token)
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str = Field(default="",max_length=40)
+    username: str = Field(min_length=2,max_length=20)
+    birthday: str = Field(default="",max_length=10)
+    avatar: str = Field(default="",max_length=180000)
+    current_password: str = Field(default="",max_length=64)
+
+
+class PasswordUpdate(BaseModel):
+    current_password: str = Field(default="",max_length=64)
+    new_password: str = Field(min_length=8,max_length=64)
+
+
+@app.get("/api/profile")
+async def get_profile(request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None:
+        return JSONResponse({"error":"请先登录"},status_code=401)
+    with _get_db() as conn:
+        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at,email,email_verified_at,password_set FROM users WHERE id=?",(user_id,)).fetchone()
+    return JSONResponse(dict(row))
+
+
+@app.patch("/api/profile")
+async def update_profile(payload: ProfileUpdate,request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None:
+        return JSONResponse({"error":"请先登录"},status_code=401)
+    if not re.fullmatch(r"[\w-]{2,20}",payload.username):
+        return JSONResponse({"error":"用户名仅支持文字、数字、下划线和连字符"},status_code=400)
+    if payload.birthday:
+        try:
+            born=date.fromisoformat(payload.birthday)
+            if born>date.today() or born.year<1900: raise ValueError()
+        except ValueError:
+            return JSONResponse({"error":"生日须为1900年至今的有效日期"},status_code=400)
+    if payload.avatar:
+        try:
+            prefix,encoded=payload.avatar.split(',',1)
+            if prefix not in ('data:image/jpeg;base64','data:image/png;base64'): raise ValueError()
+            raw=base64.b64decode(encoded,validate=True)
+            if not (raw.startswith(b'\xff\xd8\xff') or raw.startswith(b'\x89PNG\r\n\x1a\n')): raise ValueError()
+        except (ValueError,TypeError):
+            return JSONResponse({"error":"头像仅支持有效 PNG/JPEG 图片"},status_code=400)
+    with _get_db() as conn:
+        row=conn.execute("SELECT username,password_hash FROM users WHERE id=?",(user_id,)).fetchone()
+        if payload.username!=row['username'] and not _check_password(payload.current_password,row['password_hash']):
+            return JSONResponse({"error":"修改用户名需要验证当前密码"},status_code=403)
+        try:
+            conn.execute("UPDATE users SET username=?,display_name=?,birthday=?,avatar=? WHERE id=?",
+                         (payload.username,payload.display_name.strip(),payload.birthday,payload.avatar,user_id))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            return JSONResponse({"error":"用户名已被使用"},status_code=409)
+    return JSONResponse({"ok":True})
+
+
+@app.post("/api/profile/password")
+async def update_password(payload: PasswordUpdate,request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None: return JSONResponse({"error":"请先登录"},status_code=401)
+    if not HAS_BCRYPT: return JSONResponse({"error":"密码服务不可用"},status_code=503)
+    if len(payload.new_password.encode())>72:
+        return JSONResponse({"error":"密码UTF-8长度不能超过72字节"},status_code=400)
+    with _get_db() as conn:
+        row=conn.execute("SELECT password_hash,password_set FROM users WHERE id=?",(user_id,)).fetchone()
+        session=conn.execute("SELECT source,issued_at FROM auth_tokens WHERE token=?",(request.headers.get('X-Auth-Token',''),)).fetchone()
+        fresh_social=not row['password_set'] and session and session['source']=='oauth' and session['issued_at']>time.time()-600
+        if not fresh_social and not _check_password(payload.current_password,row['password_hash']):
+            return JSONResponse({"error":"当前密码不正确"},status_code=403)
+        conn.execute("UPDATE users SET password_hash=?,password_set=1 WHERE id=?",(_hash_password(payload.new_password),user_id))
+        conn.execute("DELETE FROM auth_tokens WHERE user_id=?",(user_id,))
+        conn.commit()
+    return JSONResponse({"ok":True,"reauthenticate":True})
+
+
+from apps.api.external_auth import install_external_auth
+install_external_auth(app,_get_db,_verify_auth_token,_hash_password,_check_password)
+
+
+def _session_belongs_to_user(session_id: str, user_id: int) -> bool:
+    if not session_id:
+        return False
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM chat_sessions WHERE id=? AND user_id=?",
+            (session_id, user_id),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+class ActivityStartRequest(BaseModel):
+    template_id: str = Field(min_length=1, max_length=40)
+    client_id: str = Field(min_length=1, max_length=80)
+
+
+def _activity_payload(row):
+    from services.agent.activities import activity_cards
+    template = next((card for card in activity_cards() if card.id == row["template_id"]), None)
+    return {**(template.model_dump() if template else {}),
+            "task_id": row["id"], "status": row["status"],
+            "created_at": row["created_at"], "completed_at": row["completed_at"]}
+
+
+@app.post("/api/activities")
+async def start_activity(payload: ActivityStartRequest, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    from services.agent.activities import activity_cards
+    if payload.template_id not in {card.id for card in activity_cards()}:
+        return JSONResponse({"error": "未知活动模板"}, status_code=422)
+    conn = _get_db()
+    try:
+        conn.execute("INSERT OR IGNORE INTO activity_tasks(id,user_id,client_id,template_id,created_at) VALUES(?,?,?,?,?)",
+                     (str(uuid.uuid4()), user_id, payload.client_id, payload.template_id,
+                      time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
+        conn.commit()
+        row = conn.execute("SELECT * FROM activity_tasks WHERE user_id=? AND client_id=?", (user_id,payload.client_id)).fetchone()
+        if row["template_id"] != payload.template_id:
+            return JSONResponse({"error": "请求标识已用于其他活动"}, status_code=409)
+        if row["removed_at"]:
+            return JSONResponse({"error": "该活动记录已移除，请重新选择活动"}, status_code=410)
+        return JSONResponse(_activity_payload(row))
+    finally:
+        conn.close()
+
+
+@app.get("/api/activities")
+async def list_activities(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        rows = conn.execute("SELECT * FROM activity_tasks WHERE user_id=? AND removed_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 50", (user_id,)).fetchall()
+        return JSONResponse({"activities": [_activity_payload(row) for row in rows]})
+    finally:
+        conn.close()
+
+
+@app.get("/api/activities/summary")
+async def activity_summary(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS total,COALESCE(SUM(status='completed'),0) AS completed FROM activity_tasks WHERE user_id=? AND removed_at IS NULL", (user_id,)).fetchone()
+        return JSONResponse({"total": row["total"], "completed": row["completed"],
+                             "started": row["total"]-row["completed"]})
+    finally:
+        conn.close()
+
+
+@app.delete("/api/activities/{task_id}")
+async def remove_activity(task_id: str, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        cursor = conn.execute("UPDATE activity_tasks SET removed_at=COALESCE(removed_at,?) WHERE id=? AND user_id=?",
+                              (time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),task_id,user_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return JSONResponse({"error": "活动不存在"}, status_code=404)
+        return JSONResponse({"removed": True})
+    finally:
+        conn.close()
+
+
+@app.post("/api/activities/{task_id}/complete")
+async def complete_activity(task_id: str, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        conn.execute("UPDATE activity_tasks SET status='completed',completed_at=COALESCE(completed_at,?) WHERE id=? AND user_id=? AND removed_at IS NULL",
+                     (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),task_id,user_id))
+        conn.commit()
+        row = conn.execute("SELECT * FROM activity_tasks WHERE id=? AND user_id=? AND removed_at IS NULL", (task_id,user_id)).fetchone()
+        if not row:
+            return JSONResponse({"error": "活动不存在"}, status_code=404)
+        return JSONResponse(_activity_payload(row))
+    finally:
+        conn.close()
+
+
+@app.get("/api/memory/settings")
+async def get_memory_settings(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT enabled FROM user_memory_settings WHERE user_id=?", (user_id,)
+        ).fetchone()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM user_memories WHERE user_id=?", (user_id,)
+        ).fetchone()[0]
+        return JSONResponse({"enabled": bool(row["enabled"]) if row else False, "count": count})
+    finally:
+        conn.close()
+
+
+@app.put("/api/memory/settings")
+async def update_memory_settings(payload: MemorySettingsRequest, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    conn = _get_db()
+    try:
+        conn.execute(
+            """INSERT INTO user_memory_settings(user_id, enabled, updated_at)
+               VALUES(?,?,?)
+               ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,
+               updated_at=excluded.updated_at""",
+            (user_id, int(payload.enabled), now),
+        )
+        conn.commit()
+        return JSONResponse({"enabled": payload.enabled})
+    finally:
+        conn.close()
+
+
+@app.get("/api/memories")
+async def get_memories(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            """SELECT id, content, category, created_at FROM user_memories
+               WHERE user_id=? ORDER BY created_at DESC LIMIT 100""",
+            (user_id,),
+        ).fetchall()
+        return JSONResponse({"memories": [dict(row) for row in rows]})
+    finally:
+        conn.close()
+
+
+@app.delete("/api/memories")
+async def delete_memories(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        cursor = conn.execute("DELETE FROM user_memories WHERE user_id=?", (user_id,))
+        conn.commit()
+        return JSONResponse({"ok": True, "deleted": cursor.rowcount})
+    finally:
+        conn.close()
+
+
+@app.delete("/api/memories/{memory_id}")
+async def delete_memory(memory_id: str, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        cursor = conn.execute(
+            "DELETE FROM user_memories WHERE id=? AND user_id=?",
+            (memory_id, user_id),
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            return JSONResponse({"error": "记忆不存在"}, status_code=404)
+        return JSONResponse({"ok": True, "deleted": 1})
+    finally:
+        conn.close()
+
+
+@app.get("/api/agent/runs")
+async def get_agent_runs(request: Request, limit: int = 20):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    safe_limit = min(max(limit, 1), 100)
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            """SELECT trace_id,session_id,provider,risk_level,emotion,
+                      execution_path,tool_calls,node_timings_ms,total_latency_ms,created_at
+               FROM agent_runs WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT ?""",
+            (user_id, safe_limit),
+        ).fetchall()
+        runs = []
+        for row in rows:
+            item = dict(row)
+            for field in ("execution_path", "tool_calls", "node_timings_ms"):
+                item[field] = json.loads(item[field])
+            runs.append(item)
+        return JSONResponse({"runs": runs})
+    finally:
+        conn.close()
 
 @app.get("/api/sessions")
 async def get_sessions(request: Request):
@@ -750,10 +1272,15 @@ async def delete_session(session_id: str, request: Request):
         return JSONResponse({"error": "未登录"}, status_code=401)
     conn = _get_db()
     try:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE id=? AND user_id=?",
+            (session_id, user_id),
+        ).fetchone()
+        if not session:
+            return JSONResponse({"error": "会话不存在"}, status_code=404)
         conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
-        conn.execute("DELETE FROM chat_sessions WHERE id=? AND user_id=?", (session_id, user_id))
+        conn.execute("DELETE FROM chat_sessions WHERE id=?", (session_id,))
         conn.commit()
-        _session_histories.pop(session_id, None)
         return JSONResponse({"ok": True})
     finally:
         conn.close()
@@ -765,6 +1292,12 @@ async def generate_session_title(session_id: str, request: Request):
         return JSONResponse({"error": "未登录"}, status_code=401)
     conn = _get_db()
     try:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE id=? AND user_id=?",
+            (session_id, user_id),
+        ).fetchone()
+        if not session:
+            return JSONResponse({"error": "会话不存在"}, status_code=404)
         msgs = conn.execute(
             "SELECT role,content FROM chat_messages WHERE session_id=? ORDER BY id ASC LIMIT 6",
             (session_id,)
@@ -792,7 +1325,10 @@ async def generate_session_title(session_id: str, request: Request):
                 title = msgs[0]["content"][:10] if msgs else "新对话"
         else:
             title = msgs[0]["content"][:10] if msgs else "新对话"
-        conn.execute("UPDATE chat_sessions SET title=? WHERE id=?", (title, session_id))
+        conn.execute(
+            "UPDATE chat_sessions SET title=? WHERE id=? AND user_id=?",
+            (title, session_id, user_id),
+        )
         conn.commit()
         return JSONResponse({"title": title, "session_id": session_id})
     finally:
@@ -800,43 +1336,263 @@ async def generate_session_title(session_id: str, request: Request):
 
 
 
-# CosyVoice TTS 接口 —— 使用 dashscope SDK
+# 多提供者 TTS：CosyVoice 云端 + macOS 服务端系统音色 + 浏览器最终降级
 try:
     import dashscope
     from dashscope.audio.tts_v2 import SpeechSynthesizer as _TtsSynthesizer
-    dashscope.api_key = QWEN_API_KEY
+    dashscope.api_key = TTS_API_KEY
     HAS_TTS = True
     print(f"[IntegratedServer] CosyVoice TTS 已加载")
 except ImportError:
     HAS_TTS = False
-    print("[IntegratedServer] 警告: dashscope 未安装，TTS不可用")
+    print("[IntegratedServer] 提示: dashscope 未安装，将尝试本地系统语音")
 
-@app.get("/api/tts")
-async def api_tts(text: str):
-    """调用阿里云 CosyVoice TTS 生成音频，返回 audio/mpeg"""
-    if not HAS_TTS or not QWEN_API_KEY or not text:
-        return JSONResponse({"error": "TTS not available"}, status_code=400)
+
+_COSYVOICE_VOICES = (
+    {"id": "cosyvoice:longxiaochun", "name": "龙小淳", "locale": "zh-CN", "provider": "cosyvoice"},
+)
+_system_tts_provider: MacOSSayProvider | None = None
+_system_tts_checked = False
+_qwen3_tts_provider: Qwen3TtsProvider | None = None
+_qwen3_tts_config: tuple[str, str] | None = None
+
+
+def _get_system_tts_provider() -> MacOSSayProvider | None:
+    global _system_tts_checked, _system_tts_provider
+    if not _system_tts_checked:
+        _system_tts_checked = True
+        try:
+            _system_tts_provider = MacOSSayProvider()
+            voice_count = len(_system_tts_provider.list_voices())
+            print(f"[IntegratedServer] macOS 系统 TTS 已加载，共 {voice_count} 个中文音色")
+        except TtsProviderError as exc:
+            _system_tts_provider = None
+            print(f"[IntegratedServer] 系统 TTS 不可用: {exc}")
+    return _system_tts_provider
+
+
+def _cloud_tts_available() -> bool:
+    return HAS_TTS and bool(TTS_API_KEY)
+
+
+def _get_qwen3_tts_provider() -> Qwen3TtsProvider | None:
+    global _qwen3_tts_config, _qwen3_tts_provider
+    if not TTS_API_KEY:
+        return None
+    config = (TTS_API_KEY, TTS_QWEN3_MODEL)
+    if _qwen3_tts_provider is None or _qwen3_tts_config != config:
+        _qwen3_tts_provider = Qwen3TtsProvider(
+            api_key=TTS_API_KEY,
+            model=TTS_QWEN3_MODEL,
+        )
+        _qwen3_tts_config = config
+    return _qwen3_tts_provider
+
+
+def _tts_voice_catalog() -> List[Dict[str, str]]:
+    voices: List[Dict[str, str]] = []
+    if TTS_PROVIDER in {"auto", "qwen3_tts"}:
+        provider = _get_qwen3_tts_provider()
+        if provider is not None:
+            voices.extend({
+                "id": f"qwen3_tts:{item.id}",
+                "name": item.name,
+                "locale": item.locale,
+                "provider": item.provider,
+            } for item in provider.list_voices())
+    if TTS_PROVIDER in {"auto", "cosyvoice"} and _cloud_tts_available():
+        voices.extend(dict(item) for item in _COSYVOICE_VOICES)
+    if TTS_PROVIDER in {"auto", "macos_say"}:
+        provider = _get_system_tts_provider()
+        if provider is not None:
+            voices.extend({
+                "id": f"macos_say:{item.id}",
+                "name": item.name,
+                "locale": item.locale.replace("_", "-"),
+                "provider": item.provider,
+            } for item in provider.list_voices())
+    return voices
+
+
+def _default_tts_voice(voices: List[Dict[str, str]]) -> str | None:
+    ids = {item["id"] for item in voices}
+    if TTS_DEFAULT_VOICE:
+        candidates = (TTS_DEFAULT_VOICE, f"macos_say:{TTS_DEFAULT_VOICE}")
+        for candidate in candidates:
+            if candidate in ids:
+                return candidate
+    for preferred in (
+        "qwen3_tts:Chelsie",
+        "qwen3_tts:Momo",
+        "cosyvoice:longxiaochun",
+        "macos_say:Tingting",
+    ):
+        if preferred in ids:
+            return preferred
+    return voices[0]["id"] if voices else None
+
+
+def _tts_status_payload() -> Dict[str, Any]:
+    voices = _tts_voice_catalog()
+    default_voice = _default_tts_voice(voices)
+    if voices:
+        providers = sorted({item["provider"] for item in voices})
+        return {
+            "available": True,
+            "provider": " + ".join(providers),
+            "reason": None,
+            "default_voice": default_voice,
+            "voice_count": len(voices),
+            "message": f"服务端语音可用：{len(voices)} 个音色",
+        }
+    if TTS_PROVIDER == "qwen3_tts" and not TTS_API_KEY:
+        reason = "credential_missing"
+        message = "未配置 DASHSCOPE_API_KEY，使用浏览器语音"
+    elif TTS_PROVIDER == "cosyvoice" and not HAS_TTS:
+        reason = "dependency_missing"
+        message = "未安装 dashscope，使用浏览器语音"
+    elif TTS_PROVIDER == "cosyvoice" and not TTS_API_KEY:
+        reason = "credential_missing"
+        message = "未配置 DASHSCOPE_API_KEY，使用浏览器语音"
+    elif TTS_PROVIDER not in {"auto", "qwen3_tts", "cosyvoice", "macos_say", "browser"}:
+        reason = "invalid_provider"
+        message = "TTS_PROVIDER 配置无效，使用浏览器语音"
+    else:
+        reason = "provider_unavailable"
+        message = "未发现可用的服务端语音，使用浏览器语音"
+    return {
+        "available": False,
+        "provider": "browser_fallback",
+        "reason": reason,
+        "default_voice": None,
+        "voice_count": 0,
+        "message": message,
+    }
+
+class TtsRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    voice: str | None = Field(default=None, max_length=100)
+    rate: int = Field(default=TTS_RATE, ge=120, le=260)
+
+
+@app.get("/api/tts/voices")
+async def api_tts_voices():
+    voices = _tts_voice_catalog()
+    return JSONResponse({
+        "available": bool(voices),
+        "default_voice": _default_tts_voice(voices),
+        "voices": voices,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/tts/stream")
+async def api_tts_stream(payload: TtsRequest):
+    voices = _tts_voice_catalog()
+    voice_id = payload.voice or _default_tts_voice(voices)
+    voice = next((item for item in voices if item["id"] == voice_id), None)
+    if not voice or voice["provider"] != "qwen3_tts":
+        return JSONResponse({"error": "stream_unavailable"}, status_code=400)
+    provider = _get_qwen3_tts_provider()
+    iterator = provider.stream_pcm(payload.text, voice=voice_id.split(":",1)[1])
+    try:
+        first = await anext(iterator)
+    except (TtsProviderError, StopAsyncIteration):
+        await iterator.aclose()
+        return JSONResponse({"error": "stream_failed"}, status_code=502)
+    async def output():
+        try:
+            yield first
+            async for chunk in iterator:
+                yield chunk
+        finally:
+            await iterator.aclose()
+    return StreamingResponse(output(), media_type="application/octet-stream",
+                             headers={"Cache-Control":"no-store", "X-Accel-Buffering":"no",
+                                      "X-Audio-Sample-Rate":"24000"})
+
+
+@app.post("/api/tts")
+async def api_tts(payload: TtsRequest):
+    """使用选定的安全白名单音色生成服务端音频。"""
+    text = payload.text.strip()
+    if not text:
+        return JSONResponse(
+            {"error": "empty_text", "message": "语音文本不能为空"},
+            status_code=400,
+        )
+    voices = _tts_voice_catalog()
+    voice_id = payload.voice or _default_tts_voice(voices)
+    voice = next((item for item in voices if item["id"] == voice_id), None)
+    if not voices:
+        status = _tts_status_payload()
+        return JSONResponse(
+            {
+                "error": "tts_unavailable",
+                "reason": status["reason"],
+                "message": status["message"],
+                "fallback": "browser_speech_synthesis",
+            },
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
+    if voice is None:
+        return JSONResponse(
+            {"error": "invalid_voice", "message": "请求的音色不在可用目录中"},
+            status_code=400,
+            headers={"Cache-Control": "no-store"},
+        )
     try:
         loop = asyncio.get_event_loop()
-        # SDK 是同步调用，放到线程池运行避免阻塞
-        def _synthesize():
-            synth = _TtsSynthesizer(model="cosyvoice-v1", voice="longxiaochun")
-            return synth.call(text)
-        audio_bytes = await loop.run_in_executor(_executor, _synthesize)
+        provider_name = voice["provider"]
+        raw_voice = voice["id"].split(":", 1)[1]
+        if provider_name == "macos_say":
+            provider = _get_system_tts_provider()
+            if provider is None:
+                raise TtsProviderError("系统语音提供者已不可用")
+            result = await loop.run_in_executor(
+                _executor,
+                lambda: provider.synthesize(text, voice=raw_voice, rate=payload.rate),
+            )
+            audio_bytes = result.content
+            media_type = result.media_type
+        elif provider_name == "qwen3_tts":
+            provider = _get_qwen3_tts_provider()
+            if provider is None:
+                raise TtsProviderError("Qwen3-TTS 提供者已不可用")
+            result = await loop.run_in_executor(
+                _executor,
+                lambda: provider.synthesize(text, voice=raw_voice, rate=payload.rate),
+            )
+            audio_bytes = result.content
+            media_type = result.media_type
+        else:
+            def _synthesize_cloud():
+                synth = _TtsSynthesizer(model="cosyvoice-v1", voice=raw_voice)
+                return synth.call(text)
+            audio_bytes = await loop.run_in_executor(_executor, _synthesize_cloud)
+            media_type = "audio/mpeg"
         if not audio_bytes or len(audio_bytes) == 0:
-            print("[TTS] CosyVoice 返回空音频")
+            print(f"[TTS] {provider_name} 返回空音频")
             return JSONResponse({"error": "empty audio"}, status_code=502)
-        print(f"[TTS] CosyVoice 成功，{len(audio_bytes)} 字节")
+        print(f"[TTS] {provider_name}/{raw_voice} 成功，{len(audio_bytes)} 字节")
         return StreamingResponse(
             io.BytesIO(audio_bytes),
-            media_type="audio/mpeg",
-            headers={"Content-Length": str(len(audio_bytes))}
+            media_type=media_type,
+            headers={
+                "Content-Length": str(len(audio_bytes)),
+                "Cache-Control": "no-store",
+                "X-TTS-Provider": provider_name,
+                "X-TTS-Voice": quote(raw_voice, safe=" ()"),
+            },
         )
     except Exception as e:
-        import traceback
         print(f"[TTS] 异常: {e}")
         traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse(
+            {"error": "tts_failed", "message": "服务端语音合成失败"},
+            status_code=502,
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -844,6 +1600,7 @@ async def api_tts(text: str):
 # ══════════════════════════════════════════════════════════════
 class SessionState:
     def __init__(self, session_id: str):
+        self.camera_observation = CameraObservation()
         self.session_id = session_id
         self.user_id: Optional[int] = None  # 登录用户ID（未登录时为None）
         self.db_session_id: Optional[str] = None  # 对应数据库的 chat_sessions.id
@@ -854,6 +1611,7 @@ class SessionState:
         self.asr_text_buffer = ""
         self.last_asr_trigger = 0.0
         self.llm_running = False
+        self.asr_running = False
         self.au_latest: Dict[str, float] = {}
         # 情感状态（LLM返回后更新，用于表情叠加）
         self.current_emotion: str = "Neutral"
@@ -861,8 +1619,14 @@ class SessionState:
         self.current_arousal: float = 0.0
         self.emotion_intensity: float = 0.3   # 表情强度（0~1）
         self.emotion_decay: float = 0.0        # 情感衰减计时
+        self.model_emotion_signature: Optional[tuple] = None
+        self.model_emotion_params: Optional[Dict[str, float]] = None
         # 待触发的动作
         self.pending_motion: Optional[str] = None
+        # 智能体短期上下文；登录用户在安全校验后从数据库恢复。
+        self.agent_messages: list[dict[str, str]] = []
+        self.conversation_summary = ''
+        self.memory_consent: bool = False
 
 # 驱动 WebSocket 客户端集合（供 /ws/drive 广播）
 _drive_clients: set = set()
@@ -880,10 +1644,12 @@ async def ws_drive(websocket: WebSocket):
     try:
         await websocket.send_json({"type": "info", "msg": "drive channel ready"})
         while True:
-            # 保持连接，等待断开
-            await asyncio.sleep(30)
-            await websocket.send_json({"type": "ping"})
-    except Exception:
+            # 主动接收断开事件，避免服务关停时等待下一次心跳。
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30)
+            except TimeoutError:
+                await websocket.send_json({"type": "ping"})
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         _drive_clients.discard(websocket)
@@ -894,6 +1660,11 @@ async def ws_drive(websocket: WebSocket):
 # ══════════════════════════════════════════════════════════════
 @app.websocket("/ws/main")
 async def ws_main(websocket: WebSocket):
+    origin=websocket.headers.get('origin')
+    allowed={x.strip() for x in os.getenv('ALLOWED_ORIGINS','http://127.0.0.1:8801,http://localhost:8801').split(',')}
+    if origin and origin not in allowed:
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     session_id = str(uuid.uuid4())
     state = SessionState(session_id)
@@ -903,17 +1674,30 @@ async def ws_main(websocket: WebSocket):
 
     # 预加载驱动模型（异步，不阻塞握手）
     async def preload_driver():
+        md = None
         if HAS_DRIVER:
-            md = await loop.run_in_executor(_executor, _load_face_driver)
-            state.model_device = md
-            await _send(websocket, {"type": "status",
-                "modules": {
-                    "vision": HAS_MEDIAPIPE, "asr": HAS_ASR,
-                    "driver": md is not None, "llm": bool(QWEN_API_KEY)
-                }
-            })
+            async with _face_driver_lock:
+                md = await loop.run_in_executor(_executor, _load_face_driver)
+        state.model_device = md
+        await _send(websocket, {"type": "status",
+            "modules": {
+                "vision": HAS_MEDIAPIPE, "asr": _asr_status_payload()["available"],
+                "browser_vision": {"available": (ROOT / 'models' / 'face_landmarker.task').exists(), "enabled": False, "processing": "local_browser"},
+                "driver": md is not None,
+                "llm": bool(DEEPSEEK_API_KEY or QWEN_API_KEY),
+            },
+            "driver_model": _driver_runtime_payload(md),
+        })
 
-    asyncio.create_task(preload_driver())
+    preload_task=asyncio.create_task(preload_driver())
+    pending_tasks=set()
+    def spawn_session_task(coroutine):
+        if len(pending_tasks)>=4:
+            coroutine.close()
+            return
+        task=asyncio.create_task(coroutine)
+        pending_tasks.add(task)
+        task.add_done_callback(pending_tasks.discard)
 
     # 驱动参数推送任务（30fps）
     drive_task = asyncio.create_task(_drive_loop(websocket, state, loop))
@@ -921,44 +1705,105 @@ async def ws_main(websocket: WebSocket):
     try:
         while True:
             raw = await websocket.receive_text()
+            if len(raw)>3*1024*1024:
+                await websocket.close(code=1009)
+                break
             try:
                 msg = json.loads(raw)
             except Exception:
                 continue
 
+            if not isinstance(msg, dict):
+                continue
             msg_type = msg.get("type", "")
+            if not isinstance(msg_type, str):
+                continue
+            if msg_type in {'audio','text_input','frame','vision_control','vision_features'}:
+                if getattr(state,'auth_token',None) and _verify_auth_token(state.auth_token)!=state.user_id:
+                    await _send(websocket,{'type':'error','code':'unauthorized','message':'登录状态已失效'})
+                    await websocket.close(code=1008)
+                    break
+                if _public_deployment() and state.user_id is None:
+                    await _send(websocket,{'type':'error','code':'unauthorized','message':'请先登录'})
+                    continue
+                limit = 240 if msg_type == 'vision_features' else 1800 if msg_type == 'frame' else 60
+                if not allow_request(('ws',websocket.client.host,state.user_id,msg_type), limit):
+                    await _send(websocket,{'type':'error','code':'rate_limited','message':'请求过于频繁'})
+                    continue
+
+            if msg_type in {'vision_control', 'vision_features'}:
+                try:
+                    if len(raw.encode('utf-8')) > 4096:
+                        raise ValueError('payload_too_large')
+                    status = (state.camera_observation.control(msg) if msg_type == 'vision_control'
+                              else state.camera_observation.update(msg))
+                    await _send(websocket, {'type': 'vision_status', 'status': status,
+                        'stream_id': msg.get('stream_id'), 'seq': state.camera_observation.seq,
+                        'observation': state.camera_observation.summary()})
+                except ValueError as error:
+                    await _send(websocket, {'type': 'vision_status', 'status': '观察暂停', 'code': str(error),
+                        'stream_id': msg.get('stream_id') if isinstance(msg.get('stream_id'),str) else None})
+                continue
 
             if msg_type == "init":
                 # 前端登录后绑定 user_id 和 db_session_id
                 token = msg.get("token", "")
                 db_sid = msg.get("session_id", "")
                 user_id = _verify_auth_token(token)
-                if user_id:
-                    state.user_id = user_id
-                    state.db_session_id = db_sid if db_sid else None
-                    print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
+                if not user_id:
+                    await _send(websocket, {
+                        "type": "error",
+                        "code": "unauthorized",
+                        "message": "登录状态已失效",
+                    })
+                    continue
+                if db_sid and not _session_belongs_to_user(db_sid, user_id):
+                    await _send(websocket, {
+                        "type": "error",
+                        "code": "session_forbidden",
+                        "message": "无权绑定该会话",
+                    })
+                    continue
+                # 换绑会话前取消旧会话任务，避免迟到回复写入新会话。
+                for task in list(pending_tasks): task.cancel()
+                await asyncio.gather(*pending_tasks,return_exceptions=True)
+                pending_tasks.clear()
+                state.feature_buffer.clear()
+                state.camera_observation.clear()
+                state.user_id = user_id
+                state.auth_token = token
+                state.db_session_id = db_sid if db_sid else None
+                state.agent_messages = (
+                    _db_load_message_context(db_sid) if db_sid else []
+                )
+                state.conversation_summary = ''
+                state.memory_consent = _memory_enabled_for_user(user_id)
+                print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
+                await _send(websocket, {
+                    "type": "session_bound",
+                    "session_id": state.db_session_id,
+                })
                 continue
 
             elif msg_type == "frame":
                 # 解码图像帧 → 提取特征 → 缓冲
-                asyncio.create_task(_handle_frame(msg, state, websocket, loop))
+                spawn_session_task(_handle_frame(msg, state, websocket, loop))
 
             elif msg_type == "audio":
                 # 解码音频 → ASR → 触发LLM
-                asyncio.create_task(_handle_audio(msg, state, websocket, loop))
+                spawn_session_task(_handle_audio(msg, state, websocket, loop))
 
             elif msg_type == "text_input":
                 # 手动文字输入（ASR不可用时的降级）
                 text = msg.get("text", "").strip()
                 if text:
-                    asyncio.create_task(_trigger_llm(text, state, websocket))
+                    spawn_session_task(_trigger_llm(text, state, websocket))
 
             elif msg_type == "control":
                 action = msg.get("action", "")
                 if action == "reset":
                     state.feature_buffer.clear()
                     state.asr_text_buffer = ""
-                    _session_histories.pop(session_id, None)
                     await _send(websocket, {"type": "reset_ack"})
 
     except WebSocketDisconnect:
@@ -967,7 +1812,13 @@ async def ws_main(websocket: WebSocket):
         print(f"[WS] 异常: {e}")
         traceback.print_exc()
     finally:
+        preload_task.cancel()
+        state.camera_observation.clear()
+        for task in list(pending_tasks): task.cancel()
+        await asyncio.gather(preload_task,*pending_tasks,return_exceptions=True)
         drive_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await drive_task
         print(f"[WS] 会话结束: {session_id}")
 
 
@@ -1031,19 +1882,31 @@ async def _handle_frame(msg: dict, state: SessionState, ws: WebSocket, loop):
 
 async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
     """处理音频片段：保存临时文件→ASR→触发LLM"""
+    if state.asr_running or state.llm_running:
+        await _send(ws, {"type": "asr_error", "code": "busy", "message": "正在处理上一句话，请稍后再录音"})
+        return
+    state.asr_running = True
     try:
         audio_b64 = msg.get("data", "")
-        if not audio_b64:
-            return
-        audio_bytes = base64.b64decode(audio_b64)
+        if not isinstance(audio_b64, str) or not audio_b64 or len(audio_b64) > 2_800_000:
+            raise ValueError("音频为空或超过 2MB 限制")
+        audio_bytes = base64.b64decode(audio_b64, validate=True)
         suffix = msg.get("format", "webm")
+        if suffix not in {"wav", "webm", "ogg", "mp4"}:
+            raise ValueError("不支持的音频格式")
+        if len(audio_bytes) > 2 * 1024 * 1024:
+            raise ValueError("音频超过 2MB 限制")
+        if not _asr_status_payload()["available"]:
+            await _send(ws, {"type": "asr_error", "code": "unavailable", "message": "服务端语音识别不可用，请使用浏览器语音或文字输入"})
+            return
+        await _send(ws, {"type": "asr_processing", "message": "正在识别录音，首次使用需要加载模型…"})
 
         with tempfile.NamedTemporaryFile(suffix=f".{suffix}", delete=False) as f:
             f.write(audio_bytes)
             tmp_path = f.name
 
         try:
-            text = await loop.run_in_executor(_executor, _run_asr, tmp_path)
+            text, provider, fallback_reason = await loop.run_in_executor(_executor, _recognize_audio, tmp_path)
         finally:
             try:
                 os.unlink(tmp_path)
@@ -1051,18 +1914,19 @@ async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
                 pass
 
         if text:
-            await _send(ws, {"type": "asr_result", "text": text, "is_final": True})
-            state.asr_text_buffer += text
-            # 触发LLM（节流：距上次触发 > 1s）
-            now = time.time()
-            if not state.llm_running and (now - state.last_asr_trigger) > 1.0:
-                state.last_asr_trigger = now
-                full_text = state.asr_text_buffer.strip()
-                state.asr_text_buffer = ""
-                asyncio.create_task(_trigger_llm(full_text, state, ws))
+            await _send(ws, {"type": "asr_result", "text": text, "is_final": True,
+                             "provider": provider, "fallback_reason": fallback_reason})
+            await _trigger_llm(text, state, ws)
+        else:
+            await _send(ws, {"type": "asr_error", "code": "empty_result", "message": "未识别到文字或模型加载失败，请重试或使用文字输入"})
 
+    except cloud_asr.CloudAsrError:
+        await _send(ws, {"type": "asr_error", "code": "cloud_failed", "message": "云端识别失败，请检查ASR密钥、地域与模型权限，或切换本地识别"})
     except Exception as e:
-        print(f"[Audio] 处理失败: {e}")
+        print(f"[Audio] 处理失败: {type(e).__name__}")
+        await _send(ws, {"type": "asr_error", "code": "invalid_audio", "message": "录音处理失败，请检查格式与大小后重试"})
+    finally:
+        state.asr_running = False
 
 
 _MOTION_PATTERN = re.compile(r'\[MOTION:(FlickUp|Tap|Flick3|Idle)\]', re.IGNORECASE)
@@ -1078,36 +1942,56 @@ def _parse_motion_and_clean(reply: str):
 
 
 async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
-    """调用Qwen API生成回复，解析动作标签，并发送到前端"""
+    """通过数字心屿智能体工作流生成回复并同步数字人状态。"""
     if not text or state.llm_running:
         return
     state.llm_running = True
     try:
-        # 先发"思考中"状态
         await _send(ws, {"type": "llm_thinking", "text": "小安正在思考..."})
+        from services.agent import ChatMessage
 
-        # 调用Qwen API（含RAG + 危机检测）
-        reply = await _qwen_reply(text, state.session_id)
+        trace_id = str(uuid.uuid4())
+        session_id = state.db_session_id or state.session_id
+        history = [ChatMessage(**message) for message in state.agent_messages]
 
-        # 降级到规则
-        if not reply:
-            emo = _local_analyze(text)
-            fallback_map = {
-                'Anxiety': ('我听到你了，这种感受很正常。能和我多说说吗？', 'Flick3'),
-                'Sad':     ('谢谢你愿意告诉我这些。我在这里陪着你。', 'FlickUp'),
-                'Happy':   ('听到你这么说我也很开心！', 'Tap'),
-                'Fear':    ('我非常担心你。请立即拨打心理援助热线 400-161-9995。', 'FlickUp'),
-            }
-            fb = fallback_map.get(emo['emotion'],
-                                  ('谢谢你的分享，我在认真倾听。你现在最想聊的是什么？', 'Idle'))
-            reply_text, motion_name = fb[0], fb[1]
-            emo_result = emo
-        else:
-            # 解析动作标签
-            reply_text, motion_name = _parse_motion_and_clean(reply)
-            if not motion_name:
-                motion_name = 'Idle'
-            emo_result = _local_analyze(text)
+        async def send_agent_event(event):
+            await _send(ws, {
+                "type": "agent_event",
+                "event": event.model_dump(mode="json"),
+            })
+
+        result = await _get_agent_workflow().run(
+            user_text=text,
+            trace_id=trace_id,
+            session_id=session_id,
+            messages=history,
+            conversation_summary=state.conversation_summary,
+            visual_observation=state.camera_observation.summary(),
+            user_id=state.user_id,
+            memory_consent=state.memory_consent,
+            event_sink=send_agent_event,
+        )
+        result["trace_id"] = trace_id
+        result["session_id"] = session_id
+        state.agent_messages = [
+            message.model_dump() for message in result.get("messages", [])
+        ]
+        state.conversation_summary = result.get('conversation_summary', '')
+        if state.user_id is not None:
+            _db_save_agent_run(result, state.user_id, _agent_provider_name)
+
+        reply_text = result["final_response"]
+        safety = result["safety"]
+        avatar = result["avatar_command"]
+        emotion = result["emotion_context"]
+        emo_result = {
+            "emotion": emotion.emotion,
+            "valence": emotion.valence,
+            "arousal": emotion.arousal,
+            "risk_level": safety.risk_level.value,
+            "emotion_label": emotion.label,
+        }
+        motion_name = avatar.motion
 
         # 更新会话情感状态（用于表情叠加）
         state.current_emotion = emo_result["emotion"]
@@ -1122,7 +2006,26 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         if motion_name and motion_name != 'Idle':
             state.pending_motion = motion_name
 
-        # 发送回复（含动作触发）
+        await _send(ws, {
+            "type": "agent_trace",
+            "trace_id": trace_id,
+            "session_id": session_id,
+            "provider": _agent_provider_name,
+            "knowledge_provider": _agent_knowledge_provider_name,
+            "safety": safety.model_dump(mode="json"),
+            "emotion": emotion.model_dump(mode="json"),
+            "knowledge": [
+                item.model_dump(mode="json") for item in result["retrieved_knowledge"]
+            ],
+            "memories": [
+                item.model_dump(mode="json") for item in result["retrieved_memories"]
+            ],
+            "tool_calls": [item.model_dump(mode="json") for item in result["tool_calls"]],
+            "avatar": avatar.model_dump(mode="json"),
+            "execution_path": result["execution_path"],
+            "node_timings_ms": result["node_timings_ms"],
+        })
+
         msg = {
             "type": "llm_reply",
             "text": reply_text,
@@ -1132,11 +2035,14 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             "risk_level": emo_result["risk_level"],
             "emotion_label": emo_result["emotion_label"],
         }
+        msg["activities"] = [card.model_dump() for card in result.get("activities", [])]
+        msg["sources"] = result.get("web_sources", [])
+        from services.agent.references import knowledge_references
+        msg['knowledge_sources'] = knowledge_references(result.get('retrieved_knowledge', []))
         if motion_name:
             msg["motion"] = motion_name
         await _send(ws, msg)
 
-        # 消息持久化：保存到数据库
         if state.db_session_id:
             _db_save_message(state.db_session_id, "user", text)
             _db_save_message(state.db_session_id, "assistant", reply_text, emo_result["emotion_label"])
@@ -1146,7 +2052,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
                 asyncio.create_task(_auto_generate_title(state.db_session_id, ws))
 
     except Exception as e:
-        print(f"[LLM] 失败: {e}")
+        print(f"[Agent] 失败: {e}")
         await _send(ws, {"type": "llm_reply", "text": "抱歉，我暂时无法回应，请稍后再试。",
                          "emotion": "Neutral", "valence": 0, "arousal": 0,
                          "risk_level": "low", "emotion_label": "平静"})
@@ -1202,19 +2108,7 @@ async def _drive_loop(ws: WebSocket, state: SessionState, loop):
             params = await _compute_live2d_params(state, loop)
             await _send(ws, {"type": "live2d_params", "params": params})
 
-            # 同步广播给 /ws/drive 的客户端（integrated.html 驱动通道）
-            if _drive_clients:
-                drive_msg = {"type": "params", "data": params}
-                if state.pending_motion:
-                    drive_msg["motion"] = state.pending_motion
-                    state.pending_motion = None
-                dead = set()
-                for dc in list(_drive_clients):
-                    try:
-                        await dc.send_json(drive_msg)
-                    except Exception:
-                        dead.add(dc)
-                _drive_clients.difference_update(dead)
+            # 不再向独立 /ws/drive 广播，防止不同账号的驱动互相串扰。
 
             # 额外推送视觉监控数据（供 vision_demo.html 展示）
             if state.feature_buffer:
@@ -1253,15 +2147,54 @@ async def _drive_loop(ws: WebSocket, state: SessionState, loop):
 
 async def _compute_live2d_params(state: SessionState, loop) -> Dict[str, float]:
     """计算当前帧的Live2D参数"""
-    if state.model_device is None or len(state.feature_buffer) < state.seq_len:
-        # 模型未就绪时：使用简单规则映射
-        return _features_to_params_simple(state)
+    base_params = _features_to_params_simple(state)
+    if state.model_device is None or not HAS_EMOTION_MAP:
+        return base_params
 
-    seq = np.array(state.feature_buffer[-state.seq_len:], dtype=np.float32)
-    params = await loop.run_in_executor(
-        _executor, _infer_live2d_params, state.model_device, seq
+    signature = (
+        state.current_emotion,
+        round(state.current_valence, 3),
+        round(state.current_arousal, 3),
+        round(state.emotion_intensity, 3),
     )
-    return params
+    if signature != state.model_emotion_signature:
+        emotion_25 = _build_emotion_25d(
+            state.current_emotion,
+            state.current_valence,
+            state.current_arousal,
+        )
+        sequence = np.repeat(emotion_25[None, :], state.seq_len, axis=0)
+        predicted = await loop.run_in_executor(
+            _executor,
+            _infer_live2d_params,
+            state.model_device,
+            sequence,
+            state.emotion_intensity,
+        )
+        if predicted is not None:
+            state.model_emotion_params = predicted
+            state.model_emotion_signature = signature
+        else:
+            # 不可恢复的推理异常只尝试一次，当前会话改用规则驱动，避免 30fps 刷屏。
+            state.model_device = None
+            state.model_emotion_params = None
+
+    # 正式模型负责倾听表情；摄像头跟踪、口型和呼吸仍保留实时规则驱动。
+    blend_keys = {
+        'PARAM_BROW_L_Y', 'PARAM_BROW_R_Y',
+        'PARAM_BROW_L_ANGLE', 'PARAM_BROW_R_ANGLE',
+        'PARAM_EYE_BALL_FORM', 'PARAM_MOUTH_FORM', 'PARAM_TERE',
+    }
+    if state.model_emotion_params:
+        for key in blend_keys:
+            if key in base_params and key in state.model_emotion_params:
+                alpha = 0.55
+                base_params[key] = round(
+                    base_params[key] * (1 - alpha)
+                    + state.model_emotion_params[key] * alpha,
+                    3,
+                )
+    return base_params
 
 
 def _build_emotion_25d(emotion: str, valence: float, arousal: float) -> np.ndarray:
@@ -1369,15 +2302,18 @@ def _features_to_params_simple(state: SessionState) -> Dict[str, float]:
 # 视频文件上传处理
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/upload_video")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(request: Request,file: UploadFile = File(...)):
     """上传MP4文件，返回task_id，通过WS推送处理进度"""
     suffix = Path(file.filename).suffix.lower() if file.filename else ".mp4"
+    if suffix not in {'.mp4','.webm','.mov'}:
+        return JSONResponse({'error':'仅支持MP4、WebM或MOV视频'},status_code=400)
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         content = await file.read()
         f.write(content)
         tmp_path = f.name
 
     task_id = str(uuid.uuid4())
+    _video_owners[task_id]=_get_user_id_from_request(request)
     # 后台处理任务
     asyncio.create_task(_process_video_file(tmp_path, task_id))
     return JSONResponse({"task_id": task_id, "status": "processing",
@@ -1386,6 +2322,7 @@ async def upload_video(file: UploadFile = File(...)):
 
 # 视频任务状态存储
 _video_tasks: Dict[str, Dict] = {}
+_video_owners: Dict[str, Optional[int]] = {}
 
 async def _process_video_file(video_path: str, task_id: str):
     """后台处理视频文件"""
@@ -1447,6 +2384,8 @@ async def _process_video_file(video_path: str, task_id: str):
             os.unlink(video_path)
         except Exception:
             pass
+        if 'audio_path' in locals():
+            with suppress(OSError): os.unlink(audio_path)
 
 
 def _extract_audio_from_video(video_path: str, audio_path: str) -> bool:
@@ -1465,7 +2404,9 @@ def _extract_audio_from_video(video_path: str, audio_path: str) -> bool:
 
 
 @app.get("/api/video_task/{task_id}")
-async def get_video_task(task_id: str):
+async def get_video_task(task_id: str,request: Request):
+    if _public_deployment() and (_get_user_id_from_request(request) is None or _video_owners.get(task_id)!=_get_user_id_from_request(request)):
+        return JSONResponse({'error':'无权访问该视频任务'},status_code=403)
     result = _video_tasks.get(task_id, {"status": "not_found"})
     return JSONResponse(result)
 
@@ -1474,90 +2415,237 @@ async def get_video_task(task_id: str):
 # RAG 知识库管理 API
 # ══════════════════════════════════════════════════════════════
 
+KNOWLEDGE_CORPUS_PATH = ROOT / "data" / "knowledge" / "psychology.json"
+RAG_ADMIN_TOKEN = os.environ.get("RAG_ADMIN_TOKEN", "").strip()
+_rag_search_retriever = None
+_rag_search_provider = "uninitialized"
+
+
+def _load_bm25_knowledge():
+    from services.agent import BM25KnowledgeRetriever
+
+    return BM25KnowledgeRetriever(KNOWLEDGE_CORPUS_PATH)
+
+
+def _get_rag_search_retriever():
+    global _rag_search_provider, _rag_search_retriever
+    if _rag_search_retriever is None:
+        from services.agent import create_knowledge_retriever
+
+        _rag_search_retriever, _rag_search_provider = create_knowledge_retriever(
+            KNOWLEDGE_CORPUS_PATH,
+            embedding_model_path=(
+                Path(RAG_EMBEDDING_MODEL_PATH).expanduser()
+                if RAG_EMBEDDING_MODEL_PATH
+                else None
+            ),
+        )
+    return _rag_search_retriever, _rag_search_provider
+
+
+def _invalidate_rag_caches() -> None:
+    global _agent_workflow, _rag_search_provider, _rag_search_retriever
+    _agent_workflow = None
+    _rag_search_retriever = None
+    _rag_search_provider = "uninitialized"
+
+
+def _knowledge_corpus_label() -> str:
+    """返回不暴露项目外绝对路径的语料标识。"""
+    try:
+        return str(KNOWLEDGE_CORPUS_PATH.relative_to(ROOT))
+    except ValueError:
+        return KNOWLEDGE_CORPUS_PATH.name
+
+
+def _verify_rag_admin(request: Request) -> JSONResponse | None:
+    if not RAG_ADMIN_TOKEN:
+        return JSONResponse(
+            {"success": False, "message": "服务端未启用知识库写入"},
+            status_code=503,
+        )
+    supplied = request.headers.get("X-RAG-Admin-Token", "")
+    if not supplied or not hmac.compare_digest(supplied, RAG_ADMIN_TOKEN):
+        return JSONResponse(
+            {"success": False, "message": "管理员凭证无效"},
+            status_code=403,
+        )
+    return None
+
 @app.get("/api/rag/stats")
 async def rag_stats():
     """获取知识库统计信息"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"status": "uninitialized", "count": 0,
-                             "db_path": "", "embedding_model": "TF-IDF本地"})
-    stats = _rag_engine.get_stats()
-    stats["embedding_model"] = "TF-IDF本地（离线）"
-    return JSONResponse(stats)
+    try:
+        retriever = _load_bm25_knowledge()
+        _, search_provider = _get_rag_search_retriever()
+        return JSONResponse({
+            "status": "ready",
+            "count": retriever.document_count,
+            "db_path": _knowledge_corpus_label(),
+            "embedding_model": search_provider,
+            "mutable": bool(RAG_ADMIN_TOKEN),
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse({
+            "status": "invalid",
+            "count": 0,
+            "db_path": _knowledge_corpus_label(),
+            "embedding_model": "BM25 中文二元分词（离线）",
+            "mutable": bool(RAG_ADMIN_TOKEN),
+            "error": type(exc).__name__,
+        }, status_code=503)
 
 
 @app.get("/api/rag/list")
 async def rag_list(limit: int = 50):
     """列出知识库所有文档"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"documents": [], "total": 0})
     try:
-        coll = _rag_engine._collection
-        if coll is None:
-            return JSONResponse({"documents": [], "total": 0})
-        total = coll.count()
-        result = coll.get(limit=limit, include=["documents", "metadatas"])
-        docs = []
-        for i, doc_id in enumerate(result.get("ids", [])):
-            docs.append({
-                "id": doc_id,
-                "content": result["documents"][i] if result.get("documents") else "",
-                "metadata": result["metadatas"][i] if result.get("metadatas") else {},
-            })
-        return JSONResponse({"documents": docs, "total": total})
-    except Exception as e:
-        return JSONResponse({"documents": [], "total": 0, "error": str(e)})
+        retriever = _load_bm25_knowledge()
+        documents = [
+            {
+                "id": item.document_id,
+                "content": item.content,
+                "metadata": {
+                    "category": "curated",
+                    "source": item.source,
+                    "source_url": item.source_url,
+                },
+            }
+            for item in retriever.list_documents(limit)
+        ]
+        return JSONResponse({
+            "documents": documents,
+            "total": retriever.document_count,
+            "mutable": bool(RAG_ADMIN_TOKEN),
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"documents": [], "total": 0, "error": type(exc).__name__},
+            status_code=503,
+        )
 
 
 @app.post("/api/rag/add")
 async def rag_add(request: Request):
     """新增知识条目"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"success": False, "message": "RAG未初始化"}, status_code=503)
+    denied = _verify_rag_admin(request)
+    if denied is not None:
+        return denied
     try:
+        from services.agent import KnowledgeCorpusStore
+
         body = await request.json()
-        content = body.get("content", "").strip()
+        content = body.get("content", "")
         category = body.get("category", "custom")
         source = body.get("source", "手动录入")
-        if not content:
-            return JSONResponse({"success": False, "message": "内容不能为空"}, status_code=400)
-        _rag_engine.add_documents(
-            documents=[content],
-            metadatas=[{"category": category, "source": source}]
+        source_url = body.get("source_url")
+        keywords = body.get("keywords", [])
+        if (
+            not isinstance(content, str)
+            or not isinstance(category, str)
+            or not isinstance(source, str)
+            or (source_url is not None and not isinstance(source_url, str))
+            or not isinstance(keywords, list)
+            or not all(isinstance(item, str) for item in keywords)
+        ):
+            return JSONResponse(
+                {"success": False, "message": "知识条目字段类型不正确"},
+                status_code=400,
+            )
+        store = KnowledgeCorpusStore(KNOWLEDGE_CORPUS_PATH)
+        document_id = store.add(
+            content=content,
+            category=category,
+            source=source,
+            source_url=source_url,
+            keywords=keywords,
         )
-        stats = _rag_engine.get_stats()
-        return JSONResponse({"success": True, "message": "添加成功",
-                             "total": stats.get("count", 0)})
-    except Exception as e:
-        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+        _invalidate_rag_caches()
+        total = _load_bm25_knowledge().document_count
+        return JSONResponse({
+            "success": True,
+            "message": "添加成功",
+            "id": document_id,
+            "total": total,
+        })
+    except ValueError as exc:
+        return JSONResponse(
+            {"success": False, "message": str(exc)},
+            status_code=400,
+        )
+    except OSError as exc:
+        return JSONResponse(
+            {"success": False, "message": type(exc).__name__},
+            status_code=500,
+        )
 
 
 @app.delete("/api/rag/delete/{doc_id}")
-async def rag_delete(doc_id: str):
+async def rag_delete(doc_id: str, request: Request):
     """删除知识条目"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"success": False, "message": "RAG未初始化"}, status_code=503)
+    denied = _verify_rag_admin(request)
+    if denied is not None:
+        return denied
     try:
-        _rag_engine._collection.delete(ids=[doc_id])
+        from services.agent import KnowledgeCorpusStore
+
+        deleted = KnowledgeCorpusStore(KNOWLEDGE_CORPUS_PATH).delete_custom(doc_id)
+        if not deleted:
+            return JSONResponse(
+                {"success": False, "message": "知识条目不存在"},
+                status_code=404,
+            )
+        _invalidate_rag_caches()
         return JSONResponse({"success": True, "message": "删除成功"})
-    except Exception as e:
-        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+    except PermissionError as exc:
+        return JSONResponse(
+            {"success": False, "message": str(exc)},
+            status_code=403,
+        )
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"success": False, "message": type(exc).__name__},
+            status_code=500,
+        )
 
 
 @app.post("/api/rag/search")
 async def rag_search(request: Request):
     """检索测试"""
-    if not HAS_RAG or _rag_engine is None:
-        return JSONResponse({"results": [], "message": "RAG未初始化"})
     try:
         body = await request.json()
         query = body.get("query", "").strip()
-        top_k = int(body.get("top_k", 3))
+        top_k = min(max(int(body.get("top_k", 3)), 1), 20)
         if not query:
-            return JSONResponse({"results": [], "message": "查询不能为空"})
-        results = _rag_engine.retrieve(query, top_k=top_k)
-        return JSONResponse({"results": results, "query": query})
-    except Exception as e:
-        return JSONResponse({"results": [], "message": str(e)})
+            return JSONResponse(
+                {"results": [], "message": "查询不能为空"},
+                status_code=400,
+            )
+        retriever, provider = _get_rag_search_retriever()
+        matches = await retriever.retrieve(query, top_k=top_k)
+        results = [
+            {
+                "id": item.document_id,
+                "document": item.content,
+                "metadata": {
+                    "source": item.source,
+                    "source_url": item.source_url,
+                    "category": "curated",
+                },
+                "similarity": item.score,
+            }
+            for item in matches
+        ]
+        return JSONResponse({
+            "results": results,
+            "query": query,
+            "provider": provider,
+        })
+    except (OSError, ValueError) as exc:
+        return JSONResponse(
+            {"results": [], "message": type(exc).__name__},
+            status_code=503,
+        )
 
 
 @app.get("/rag")
