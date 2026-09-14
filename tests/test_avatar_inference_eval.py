@@ -5,6 +5,9 @@ from pathlib import Path
 
 import numpy as np
 
+if importlib.util.find_spec("torch") is None:
+    raise unittest.SkipTest("此评测工具需要 PyTorch，由 CPU 模型测试环境覆盖")
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = (
