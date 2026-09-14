@@ -24,6 +24,12 @@ class FilterTests(unittest.IsolatedAsyncioTestCase):
         await filtered.retrieve('我睡不着')
         inner.retrieve.assert_awaited_once_with('我睡不着',3)
 
+    def test_album_and_cooking_keep_emotional_mixed_queries(self):
+        for query in ['介绍一下周杰伦的新专辑','早餐煎鸡蛋要用多大火']:
+            self.assertTrue(clearly_unrelated(query))
+        for query in ['听新专辑时我觉得很孤独','早餐煎鸡蛋总怕做不好，我很焦虑']:
+            self.assertFalse(clearly_unrelated(query))
+
     async def test_factory_filters_bm25_and_offline_fallback(self):
         root=Path(__file__).resolve().parents[1]
         for path in [root/'data/knowledge/psychology.json',Path('/missing/corpus.json')]:
