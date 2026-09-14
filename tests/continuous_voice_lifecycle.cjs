@@ -1,5 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('integrated.html','utf8');
+assert(!html.includes('id="continuous-voice-btn"'),'Continuous mode entry removed at user request');
 const begin=html.indexOf('let _speechRec=null,'),end=html.indexOf('function _encodeVoiceWav(',begin);
 const stop=html.indexOf('function stopVoiceInput('),stopEnd=html.indexOf('/* ═══════════ TTS',stop);
 let resolveMic,stopped=0,sent=0;

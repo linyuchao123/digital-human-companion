@@ -656,7 +656,6 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <!-- ══ 底部控制栏 ══ -->
 <div id="bottom-bar">
   <button class="ctrl-btn" id="mic-btn" onclick="toggleMic()" title="语音输入">🎤</button>
-  <button class="tb-chip" id="continuous-voice-btn" onclick="toggleContinuousVoice()" aria-pressed="false" title="主动开启后自动停顿发送；小安回复期间暂停录音">连续对话</button>
   <input type="text" id="text-input" placeholder="和小安说点什么..." aria-describedby="text-send-feedback"
     onkeydown="if(event.key==='Enter'){event.preventDefault();sendText()}"/>
   <button id="send-btn" onclick="sendText()" title="发送">➤</button>
@@ -1607,11 +1606,13 @@ function disableContinuousVoice(){
 }
 function toggleContinuousVoice(){
   if(_continuousVoice){disableContinuousVoice();return;}
+  const button=document.getElementById('continuous-voice-btn');
+  if(!button)return; // 当前界面已移除入口，不隐式启用持续采集。
   if(!chatWsReady){alert('请先连接数字人');return;}
   if(!confirm('连续对话会在停顿约1.2秒后发送录音至当前ASR服务；小安回复期间暂停录音。可随时关闭，后台或断线自动停止。是否开启？')) return;
   stopVoiceInput(false); // 切换模式先释放已有手动录音，避免覆盖旧 MediaStream。
   _continuousVoice=true;_continuousEpoch++;
-  const button=document.getElementById('continuous-voice-btn');button.classList.add('on');button.setAttribute('aria-pressed','true');
+  button.classList.add('on');button.setAttribute('aria-pressed','true');
   startVoiceInput();
 }
 function scheduleContinuousVoice(){
