@@ -15,6 +15,11 @@ def is_clock_query(text: str) -> bool:
         text,
     ))
 
+def clock_clause(text: str) -> str | None:
+    """Recognize an explicit time subrequest, not incidental time keywords."""
+    return next((part.strip() for part in re.split(r'[，,。；;！？?]|以及|并且|还有|顺便', text)
+                 if is_clock_query(part.strip())), None)
+
 def clock_answer(text: str, now: datetime | None = None) -> str:
     zone = next((zone for city, zone in (
         ("纽约", "America/New_York"), ("伦敦", "Europe/London"),

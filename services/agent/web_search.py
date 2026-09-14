@@ -113,6 +113,8 @@ async def tavily_search(query):
         return results
     except SearchUnavailable:
         raise
+    except httpx.TransportError:
+        raise
     except (httpx.HTTPError, ValueError, TypeError, AttributeError):
         raise SearchUnavailable('联网搜索暂时失败，请稍后重试；我不能确认实时信息。') from None
 

@@ -87,5 +87,6 @@ async def get_weather(text,messages=()):
     try:
         return await asyncio.wait_for(request(),timeout=12)
     except SearchUnavailable: raise
+    except httpx.TransportError: raise
     except (httpx.HTTPError,TimeoutError,ValueError,KeyError,TypeError,IndexError,AttributeError):
         raise SearchUnavailable('专用天气服务暂时不可用或数据不完整，我不能确认当前天气，请稍后重试。') from None
