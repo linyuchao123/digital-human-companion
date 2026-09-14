@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from urllib.parse import urlencode, urlparse, parse_qs
 
 import httpx
-from fastapi import Request
+from fastapi import Request, BackgroundTasks
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from apps.api.security import allow_request
@@ -37,6 +37,8 @@ def init_auth_tables(conn):
         CREATE TABLE IF NOT EXISTS oauth_states(state_hash TEXT PRIMARY KEY,provider TEXT,browser_hash TEXT,
             expires REAL,user_id INTEGER,auth_token TEXT,ticket_hash TEXT);
         CREATE TABLE IF NOT EXISTS email_codes(user_id INTEGER PRIMARY KEY,email TEXT,salt TEXT,digest TEXT,
+            expires REAL,attempts INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS password_reset_codes(user_id INTEGER PRIMARY KEY,email TEXT,salt TEXT,digest TEXT,
             expires REAL,attempts INTEGER DEFAULT 0);
     """)
 
@@ -73,10 +75,10 @@ def email_digest(user_id,email,salt,code):
     return hmac.new(os.environ['EMAIL_VERIFICATION_SECRET'].encode(),f'{user_id}:{email}:{salt}:{code}'.encode(),hashlib.sha256).hexdigest()
 
 
-def send_verification_email(address,code):
+def send_verification_email(address,code,purpose='邮箱绑定'):
     message=EmailMessage();message['From']=os.environ['SMTP_FROM'];message['To']=address
-    message['Subject']='数字心屿 · 邮箱绑定验证码'
-    message.set_content(f'你的邮箱绑定验证码为：{code}\n10分钟内有效。如非本人操作，请忽略此邮件。\n请勿向任何人提供验证码。')
+    message['Subject']=f'数字心屿 · {purpose}验证码'
+    message.set_content(f'你的{purpose}验证码为：{code}\n10分钟内有效。如非本人操作，请忽略此邮件。\n请勿向任何人提供验证码。')
     context=ssl.create_default_context()
     mode=os.getenv('SMTP_SECURITY','ssl')
     port=int(os.getenv('SMTP_PORT','465' if mode=='ssl' else '587'))
@@ -132,6 +134,13 @@ class SocialStart(BaseModel):
     bind: bool=False
     current_password: str=Field(default='',max_length=64)
 
+class PasswordResetRequest(BaseModel):
+    email: str=Field(min_length=3,max_length=254)
+
+class PasswordResetConfirm(PasswordResetRequest):
+    code: str=Field(pattern=r'^[0-9]{6}$')
+    new_password: str=Field(min_length=8,max_length=64)
+
 
 class TicketExchange(BaseModel):
     ticket: str=Field(min_length=20,max_length=128)
@@ -149,7 +158,64 @@ def install_external_auth(app,get_db,verify,hash_password,check_password):
 
     @app.get('/api/auth/options')
     async def options():
-        return {'wechat':bool(configuration('wechat')),'qq':bool(configuration('qq')),'email_binding':email_ready()}
+        return {'wechat':bool(configuration('wechat')),'qq':bool(configuration('qq')),'email_binding':email_ready(),
+                'password_recovery':email_ready()}
+
+    def reset_digest(user_id,address,salt,code):
+        return email_digest(user_id,address,'password-reset:'+salt,code)
+
+    def deliver_reset(user_id,address,salt,code):
+        try:
+            send_verification_email(address,code,'密码重置')
+        except Exception:
+            # 不记录邮件、验证码或异常正文；迟到失败不能删除新验证码。
+            with get_db() as conn:
+                conn.execute('DELETE FROM password_reset_codes WHERE user_id=? AND salt=?',(user_id,salt))
+                conn.commit()
+
+    @app.post('/api/auth/password/reset/send')
+    async def send_reset(payload: PasswordResetRequest,request: Request,background: BackgroundTasks):
+        if not email_ready():return error('邮件服务尚未配置，暂不能通过邮箱找回密码',503)
+        try:address=normalize_email(payload.email)
+        except ValueError:return error('邮箱格式不正确')
+        ip=request.client.host if request.client else 'unknown'
+        if not allow_request(('reset-ip',ip),5,900) or not allow_request(('reset-address',digest(address)),1,60):
+            return error('发送过于频繁，请稍后再试',429)
+        with get_db() as conn:
+            row=conn.execute("SELECT id FROM users WHERE email=? AND email_verified_at<>''",(address,)).fetchone()
+            if row:
+                code=f'{secrets.randbelow(1000000):06d}';salt=secrets.token_hex(16)
+                conn.execute('INSERT OR REPLACE INTO password_reset_codes VALUES(?,?,?,?,?,0)',
+                             (row['id'],address,salt,reset_digest(row['id'],address,salt,code),time.time()+600))
+                conn.commit()
+                background.add_task(deliver_reset,row['id'],address,salt,code)
+        return {'message':'如果该邮箱已绑定并验证，我们会发送重置验证码。请检查收件箱及垃圾邮件；60秒后可重试。'}
+
+    @app.post('/api/auth/password/reset/confirm')
+    async def confirm_reset(payload: PasswordResetConfirm,request: Request):
+        if not email_ready():return error('邮件服务尚未配置',503)
+        try:address=normalize_email(payload.email)
+        except ValueError:return error('邮箱格式不正确')
+        if len(payload.new_password.encode())>72:return error('密码UTF-8长度不超过72字节')
+        ip=request.client.host if request.client else 'unknown'
+        if not allow_request(('reset-confirm',ip),20,900):return error('验证过于频繁，请稍后再试',429)
+        with get_db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            row=conn.execute("SELECT r.* FROM password_reset_codes r JOIN users u ON u.id=r.user_id "
+                             "WHERE r.email=? AND u.email=r.email AND u.email_verified_at<>''",(address,)).fetchone()
+            if not row or row['expires']<=time.time() or row['attempts']>=5:
+                return error('验证码不正确或已失效，请重新发送')
+            conn.execute('UPDATE password_reset_codes SET attempts=attempts+1 WHERE user_id=?',(row['user_id'],))
+            if not hmac.compare_digest(row['digest'],reset_digest(row['user_id'],address,row['salt'],payload.code)):
+                conn.commit();return error('验证码不正确或已失效，请重新发送')
+            conn.execute('UPDATE users SET password_hash=?,password_set=1 WHERE id=?',
+                         (hash_password(payload.new_password),row['user_id']))
+            conn.execute('DELETE FROM auth_tokens WHERE user_id=?',(row['user_id'],))
+            conn.execute('DELETE FROM oauth_states WHERE user_id=?',(row['user_id'],))
+            conn.execute('DELETE FROM email_codes WHERE user_id=?',(row['user_id'],))
+            conn.execute('DELETE FROM password_reset_codes WHERE user_id=?',(row['user_id'],))
+            conn.commit()
+        return {'message':'密码已重置，旧登录已失效。请使用新密码登录。'}
 
     @app.post('/api/auth/{provider}/start')
     async def start(provider: str,payload: SocialStart,request: Request):

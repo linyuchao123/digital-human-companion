@@ -982,6 +982,7 @@ async def update_password(payload: PasswordUpdate,request: Request):
         if not fresh_social and not _check_password(payload.current_password,row['password_hash']):
             return JSONResponse({"error":"当前密码不正确"},status_code=403)
         conn.execute("UPDATE users SET password_hash=?,password_set=1 WHERE id=?",(_hash_password(payload.new_password),user_id))
+        conn.execute("DELETE FROM password_reset_codes WHERE user_id=?",(user_id,))
         conn.execute("DELETE FROM auth_tokens WHERE user_id=?",(user_id,))
         conn.commit()
     return JSONResponse({"ok":True,"reauthenticate":True})

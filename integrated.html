@@ -473,6 +473,17 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <button type="button" class="tb-chip" onclick="const p=document.getElementById('auth-password');p.type=p.type==='password'?'text':'password';this.textContent=p.type==='password'?'显示密码':'隐藏密码'">显示密码</button>
     <button id="auth-submit" onclick="doAuth()">进 入</button>
     <button id="auth-guest" onclick="continueAsGuest()">先体验，稍后登录</button>
+    <details id="password-recovery" style="margin-top:12px;font-size:13px;color:var(--text2)">
+      <summary style="cursor:pointer">忘记密码？</summary>
+      <p id="recovery-note">仅支持已绑定并验证的邮箱。未绑定邮箱请使用原密码或已绑定的第三方登录。</p>
+      <div class="auth-field"><label for="recovery-email">已验证邮箱</label><input id="recovery-email" type="email" maxlength="254" autocomplete="email" placeholder="你之前验证过的邮箱"/></div>
+      <button type="button" class="tb-chip" id="recovery-send" onclick="sendPasswordReset(this)">发送重置验证码</button>
+      <div class="auth-field"><label for="recovery-code">六位验证码</label><input id="recovery-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"/></div>
+      <div class="auth-field"><label for="recovery-password">新密码</label><input id="recovery-password" type="password" maxlength="64" autocomplete="new-password"/></div>
+      <div class="auth-field"><label for="recovery-confirm">确认新密码</label><input id="recovery-confirm" type="password" maxlength="64" autocomplete="new-password"/></div>
+      <button type="button" class="tb-chip" onclick="confirmPasswordReset(this)">重置密码</button>
+      <p id="recovery-status" role="status" aria-live="polite"></p>
+    </details>
     <div class="social-divider">其他登录方式</div>
     <div class="social-login"><button id="wechat-login" onclick="startSocialLogin('wechat',false,this)">微信登录</button><button id="qq-login" onclick="startSocialLogin('qq',false,this)">QQ 登录</button></div>
     <div id="auth-method-note">正在检查第三方登录配置…</div>
@@ -2431,12 +2442,43 @@ async function loadAuthMethods(){
   try{
     const response=await fetch('/api/auth/options');if(!response.ok) throw new Error();
     const options=await response.json();
+    document.getElementById('recovery-send').disabled=!options.password_recovery;
+    document.getElementById('recovery-note').textContent=options.password_recovery?'仅支持之前绑定并验证过的邮箱。验证码10分钟有效，请勿提供给他人。':'邮件服务尚未配置，暂不能找回密码；可以使用原密码或已绑定的第三方登录。';
     for(const [provider,label] of [['wechat','微信'],['qq','QQ']]){
       const button=document.getElementById(provider+'-login');button.textContent=label+'登录'+(options[provider]?'':' · 待配置');
       button.title=options[provider]?'跳转官方平台授权':'需配置平台应用凭证和回调域名';
     }
     document.getElementById('auth-method-note').textContent=options.wechat&&options.qq?'将跳转官方授权页面；我们不会获取你的微信或QQ密码。':'微信 / QQ需配置平台应用后启用，当前可继续使用账号密码登录。';
   }catch(error){document.getElementById('auth-method-note').textContent='暂时无法读取第三方登录状态';}
+}
+async function passwordRecoveryRequest(path,payload,button){
+  const status=document.getElementById('recovery-status');button.disabled=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+  try{
+    const response=await fetch('/api/auth/password/reset/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'操作暂时失败，请稍后重试');
+    status.textContent=data.message;
+    if(path==='confirm'){
+      for(const id of ['recovery-code','recovery-password','recovery-confirm','auth-password'])document.getElementById(id).value='';
+      document.getElementById('auth-username').value=payload.email;
+      switchAuthTab('login');
+    }
+  }catch(error){status.textContent=error.name==='AbortError'?'请求超时，请稍后重试。':error.message;}
+  finally{clearTimeout(timer);button.disabled=false;}
+}
+function sendPasswordReset(button){
+  const email=document.getElementById('recovery-email').value.trim();
+  if(!email){document.getElementById('recovery-status').textContent='请填写已验证邮箱';return;}
+  return passwordRecoveryRequest('send',{email},button);
+}
+function confirmPasswordReset(button){
+  const email=document.getElementById('recovery-email').value.trim(),code=document.getElementById('recovery-code').value.trim(),
+    new_password=document.getElementById('recovery-password').value;
+  if(!/^[0-9]{6}$/.test(code)||new_password.length<8||new_password!==document.getElementById('recovery-confirm').value){
+    document.getElementById('recovery-status').textContent='请填写六位验证码，密码至少8位且两次输入一致';return;
+  }
+  return passwordRecoveryRequest('confirm',{email,code,new_password},button);
 }
 async function startSocialLogin(provider,bind,button){
   const status=document.getElementById(bind?'profile-status':'auth-err');button.disabled=true;
