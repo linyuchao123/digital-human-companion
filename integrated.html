@@ -1609,6 +1609,7 @@ function toggleContinuousVoice(){
   if(_continuousVoice){disableContinuousVoice();return;}
   if(!chatWsReady){alert('请先连接数字人');return;}
   if(!confirm('连续对话会在停顿约1.2秒后发送录音至当前ASR服务；小安回复期间暂停录音。可随时关闭，后台或断线自动停止。是否开启？')) return;
+  stopVoiceInput(false); // 切换模式先释放已有手动录音，避免覆盖旧 MediaStream。
   _continuousVoice=true;_continuousEpoch++;
   const button=document.getElementById('continuous-voice-btn');button.classList.add('on');button.setAttribute('aria-pressed','true');
   startVoiceInput();
