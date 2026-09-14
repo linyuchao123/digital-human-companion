@@ -159,6 +159,8 @@ def _init_db():
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
         from apps.api.external_auth import init_auth_tables
         init_auth_tables(conn)
+        from services.agent.session_notes import init_session_notes
+        init_session_notes(conn)
         from apps.api.account_lifecycle import install_owner_guards
         install_owner_guards(conn)
         conn.commit()
@@ -198,7 +200,7 @@ def _verify_auth_token(token: str) -> Optional[int]:
     finally:
         conn.close()
 
-def _db_save_message(session_id: str, role: str, content: str, emotion_label: str = "", knowledge_sources=None):
+def _db_save_message(session_id: str, role: str, content: str, emotion_label: str = "", knowledge_sources=None, memory_revision=None):
     """持久化一条消息到数据库"""
     conn = None
     try:
@@ -207,8 +209,8 @@ def _db_save_message(session_id: str, role: str, content: str, emotion_label: st
         from services.agent.references import reference_snapshot
         references=reference_snapshot(knowledge_sources) if role=='assistant' else []
         conn.execute(
-            "INSERT INTO chat_messages(session_id,role,content,emotion_label,ts,knowledge_sources) VALUES(?,?,?,?,?,?)",
-            (session_id, role, content, emotion_label, now, json.dumps(references,ensure_ascii=False))
+            "INSERT INTO chat_messages(session_id,role,content,emotion_label,ts,knowledge_sources,memory_revision) VALUES(?,?,?,?,?,?,?)",
+            (session_id, role, content, emotion_label, now, json.dumps(references,ensure_ascii=False),memory_revision)
         )
         conn.execute("UPDATE chat_sessions SET updated_at=? WHERE id=?", (now, session_id))
         conn.commit()
@@ -1148,7 +1150,8 @@ async def get_memory_settings(request: Request):
         count = conn.execute(
             "SELECT COUNT(*) FROM user_memories WHERE user_id=?", (user_id,)
         ).fetchone()[0]
-        return JSONResponse({"enabled": bool(row["enabled"]) if row else False, "count": count})
+        summary_count=conn.execute("SELECT COUNT(*) FROM session_notes WHERE user_id=? AND notes NOT IN ('[]','')",(user_id,)).fetchone()[0]
+        return JSONResponse({"enabled": bool(row["enabled"]) if row else False, "count": count,"summary_count":summary_count})
     finally:
         conn.close()
 
@@ -1161,6 +1164,8 @@ async def update_memory_settings(payload: MemorySettingsRequest, request: Reques
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
     conn = _get_db()
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        previous=conn.execute('SELECT enabled FROM user_memory_settings WHERE user_id=?',(user_id,)).fetchone()
         conn.execute(
             """INSERT INTO user_memory_settings(user_id, enabled, updated_at)
                VALUES(?,?,?)
@@ -1168,6 +1173,9 @@ async def update_memory_settings(payload: MemorySettingsRequest, request: Reques
                updated_at=excluded.updated_at""",
             (user_id, int(payload.enabled), now),
         )
+        from services.agent.session_notes import reset_session_notes
+        if not previous or bool(previous['enabled'])!=payload.enabled:
+            reset_session_notes(conn,user_id)
         conn.commit()
         return JSONResponse({"enabled": payload.enabled})
     finally:
@@ -1199,6 +1207,8 @@ async def delete_memories(request: Request):
     conn = _get_db()
     try:
         cursor = conn.execute("DELETE FROM user_memories WHERE user_id=?", (user_id,))
+        from services.agent.session_notes import reset_session_notes
+        reset_session_notes(conn,user_id)
         conn.commit()
         return JSONResponse({"ok": True, "deleted": cursor.rowcount})
     finally:
@@ -1216,9 +1226,11 @@ async def delete_memory(memory_id: str, request: Request):
             "DELETE FROM user_memories WHERE id=? AND user_id=?",
             (memory_id, user_id),
         )
-        conn.commit()
         if cursor.rowcount == 0:
             return JSONResponse({"error": "记忆不存在"}, status_code=404)
+        from services.agent.session_notes import reset_session_notes
+        reset_session_notes(conn,user_id)
+        conn.commit()
         return JSONResponse({"ok": True, "deleted": 1})
     finally:
         conn.close()
@@ -1323,6 +1335,7 @@ async def delete_session(session_id: str, request: Request):
         ).fetchone()
         if not session:
             return JSONResponse({"error": "会话不存在"}, status_code=404)
+        conn.execute("DELETE FROM session_notes WHERE session_id=? AND user_id=?", (session_id,user_id))
         conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
         conn.execute("DELETE FROM chat_sessions WHERE id=?", (session_id,))
         conn.commit()
@@ -1998,6 +2011,17 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         from services.agent import ChatMessage
 
         session_id = state.db_session_id or state.session_id
+        notes_revision=None
+        if state.user_id is not None:
+            state.memory_consent=_memory_enabled_for_user(state.user_id)
+            if state.db_session_id:
+                from services.agent.session_notes import load_session_notes
+                conn=_get_db()
+                try:
+                    state.conversation_summary,notes_revision=load_session_notes(conn,session_id,state.user_id)
+                except Exception:
+                    state.conversation_summary='';notes_revision=None
+                finally:conn.close()
         history = [ChatMessage(**message) for message in state.agent_messages]
 
         async def send_agent_event(event):
@@ -2101,8 +2125,19 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
         await _send(ws, msg)
 
         if state.db_session_id:
-            _db_save_message(state.db_session_id, "user", text)
+            _db_save_message(state.db_session_id, "user", text,memory_revision=notes_revision)
             _db_save_message(state.db_session_id, "assistant", reply_text, emo_result["emotion_label"], msg['knowledge_sources'])
+            if state.user_id is not None:
+                from services.agent.session_notes import update_session_notes
+                conn=_get_db()
+                try:
+                    if result.get('intent')=='memory_forget':
+                        from services.agent.session_notes import reset_session_notes
+                        reset_session_notes(conn,state.user_id);conn.commit()
+                    else:update_session_notes(conn,state.db_session_id,state.user_id,notes_revision)
+                except Exception:
+                    print('[DB] 会话摘录更新未完成')
+                finally:conn.close()
             state.msg_count += 1
             # 第2条消息后触发标题生成（后台异步）
             if state.msg_count == 2:

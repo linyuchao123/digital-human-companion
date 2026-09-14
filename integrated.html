@@ -618,7 +618,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <div class="memory-setting">
     <div class="memory-setting-copy">
       <div class="memory-setting-title">允许小安使用长期记忆</div>
-      <div class="memory-setting-desc">授权仅对当前账号生效，高风险对话不会被记忆。</div>
+      <div class="memory-setting-desc">授权仅对当前账号生效，包括当前会话的非敏感偏好、目标摘录。关闭授权或清除记忆会同步清理摘录；不删除聊天历史。</div>
     </div>
     <label class="memory-switch" title="切换长期记忆授权">
       <input id="memory-consent" type="checkbox" onchange="updateMemoryConsent(this.checked)"/>
@@ -809,11 +809,11 @@ function toggleMemoryPanel(force){
   if(show) loadMemorySettings();
 }
 
-function renderMemories(memories){
+function renderMemories(memories,summaryCount=0){
   const list=document.getElementById('memory-list');
   const clear=document.getElementById('memory-clear');
-  document.getElementById('memory-count').textContent=`已保存 ${memories.length} 条`;
-  clear.disabled=memories.length===0;
+  document.getElementById('memory-count').textContent=`已保存 ${memories.length} 条记忆 · ${summaryCount} 份会话摘录`;
+  clear.disabled=memories.length===0&&summaryCount===0;
   list.replaceChildren();
   if(!memories.length){
     const empty=document.createElement('div');empty.className='memory-empty';
@@ -836,19 +836,21 @@ function renderMemories(memories){
 
 async function loadMemorySettings(){
   if(!_authToken) return;
+  const token=_authToken;
   const error=document.getElementById('memory-error');error.textContent='';
   try{
-    const headers={'X-Auth-Token':_authToken};
+    const headers={'X-Auth-Token':token};
     const [settingsRes,memoriesRes]=await Promise.all([
       fetch('/api/memory/settings',{headers}),fetch('/api/memories',{headers})
     ]);
     if(!settingsRes.ok||!memoriesRes.ok) throw new Error('无法读取记忆设置');
     const settings=await settingsRes.json();
     const memoryData=await memoriesRes.json();
+    if(token!==_authToken)return;
     document.getElementById('memory-consent').checked=Boolean(settings.enabled);
     document.getElementById('memory-btn').classList.toggle('on',Boolean(settings.enabled));
-    renderMemories(memoryData.memories||[]);
-  }catch(e){error.textContent=e.message||'加载失败，请稍后重试';}
+    renderMemories(memoryData.memories||[],settings.summary_count||0);
+  }catch(e){if(token===_authToken)error.textContent=e.message||'加载失败，请稍后重试';}
 }
 
 async function updateMemoryConsent(enabled){
@@ -863,12 +865,13 @@ async function updateMemoryConsent(enabled){
     if(chatWs&&chatWs.readyState===WebSocket.OPEN&&_currentDbSession){
       chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
     }
+    await loadMemorySettings();
   }catch(e){input.checked=!enabled;error.textContent=e.message||'设置保存失败';}
   finally{input.disabled=false;}
 }
 
 async function clearAllMemories(){
-  if(!confirm('确定清空当前账号的全部长期记忆？此操作无法撤销。')) return;
+  if(!confirm('确定清空当前账号的全部长期记忆和会话摘录？聊天历史不会删除，此操作无法撤销。')) return;
   const button=document.getElementById('memory-clear');
   const error=document.getElementById('memory-error');error.textContent='';button.disabled=true;
   try{

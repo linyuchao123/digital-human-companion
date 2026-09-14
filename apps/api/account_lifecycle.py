@@ -1,6 +1,6 @@
 """Current-account deletion only; shared knowledge and model assets are excluded."""
 OWNED_TABLES=('auth_tokens','user_memory_settings','user_memories','agent_runs','activity_tasks',
-              'social_accounts','oauth_states','email_codes','password_reset_codes','chat_sessions')
+              'social_accounts','oauth_states','email_codes','password_reset_codes','session_notes','chat_sessions')
 
 
 def install_owner_guards(conn):

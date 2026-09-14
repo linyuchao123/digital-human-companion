@@ -34,7 +34,7 @@ class MemoryApiTests(unittest.TestCase):
         response = self.client.get("/api/memory/settings", headers=self.headers)
 
         self.assertEqual(unauthorized.status_code, 401)
-        self.assertEqual(response.json(), {"enabled": False, "count": 0})
+        self.assertEqual(response.json(), {"enabled": False, "count": 0,"summary_count":0})
 
     def test_user_can_enable_memory_explicitly(self):
         response = self.client.put(

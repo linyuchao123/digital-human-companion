@@ -1,0 +1,11 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync('integrated.html','utf8');
+const code=html.slice(html.indexOf('function renderMemories('),html.indexOf('async function loadMemorySettings('));
+const elements=new Map();
+const el=id=>{if(!elements.has(id))elements.set(id,{textContent:'',disabled:false,replaceChildren(){},appendChild(){}});return elements.get(id);};
+const ctx=vm.createContext({document:{getElementById:el,createElement:()=>({})}});
+vm.runInContext(code,ctx);
+ctx.renderMemories([],1);assert.equal(el('memory-clear').disabled,false,'Notes alone must still be clearable');
+assert(el('memory-count').textContent.includes('1 份会话摘录'));
+ctx.renderMemories([],0);assert.equal(el('memory-clear').disabled,true);
+console.log('会话摘录可见计数与仅摘要清理入口测试通过');

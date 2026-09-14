@@ -200,6 +200,8 @@ class SQLiteMemoryStore:
         conn = self._connection_factory()
         try:
             cursor = conn.execute("DELETE FROM user_memories WHERE user_id=?", (user_id,))
+            from .session_notes import reset_session_notes
+            reset_session_notes(conn,user_id)
             conn.commit()
             return cursor.rowcount
         finally:
@@ -221,12 +223,16 @@ class SQLiteMemoryStore:
                 if _match_score(row["content"], terms) >= threshold
             ][:limit]
             if not matched_ids:
+                from .session_notes import reset_session_notes
+                reset_session_notes(conn,user_id);conn.commit()
                 return 0
             placeholders = ",".join("?" for _ in matched_ids)
             cursor = conn.execute(
                 f"DELETE FROM user_memories WHERE user_id=? AND id IN ({placeholders})",
                 (user_id, *matched_ids),
             )
+            from .session_notes import reset_session_notes
+            reset_session_notes(conn,user_id)
             conn.commit()
             return cursor.rowcount
         finally:
