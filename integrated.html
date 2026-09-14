@@ -2033,13 +2033,34 @@ async function _speakViaServerTTS(text,generation){
 }
 
 async function _playStreamTTS(text,voice,generation,controller){
-  let started=false;
+  let started=false,reader=null,eof=false,watchdog=null;
+  const active=new Set(),now=()=>performance.now();
+  const metric={requestAt:now(),firstByteMs:null,firstAudioScheduledMs:null,underruns:0,status:'loading'};
+  // 仅保留本机数值统计，不包含正文、音频或身份信息。
+  const record=()=>{
+    if(metric.recorded)return;metric.recorded=true;
+    const rows=window.__ttsStreamMetrics||(window.__ttsStreamMetrics=[]);
+    rows.push({...metric,elapsedMs:now()-metric.requestAt});
+    if(rows.length>100)rows.shift();
+  };
+  const finish=()=>{
+    if(!eof||active.size)return;
+    metric.status=generation===_ttsGeneration?'completed':'cancelled';record();
+    if(generation!==_ttsGeneration)return;
+    _speechChoreography=null;ttsSpeaking=false;_mouthSmooth=0;
+    document.getElementById('speaking-indicator').classList.remove('show');
+  };
+  const armTimeout=()=>{
+    clearTimeout(watchdog);
+    watchdog=setTimeout(()=>controller.abort(),15000);
+  };
   try{
+    armTimeout();
     const response=await fetch('/api/tts/stream',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},
       body:JSON.stringify({text,voice}),signal:controller.signal});
     if(!response.ok) return false;
     if(generation!==_ttsGeneration) return true;
-    const ctx=_ensureAudioCtx(),reader=response.body.getReader();
+    const ctx=_ensureAudioCtx();reader=response.body.getReader();
     let pending=new Uint8Array(0),at=0;
     const sampleRate=Number(response.headers.get('X-Audio-Sample-Rate'));
     if(sampleRate!==24000){await reader.cancel();return false;}
@@ -2049,10 +2070,16 @@ async function _playStreamTTS(text,voice,generation,controller){
       const buffer=ctx.createBuffer(1,bytes.length/2,sampleRate),values=buffer.getChannelData(0),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
       for(let i=0;i<values.length;i++) values[i]=view.getInt16(i*2,true)/32768;
       const source=ctx.createBufferSource();source.buffer=buffer;source.connect(_analyser);
-      _streamSources.add(source);source.onended=()=>{_streamSources.delete(source);source.disconnect();};
+      _streamSources.add(source);active.add(source);
+      source.onended=()=>{_streamSources.delete(source);active.delete(source);source.disconnect();finish();};
+      if(started&&at<=ctx.currentTime+0.015)metric.underruns++;
       at=streamStartTime(ctx.currentTime,at,started);source.start(at);
       if(!started){
         const delay=(at-ctx.currentTime)*1000;
+        metric.firstAudioScheduledMs=now()-metric.requestAt+delay;
+        metric.outputLatencyMs=((ctx.outputLatency||ctx.baseLatency)||0)*1000;
+        // 从排程起保持忙碌，避免连续模式抢先重新开启麦克风。
+        ttsSpeaking=true;
         notifySpeechStarted(generation,delay);
         setTimeout(()=>{
           if(generation!==_ttsGeneration) return;
@@ -2064,21 +2091,33 @@ async function _playStreamTTS(text,voice,generation,controller){
     };
     while(true){
       const {value,done}=await reader.read();
+      armTimeout();
       if(generation!==_ttsGeneration){await reader.cancel();return true;}
-      if(value){const joined=new Uint8Array(pending.length+value.length);joined.set(pending);joined.set(value,pending.length);pending=joined;}
+      if(value){
+        if(metric.firstByteMs===null)metric.firstByteMs=now()-metric.requestAt;
+        const joined=new Uint8Array(pending.length+value.length);joined.set(pending);joined.set(value,pending.length);pending=joined;
+      }
       const length=pending.length-pending.length%2;
       if(length>=streamChunkBytes(sampleRate,started)||done&&length){schedule(pending.slice(0,length));pending=pending.slice(length);}
-      if(done) break;
+      if(done){if(pending.length)throw new Error('Incomplete PCM sample');break;}
     }
     if(!started) return false;
-    setTimeout(()=>{
-      if(generation===_ttsGeneration){_speechChoreography=null;ttsSpeaking=false;_mouthSmooth=0;document.getElementById('speaking-indicator').classList.remove('show');}
-    },Math.max(0,(at-ctx.currentTime)*1000));
+    eof=true;finish();
     return true;
   }catch(error){
-    if(generation!==_ttsGeneration||error.name==='AbortError') return true;
+    metric.status=generation!==_ttsGeneration?'cancelled':error.name==='AbortError'?'timeout':'interrupted';record();
+    if(generation!==_ttsGeneration)return true;
+    if(error.name==='AbortError'){if(started)_stopAudio();return true;}
     if(started){console.warn('[TTS] 流式播报中断');_stopAudio();return true;}
     return false;
+  }finally{
+    clearTimeout(watchdog);
+    if(!eof){
+      if(metric.status==='loading')metric.status=generation!==_ttsGeneration?'cancelled':'unavailable';
+      record();
+      if(reader){try{await reader.cancel();}catch{}}
+    }
+    if(reader){try{reader.releaseLock();}catch{}}
   }
 }
 const _SWEET_VOICES=['Microsoft Xiaoxiao','Microsoft XiaoXiao','Xiaoxiao',

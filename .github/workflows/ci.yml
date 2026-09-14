@@ -66,6 +66,7 @@ jobs:
         run: |
           node tests/avatar_gestures.cjs
           node tests/avatar_speech_sync.cjs
+          node tests/tts_stream_lifecycle.cjs
           node tests/avatar_long_speech.cjs
           node tests/camera_quality.cjs
           node tests/camera_lifecycle.cjs
