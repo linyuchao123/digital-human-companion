@@ -71,6 +71,8 @@ jobs:
           node tests/camera_lifecycle.cjs
           node tests/text_send_reliability.cjs
           node tests/text_streaming.cjs
+          node tests/voice_endpoint.cjs
+          node tests/continuous_voice_lifecycle.cjs
           node tests/knowledge_references.cjs
           node tests/knowledge_followup_ui.cjs
       - name: Compose静态校验（不展开密钥）

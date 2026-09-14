@@ -656,6 +656,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <!-- ══ 底部控制栏 ══ -->
 <div id="bottom-bar">
   <button class="ctrl-btn" id="mic-btn" onclick="toggleMic()" title="语音输入">🎤</button>
+  <button class="tb-chip" id="continuous-voice-btn" onclick="toggleContinuousVoice()" aria-pressed="false" title="主动开启后自动停顿发送；小安回复期间暂停录音">连续对话</button>
   <input type="text" id="text-input" placeholder="和小安说点什么..." aria-describedby="text-send-feedback"
     onkeydown="if(event.key==='Enter'){event.preventDefault();sendText()}"/>
   <button id="send-btn" onclick="sendText()" title="发送">➤</button>
@@ -1070,6 +1071,7 @@ async function connectAll(){
 }
 
 function disconnectAll(){
+  disableContinuousVoice();
   beginStreamReply(null);
   window.stopCameraPerception?.();
   _connectionGeneration++;
@@ -1455,7 +1457,7 @@ function connectChatWS(){
       chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
     }
   };
-  chatWs.onclose=()=>{window.stopCameraPerception?.('连接已断开');chatWsReady=false;driveWsReady=false;wsParamsBuffer={};updateOverallStatus();
+  chatWs.onclose=()=>{disableContinuousVoice();window.stopCameraPerception?.('连接已断开');chatWsReady=false;driveWsReady=false;wsParamsBuffer={};updateOverallStatus();
     if(connected) setTimeout(connectChatWS,3000);};
   chatWs.onerror=()=>{};
   chatWs.onmessage=(e)=>{try{handleChatMessage(JSON.parse(e.data));}catch(err){}};
@@ -1488,6 +1490,7 @@ function handleChatMessage(msg){
       break;
     case 'asr_processing':showThinking(true);break;
     case 'asr_error':
+      disableContinuousVoice();
       showThinking(false);
       if(msg.code==='unavailable') _preferBrowserVoice=true;
       alert(msg.message||'语音识别失败，请重试');
@@ -1516,8 +1519,15 @@ function handleChatMessage(msg){
       renderActivityCards(msg.activities);
       updateEmotion(msg.emotion,msg.valence,msg.arousal,msg.risk_level);
       const replyMotion=msg.motion&&msg.motion!=='Idle'?()=>playMotion(msg.motion):null;
-      if(ttsEnabled) speakText(cleanText,replyMotion);
-      else if(replyMotion) replyMotion();
+      if(ttsEnabled){
+        const voiceEpoch=_continuousEpoch;
+        speakText(cleanText,replyMotion).finally(()=>{
+          if(voiceEpoch===_continuousEpoch){_continuousWaiting=false;scheduleContinuousVoice();}
+        });
+      }else{
+        if(replyMotion) replyMotion();
+        _continuousWaiting=false;scheduleContinuousVoice();
+      }
       break;
     case 'status':updateModuleStatus(msg.modules,msg.driver_model);break;
     case 'reset_ack':document.getElementById('chat-area').innerHTML='';break;
@@ -1571,51 +1581,115 @@ let _speechRec=null, _isListening=false;
 let _voiceStarting=false, _voiceMode='browser', _preferBrowserVoice=false;
 let _micStream=null, _micSource=null, _micProcessor=null, _micMute=null;
 let _voiceChunks=[], _voiceTimer=null, _voiceSampleRate=48000;
+let _voiceGeneration=0,_continuousVoice=false,_continuousWaiting=false,_continuousEpoch=0,_continuousTimer=null,_continuousWaitTimer=null;
+function createVoiceEndpoint(){
+  let elapsed=0,voiced=0,silence=0,onset=0,noise=0.006,started=false;
+  return {feed(rms,seconds){
+    elapsed+=seconds;
+    const active=rms>Math.max(0.012,noise*2.8);
+    if(!started){
+      if(!active) noise=noise*0.95+Math.min(rms,0.02)*0.05;
+      onset=active?onset+seconds:0;
+      if(onset>=0.18){started=true;voiced=onset;}
+    }else if(active){voiced+=seconds;silence=0;}else silence+=seconds;
+    return {started,done:started&&voiced>=0.35&&silence>=1.2,idle:!started&&elapsed>=30};
+  }};
+}
+function disableContinuousVoice(){
+  _continuousVoice=false;_continuousWaiting=false;_continuousEpoch++;
+  if(_continuousTimer!==null) clearTimeout(_continuousTimer);
+  if(_continuousWaitTimer!==null) clearTimeout(_continuousWaitTimer);
+  _continuousWaitTimer=null;
+  _continuousTimer=null;
+  const button=document.getElementById('continuous-voice-btn');
+  button?.classList.remove('on');button?.setAttribute('aria-pressed','false');
+  stopVoiceInput(false);
+}
+function toggleContinuousVoice(){
+  if(_continuousVoice){disableContinuousVoice();return;}
+  if(!chatWsReady){alert('请先连接数字人');return;}
+  if(!confirm('连续对话会在停顿约1.2秒后发送录音至当前ASR服务；小安回复期间暂停录音。可随时关闭，后台或断线自动停止。是否开启？')) return;
+  _continuousVoice=true;_continuousEpoch++;
+  const button=document.getElementById('continuous-voice-btn');button.classList.add('on');button.setAttribute('aria-pressed','true');
+  startVoiceInput();
+}
+function scheduleContinuousVoice(){
+  if(!_continuousWaiting&&_continuousWaitTimer!==null){clearTimeout(_continuousWaitTimer);_continuousWaitTimer=null;}
+  if(!_continuousVoice||_continuousTimer!==null) return;
+  const epoch=_continuousEpoch;
+  _continuousTimer=setTimeout(()=>{
+    _continuousTimer=null;
+    if(epoch!==_continuousEpoch||!_continuousVoice) return;
+    if(!chatWsReady||document.hidden){disableContinuousVoice();return;}
+    if(_continuousWaiting||ttsSpeaking||_voiceStarting){scheduleContinuousVoice();return;}
+    if(!_isListening) startVoiceInput();
+  },400);
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden) disableContinuousVoice();});
 function toggleMic(){
+  if(_continuousVoice){disableContinuousVoice();return;}
   if(_isListening) stopVoiceInput();
   else if(!_voiceStarting) startVoiceInput();
 }
 async function startVoiceInput(){
   if(!chatWsReady){alert('请先连接数字人再录音');return;}
   _voiceStarting=true;
+  const generation=++_voiceGeneration;
   try{
     const resp=await fetch('/api/status',{cache:'no-store'});
     const status=resp.ok?await resp.json():{};
     document.getElementById('asr-provider-label').textContent=status.asr?.provider==='qwen_cloud'?'🎤 百炼云端':'🎤 本地识别';
     document.getElementById('asr-provider-label').title=status.asr?.message||'识别状态未知';
-    if(!chatWsReady) return;
+    if(!chatWsReady||generation!==_voiceGeneration) return;
     if(!_preferBrowserVoice&&status.asr?.available&&!status.asr?.reason
         &&navigator.mediaDevices?.getUserMedia){
-      await _startServerVoiceInput();
-    }else _startBrowserVoiceInput();
+      await _startServerVoiceInput(generation);
+    }else if(_continuousVoice){disableContinuousVoice();alert('连续模式需要服务端ASR可用；仍可点击麦克风使用备用识别。');}
+    else _startBrowserVoiceInput();
   }catch(error){
+    if(generation!==_voiceGeneration) return;
+    if(_continuousVoice){disableContinuousVoice();alert('连续录音启动失败，请检查麦克风权限或设备。');return;}
     console.warn('[语音] 服务端录音不可用',error);
     stopVoiceInput(false);
     if(error.name==='NotAllowedError') alert('麦克风权限被拒绝，请在浏览器设置中允许');
     else if(chatWsReady) _startBrowserVoiceInput();
   }finally{_voiceStarting=false;}
 }
-async function _startServerVoiceInput(){
+async function _startServerVoiceInput(generation=_voiceGeneration){
   _stopAudio();
-  _micStream=await navigator.mediaDevices.getUserMedia({audio:{
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{
     channelCount:1,sampleRate:16000,echoCancellation:true,noiseSuppression:true,autoGainControl:true
   }});
-  if(!chatWsReady){
-    _micStream.getTracks().forEach(track=>track.stop()); _micStream=null;
+  if(!chatWsReady||generation!==_voiceGeneration){
+    stream.getTracks().forEach(track=>track.stop());
     return;
   }
+  _micStream=stream;
   const ctx=_ensureAudioCtx();
   _voiceSampleRate=ctx.sampleRate; _voiceChunks=[]; _voiceMode='server';
   _micSource=ctx.createMediaStreamSource(_micStream);
   _micProcessor=ctx.createScriptProcessor(4096,1,1);
   _micMute=ctx.createGain(); _micMute.gain.value=0;
+  const endpoint=createVoiceEndpoint(),preRoll=[];
+  let hasSpeech=false;
   _micProcessor.onaudioprocess=(event)=>{
-    if(_isListening) _voiceChunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+    if(!_isListening) return;
+    const chunk=new Float32Array(event.inputBuffer.getChannelData(0));
+    if(!_continuousVoice){_voiceChunks.push(chunk);return;}
+    let energy=0;for(const sample of chunk) energy+=sample*sample;
+    const result=endpoint.feed(Math.sqrt(energy/chunk.length),chunk.length/_voiceSampleRate);
+    if(!hasSpeech){
+      preRoll.push(chunk);if(preRoll.length>Math.ceil(_voiceSampleRate*0.5/chunk.length)) preRoll.shift();
+      if(result.started){hasSpeech=true;_voiceChunks.push(...preRoll);preRoll.length=0;}
+    }else _voiceChunks.push(chunk);
+    if(result.done){_continuousWaiting=true;stopVoiceInput();}
+    else if(result.idle) disableContinuousVoice();
   };
   _micSource.connect(_micProcessor); _micProcessor.connect(_micMute); _micMute.connect(ctx.destination);
   _isListening=true;
   document.getElementById('mic-btn').classList.add('mic-on');
   document.getElementById('text-input').placeholder='🎤 正在录音，再点麦克风发送（最长30秒）';
+  if(_continuousVoice) document.getElementById('text-input').placeholder='🎤 连续聆听中，停顿约1.2秒自动发送；回复期间暂停';
   _voiceTimer=setTimeout(()=>stopVoiceInput(),30000);
 }
 function _encodeVoiceWav(chunks,sampleRate){
@@ -1698,6 +1772,7 @@ function _startBrowserVoiceInput(){
   }catch(e){console.error('[语音识别] 启动失败',e);}
 }
 function stopVoiceInput(sendRecording=true){
+  const generation=++_voiceGeneration,epoch=_continuousEpoch;
   const wasRecording=_isListening&&_voiceMode==='server';
   _isListening=false;
   if(_voiceTimer){clearTimeout(_voiceTimer);_voiceTimer=null;}
@@ -1708,13 +1783,20 @@ function stopVoiceInput(sendRecording=true){
   if(wasRecording&&sendRecording&&_voiceChunks.length){
     const wav=_encodeVoiceWav(_voiceChunks,_voiceSampleRate), reader=new FileReader();
     reader.onload=()=>{
-      if(chatWsReady) chatSend({type:'audio',format:'wav',data:String(reader.result).split(',')[1]});
+      if(generation!==_voiceGeneration||epoch!==_continuousEpoch) return;
+      if(chatWsReady){
+        _continuousWaiting=_continuousVoice;
+        if(_continuousVoice) _continuousWaitTimer=setTimeout(()=>{disableContinuousVoice();alert('识别或回复等待超时，连续模式已关闭，请重试。');},80000);
+        chatSend({type:'audio',format:'wav',data:String(reader.result).split(',')[1]});
+      }
       else alert('连接已断开，录音未发送');
     };
-    reader.onerror=()=>alert('录音编码失败，请重试');
+    reader.onerror=()=>{if(epoch===_continuousEpoch) disableContinuousVoice();alert('录音编码失败，请重试');};
     reader.readAsDataURL(wav);
   }
+  const emptyRecording=!_voiceChunks.length;
   _voiceChunks=[];
+  if(_continuousVoice&&(!wasRecording||emptyRecording)) disableContinuousVoice();
   if(_speechRec){try{_speechRec.stop();}catch(e){}_speechRec=null;}
   document.getElementById('mic-btn').classList.remove('mic-on');
   const input=document.getElementById('text-input');
@@ -2643,6 +2725,7 @@ function renderSessions(sessions){
 }
 
 async function newSession(){
+  disableContinuousVoice();
   beginStreamReply(null);
   if(!_authToken) return;
   try{
@@ -2660,6 +2743,7 @@ async function newSession(){
 }
 
 async function switchSession(sessionId){
+  disableContinuousVoice();
   beginStreamReply(null);
   if(sessionId===_currentDbSession) return;
   _currentDbSession=sessionId;
