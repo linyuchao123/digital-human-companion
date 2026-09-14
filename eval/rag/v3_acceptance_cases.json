@@ -1,0 +1,20 @@
+[
+  {"query":"我想了解担忧时间这个方法，该怎么练习", "expected_document_ids":["nhs-worry-time"]},
+  {"query":"睡觉时越努力越清醒，睡不着能不能先起来", "expected_document_ids":["nhs-sleep-not-force"]},
+  {"query":"拒绝朋友的要求让我很内疚，怎样建立关系边界", "expected_document_ids":["nih-relationship-boundaries"]},
+  {"query":"想法记录表应该写哪些内容", "expected_document_ids":["nhs-cbt-thought-record"]},
+  {"query":"我把一次失误看成全部失败，这是非黑即白吗", "expected_document_ids":["nhs-cbt-black-white"]},
+  {"query":"朋友失去家人，我该怎样倾听和陪伴她", "expected_document_ids":["who-listening","nih-grief"]},
+  {"query":"照顾家人很累，照护者能如何照顾自己", "expected_document_ids":["nih-caregiver-stress"]},
+  {"query":"我想了解正念，是不是必须完全不想事情", "expected_document_ids":["nih-mindfulness"]},
+  {"query":"压力让我任务越堆越多，怎么安排优先级", "expected_document_ids":["nimh-priorities","nhs-problem-plan"]},
+  {"query":"情绪已经影响工作生活，什么时候应该寻求专业帮助", "expected_document_ids":["nimh-seeking-help","who-professional-help"]},
+  {"query":"和另一半总是争吵，怎样表达感受而不是指责", "expected_document_ids":["nih-relationship-conflict"]},
+  {"query":"出错以后总是责备自己，如何练习自我善待", "expected_document_ids":["who-self-kindness"]},
+  {"query":"帮我查今天北京几点日落", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"这台电脑的内存怎么升级", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"介绍一下周杰伦的新专辑", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"明天深圳的气温是多少", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"早餐煎鸡蛋要用多大火", "expected_document_ids":[], "expect_no_results":true},
+  {"query":"怎么重置路由器的密码", "expected_document_ids":[], "expect_no_results":true}
+]

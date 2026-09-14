@@ -26,6 +26,17 @@ class StaticRetriever:
 
 
 class AgentRagEvaluationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_v3_acceptance_questions_pass_offline_thresholds(self):
+        from services.agent.knowledge import create_knowledge_retriever
+        root=Path(__file__).resolve().parents[1]
+        cases=load_retrieval_eval_cases(root/'eval/rag/v3_acceptance_cases.json')
+        retriever,_=create_knowledge_retriever(root/'data/knowledge/psychology.json')
+        self.assertEqual(len(cases),18)
+        self.assertEqual(len({case.query for case in cases}),18)
+        report=await evaluate_retriever(retriever,cases)
+        self.assertGreaterEqual(report.hit_rate,0.85)
+        self.assertGreaterEqual(report.mean_reciprocal_rank,0.7)
+        self.assertEqual(report.false_positive_rate,0)
     def test_mixed_query_dataset_is_valid_and_distinct(self):
         root=Path(__file__).resolve().parents[1]
         cases=load_retrieval_eval_cases(root/'eval/rag/mixed_query_cases.json')

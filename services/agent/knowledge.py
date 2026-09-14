@@ -36,6 +36,7 @@ class _IndexedDocument:
     source: str
     source_url: str | None
     semantic_text: str
+    keywords: tuple[str, ...]
     tokens: Counter[str]
     length: int
 
@@ -124,6 +125,7 @@ class BM25KnowledgeRetriever:
                 source=source,
                 source_url=source_url,
                 semantic_text=semantic_text,
+                keywords=tuple(map(str, keywords)),
                 tokens=Counter(tokens),
                 length=len(tokens),
             ))
@@ -156,7 +158,9 @@ class BM25KnowledgeRetriever:
             return []
         ranked = sorted(
             (
-                (self._score(query_tokens, document), document)
+                (self._score(query_tokens, document)+8*sum(
+                    len(keyword)>=2 and keyword in query for keyword in document.keywords
+                ), document)
                 for document in self._documents
             ),
             key=lambda item: item[0],
