@@ -20,4 +20,7 @@ assert.equal(link.rel,'noopener noreferrer');
 assert(!code.includes('innerHTML'),'Never interpret reference text as HTML');
 assert(html.includes('renderKnowledgeSources(msg.knowledge_sources)'));
 assert(html.includes('speakText(cleanText,replyMotion)'),'TTS uses reply only, not reference DOM');
+assert(html.includes("if(m.role==='assistant')renderKnowledgeSources(m.knowledge_sources)"),'Restore saved references without replaying historical audio');
+assert(html.includes('if(sessionId!==_currentDbSession)return;'),'Late history fetch cannot overwrite another session');
+assert(details.children.some(e=>e.tag==='strong'&&e.textContent.startsWith('[1] ')),'Visible reference number matches evidence envelope');
 console.log('Knowledge reference rendering and speech separation checks passed');

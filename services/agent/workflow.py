@@ -15,6 +15,7 @@ from .web_search import search_intent, search_query, tavily_search, SearchUnavai
 from .weather import weather_request, get_weather
 from .planning import needs_model_routing, select_tool
 from .execution import execute_read
+from .references import normalize_knowledge_citations
 from .context import compact_context
 from .knowledge_intent import requests_knowledge, declines_knowledge, EMOTIONAL_SUPPORT_KEYWORDS
 from .knowledge_followup import resolve_knowledge_followup
@@ -555,6 +556,8 @@ class DigitalXinyuWorkflow:
                     raise ValueError('模型回复超过长度限制')
                 await sink(delta)
             response = ''.join(parts).strip()
+        if knowledge or state.get('knowledge_status') in {'empty','failed'}:
+            response=normalize_knowledge_citations(response,knowledge).strip()
         return self._complete_node(
             state,
             "companion",

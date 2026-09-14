@@ -1887,6 +1887,8 @@ function _stopAudio(){
 }
 
 async function speakText(text,onSpeechStart=null){
+  // 来源编号只用于阅读溯源，不读成语音正文。
+  if(typeof text==='string')text=text.replace(/\[\d{1,3}\]/g,'');
   if(!ttsEnabled||!text) return;
   if(_isListening&&_voiceMode==='server') return; // 避免录音期间采集数字人自己的播报。
   _stopAudio();
@@ -2269,9 +2271,9 @@ function renderKnowledgeSources(sources){
   const summary=document.createElement('summary');summary.textContent='📚 本轮参考知识（'+Math.min(sources.length,3)+'条）';summary.style.cursor='pointer';
   details.appendChild(summary);
   const note=document.createElement('p');note.textContent='以下为本轮检索参考，未逐句核验回复，不用于诊断或替代专业服务。';details.appendChild(note);
-  sources.slice(0,3).forEach(source=>{
+  sources.slice(0,3).forEach((source,index)=>{
     if(!source||typeof source.source!=='string'||typeof source.excerpt!=='string') return;
-    const title=document.createElement('strong');title.textContent=source.source.slice(0,200);details.appendChild(title);
+    const title=document.createElement('strong');title.textContent='['+(index+1)+'] '+source.source.slice(0,200);details.appendChild(title);
     const excerpt=document.createElement('p');excerpt.textContent=source.excerpt.slice(0,400);details.appendChild(excerpt);
     try{
       const url=new URL(source.url);
@@ -2795,10 +2797,12 @@ async function switchSession(sessionId){
   try{
     const res=await fetch(`/api/sessions/${sessionId}/messages`,{headers:{'X-Auth-Token':_authToken}});
     const data=await res.json();
+    if(sessionId!==_currentDbSession)return;
     const area=document.getElementById('chat-area');
     area.innerHTML='';
     for(const m of (data.messages||[])){
       addBubble(m.role==='user'?'user':'ai', m.content, m.emotion_label||'');
+      if(m.role==='assistant')renderKnowledgeSources(m.knowledge_sources);
     }
     area.scrollTop=area.scrollHeight;
   }catch(e){console.error('[SwitchSession]',e);}

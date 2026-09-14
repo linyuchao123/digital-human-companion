@@ -151,6 +151,9 @@ def _init_db():
         if "removed_at" not in columns:
             conn.execute("ALTER TABLE activity_tasks ADD COLUMN removed_at TEXT")
         user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        message_columns = {row[1] for row in conn.execute("PRAGMA table_info(chat_messages)")}
+        if 'knowledge_sources' not in message_columns:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN knowledge_sources TEXT NOT NULL DEFAULT '[]'")
         for name in ("display_name", "birthday", "avatar"):
             if name not in user_columns:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
@@ -193,14 +196,16 @@ def _verify_auth_token(token: str) -> Optional[int]:
     finally:
         conn.close()
 
-def _db_save_message(session_id: str, role: str, content: str, emotion_label: str = ""):
+def _db_save_message(session_id: str, role: str, content: str, emotion_label: str = "", knowledge_sources=None):
     """持久化一条消息到数据库"""
     try:
         conn = _get_db()
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        from services.agent.references import reference_snapshot
+        references=reference_snapshot(knowledge_sources) if role=='assistant' else []
         conn.execute(
-            "INSERT INTO chat_messages(session_id,role,content,emotion_label,ts) VALUES(?,?,?,?,?)",
-            (session_id, role, content, emotion_label, now)
+            "INSERT INTO chat_messages(session_id,role,content,emotion_label,ts,knowledge_sources) VALUES(?,?,?,?,?,?)",
+            (session_id, role, content, emotion_label, now, json.dumps(references,ensure_ascii=False))
         )
         conn.execute("UPDATE chat_sessions SET updated_at=? WHERE id=?", (now, session_id))
         conn.commit()
@@ -1258,10 +1263,19 @@ async def get_session_messages(session_id: str, request: Request):
         if not sess:
             return JSONResponse({"error": "会话不存在"}, status_code=404)
         msgs = conn.execute(
-            "SELECT role,content,emotion_label,ts FROM chat_messages WHERE session_id=? ORDER BY id ASC",
+            "SELECT role,content,emotion_label,ts,knowledge_sources FROM chat_messages WHERE session_id=? ORDER BY id ASC",
             (session_id,)
         ).fetchall()
-        return JSONResponse({"messages": [dict(m) for m in msgs]})
+        from services.agent.references import reference_snapshot
+        messages=[]
+        for row in msgs:
+            item=dict(row)
+            try:
+                item['knowledge_sources']=reference_snapshot(json.loads(item['knowledge_sources'])) if item['role']=='assistant' else []
+            except (ValueError,TypeError):
+                item['knowledge_sources']=[]
+            messages.append(item)
+        return JSONResponse({"messages": messages})
     finally:
         conn.close()
 
@@ -2057,7 +2071,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
 
         if state.db_session_id:
             _db_save_message(state.db_session_id, "user", text)
-            _db_save_message(state.db_session_id, "assistant", reply_text, emo_result["emotion_label"])
+            _db_save_message(state.db_session_id, "assistant", reply_text, emo_result["emotion_label"], msg['knowledge_sources'])
             state.msg_count += 1
             # 第2条消息后触发标题生成（后台异步）
             if state.msg_count == 2:
