@@ -70,6 +70,7 @@ jobs:
           node tests/camera_quality.cjs
           node tests/camera_lifecycle.cjs
           node tests/text_send_reliability.cjs
+          node tests/text_streaming.cjs
           node tests/knowledge_references.cjs
           node tests/knowledge_followup_ui.cjs
       - name: Compose静态校验（不展开密钥）

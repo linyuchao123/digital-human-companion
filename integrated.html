@@ -626,7 +626,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 </div>
 <div id="thinking-bar">
   <div class="tdot"></div><div class="tdot"></div><div class="tdot"></div>
-  <span style="margin-left:4px">思考中...</span>
+  <span id="thinking-text" style="margin-left:4px">思考中...</span>
 </div>
 
 <!-- ══ 右侧聊天面板 ══ -->
@@ -1070,6 +1070,7 @@ async function connectAll(){
 }
 
 function disconnectAll(){
+  beginStreamReply(null);
   window.stopCameraPerception?.();
   _connectionGeneration++;
   _wakeUp=null;_gesture=null;
@@ -1491,7 +1492,13 @@ function handleChatMessage(msg){
       if(msg.code==='unavailable') _preferBrowserVoice=true;
       alert(msg.message||'语音识别失败，请重试');
       break;
-    case 'llm_thinking':showThinking(true);break;
+    case 'llm_thinking':beginStreamReply(msg.trace_id);showThinking(true);break;
+    case 'llm_delta':appendStreamReply(msg);break;
+    case 'llm_waiting':
+      if(msg.trace_id===_streamReply.trace&&!_streamReply.bubble){
+        document.getElementById('thinking-text').textContent=msg.text;showThinking(true);
+      }
+      break;
     case 'agent_event':
       renderAgentEvent(msg.event);
       break;
@@ -1499,9 +1506,10 @@ function handleChatMessage(msg){
       renderAgentTrace(msg);
       break;
     case 'llm_reply':
+      if(msg.trace_id&&msg.trace_id!==_streamReply.trace) break;
       showThinking(false);
       const cleanText=msg.text.replace(/\[MOTION:[^\]]+\]/gi,'').trim();
-      addBubble('ai',cleanText,msg.emotion_label);
+      finishStreamReply(msg,cleanText);
       renderWebSources(msg.sources);
       renderKnowledgeSources(msg.knowledge_sources);
       renderKnowledgeFollowups(msg.knowledge_sources);
@@ -2065,6 +2073,29 @@ function updateEmotion(emotion){
   else if(emotion==='Anxiety'||emotion==='Fear'||emotion==='Concerned') document.body.classList.add('emo-anxiety');
   document.getElementById('tts-btn').title='当前情绪主题：'+(({Happy:'喜悦 · 绿色',Sad:'悲伤 · 蓝灰色',Anxiety:'焦虑 · 紫色',Concerned:'关切 · 紫色'})[emotion]||'平静 · 默认蓝色');
 }
+let _streamReply={trace:null,bubble:null,text:''};
+function beginStreamReply(trace){
+  if(_streamReply.bubble?.isConnected) _streamReply.bubble.dataset.incomplete='true';
+  _streamReply={trace,bubble:null,text:''};
+  document.getElementById('thinking-text').textContent='思考中...';
+}
+function appendStreamReply(msg){
+  if(!msg.trace_id||msg.trace_id!==_streamReply.trace||typeof msg.text!=='string') return;
+  if(_streamReply.text.length+msg.text.length>8192) return;
+  if(!_streamReply.bubble){addBubble('ai','');_streamReply.bubble=document.querySelector('#chat-area .bubble-row:last-child .bubble');}
+  if(!_streamReply.bubble?.isConnected) return;
+  _streamReply.text+=msg.text;
+  _streamReply.bubble.textContent=_streamReply.text;
+  _streamReply.bubble.setAttribute('aria-busy','true');
+  const area=document.getElementById('chat-area');area.scrollTop=area.scrollHeight;
+}
+function finishStreamReply(msg,text){
+  const bubble=msg.trace_id===_streamReply.trace?_streamReply.bubble:null;
+  if(bubble?.isConnected){bubble.textContent=text;bubble.setAttribute('aria-busy','false');
+    if(msg.emotion_label){const tag=document.createElement('div');tag.className='emo-tag';tag.textContent=msg.emotion_label;bubble.appendChild(tag);}}
+  else addBubble('ai',text,msg.emotion_label);
+  _streamReply={trace:null,bubble:null,text:''};
+}
 function showThinking(show){
   document.getElementById('thinking-bar').classList.toggle('show',show);
 }
@@ -2612,6 +2643,7 @@ function renderSessions(sessions){
 }
 
 async function newSession(){
+  beginStreamReply(null);
   if(!_authToken) return;
   try{
     const res=await fetch('/api/sessions',{method:'POST',headers:{'X-Auth-Token':_authToken}});
@@ -2628,6 +2660,7 @@ async function newSession(){
 }
 
 async function switchSession(sessionId){
+  beginStreamReply(null);
   if(sessionId===_currentDbSession) return;
   _currentDbSession=sessionId;
   // 刷新侧边栏高亮

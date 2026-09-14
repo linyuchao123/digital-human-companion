@@ -1946,11 +1946,12 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
     if not text or state.llm_running:
         return
     state.llm_running = True
+    trace_id = str(uuid.uuid4())
+    slow_notice = None
     try:
-        await _send(ws, {"type": "llm_thinking", "text": "小安正在思考..."})
+        await _send(ws, {"type": "llm_thinking", "trace_id": trace_id, "text": "小安正在思考..."})
         from services.agent import ChatMessage
 
-        trace_id = str(uuid.uuid4())
         session_id = state.db_session_id or state.session_id
         history = [ChatMessage(**message) for message in state.agent_messages]
 
@@ -1960,7 +1961,16 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
                 "event": event.model_dump(mode="json"),
             })
 
-        result = await _get_agent_workflow().run(
+        async def send_delta(delta):
+            await _send(ws, {"type": "llm_delta", "trace_id": trace_id, "text": delta})
+
+        async def notify_slow():
+            await asyncio.sleep(8)
+            await _send(ws, {"type": "llm_waiting", "trace_id": trace_id,
+                "text": "模型或工具响应较慢，仍在处理，请稍候…"})
+
+        slow_notice = asyncio.create_task(notify_slow())
+        result = await asyncio.wait_for(_get_agent_workflow().run(
             user_text=text,
             trace_id=trace_id,
             session_id=session_id,
@@ -1970,7 +1980,8 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
             user_id=state.user_id,
             memory_consent=state.memory_consent,
             event_sink=send_agent_event,
-        )
+            text_delta_sink=send_delta,
+        ), timeout=60)
         result["trace_id"] = trace_id
         result["session_id"] = session_id
         state.agent_messages = [
@@ -2028,6 +2039,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
 
         msg = {
             "type": "llm_reply",
+            "trace_id": trace_id,
             "text": reply_text,
             "emotion": emo_result["emotion"],
             "valence": emo_result["valence"],
@@ -2054,9 +2066,12 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
     except Exception as e:
         print(f"[Agent] 失败: {e}")
         await _send(ws, {"type": "llm_reply", "text": "抱歉，我暂时无法回应，请稍后再试。",
+                         "trace_id": trace_id, "stream_failed": True,
                          "emotion": "Neutral", "valence": 0, "arousal": 0,
                          "risk_level": "low", "emotion_label": "平静"})
     finally:
+        if slow_notice:
+            slow_notice.cancel()
         state.llm_running = False
 
 
