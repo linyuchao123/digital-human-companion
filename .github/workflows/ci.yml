@@ -75,6 +75,7 @@ jobs:
           node tests/voice_endpoint.cjs
           node tests/continuous_voice_lifecycle.cjs
           node tests/password_recovery_ui.cjs
+          node tests/account_deletion_ui.cjs
           node tests/knowledge_references.cjs
           node tests/knowledge_followup_ui.cjs
       - name: Compose静态校验（不展开密钥）

@@ -159,6 +159,8 @@ def _init_db():
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
         from apps.api.external_auth import init_auth_tables
         init_auth_tables(conn)
+        from apps.api.account_lifecycle import install_owner_guards
+        install_owner_guards(conn)
         conn.commit()
         print("[DB] 数据库初始化完成")
     finally:
@@ -198,6 +200,7 @@ def _verify_auth_token(token: str) -> Optional[int]:
 
 def _db_save_message(session_id: str, role: str, content: str, emotion_label: str = "", knowledge_sources=None):
     """持久化一条消息到数据库"""
+    conn = None
     try:
         conn = _get_db()
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -209,9 +212,11 @@ def _db_save_message(session_id: str, role: str, content: str, emotion_label: st
         )
         conn.execute("UPDATE chat_sessions SET updated_at=? WHERE id=?", (now, session_id))
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f"[DB] 保存消息失败: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _db_load_message_context(session_id: str, limit: int = 40) -> list[dict[str, str]]:
@@ -922,6 +927,31 @@ class ProfileUpdate(BaseModel):
 class PasswordUpdate(BaseModel):
     current_password: str = Field(default="",max_length=64)
     new_password: str = Field(min_length=8,max_length=64)
+
+class AccountDelete(BaseModel):
+    current_password: str = Field(min_length=1,max_length=64)
+    confirmation: str = Field(max_length=20)
+
+
+@app.post('/api/profile/account/delete')
+async def delete_account(payload: AccountDelete,request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None:return JSONResponse({'error':'请先登录'},status_code=401)
+    if payload.confirmation!='注销我的账号':return JSONResponse({'error':'请输入完整确认文字：注销我的账号'},status_code=400)
+    if not HAS_BCRYPT:return JSONResponse({'error':'密码服务不可用'},status_code=503)
+    if len(payload.current_password.encode())>72:return JSONResponse({'error':'密码格式不正确'},status_code=400)
+    from apps.api.account_lifecycle import delete_owned_account
+    conn=_get_db()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        row=conn.execute('SELECT password_hash,password_set FROM users WHERE id=?',(user_id,)).fetchone()
+        if not row or not row['password_set'] or not _check_password(payload.current_password,row['password_hash']):
+            return JSONResponse({'error':'当前密码不正确；未设置密码的第三方账号请先设置密码'},status_code=403)
+        delete_owned_account(conn,user_id)
+        conn.commit()
+        return JSONResponse({'ok':True,'reauthenticate':True,'message':'账号及本项目内关联数据已删除，无法从界面恢复。'})
+    finally:
+        conn.close()
 
 
 @app.get("/api/profile")

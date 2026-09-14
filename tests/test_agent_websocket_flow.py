@@ -92,6 +92,7 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_authorized_user_memory_is_persisted_and_retrieved(self):
         conn = integrated_server._get_db()
         try:
+            conn.execute("INSERT INTO users(id,username,password_hash,created_at) VALUES(12,'memory-owner','test-hash','2026')")
             conn.execute(
                 "INSERT INTO user_memory_settings(user_id,enabled,updated_at) VALUES(?,?,?)",
                 (12, 1, "2026-09-08T00:00:00"),

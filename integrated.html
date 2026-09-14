@@ -525,6 +525,14 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <fieldset><legend>绑定第三方身份</legend><div class="social-login"><button onclick="startSocialLogin('wechat',true,this)">绑定微信</button><button onclick="startSocialLogin('qq',true,this)">绑定 QQ</button></div><p class="auth-footnote">已有账号请在这里主动绑定，不会按昵称自动合并账号。绑定时须填写当前密码。</p></fieldset>
   <fieldset><legend>账号安全 · 修改密码</legend><div class="auth-field"><label for="profile-new-password">新密码（至少8位）</label><input id="profile-new-password" type="password" maxlength="64" autocomplete="new-password"/></div><div class="auth-field"><label for="profile-confirm-password">确认新密码</label><input id="profile-confirm-password" type="password" maxlength="64" autocomplete="new-password"/></div><div class="profile-actions"><button onclick="changeProfilePassword(this)">修改密码</button></div><p class="auth-footnote">密码不展示、不回传。修改成功后所有设备需重新登录。</p></fieldset>
   <div id="profile-created" class="auth-footnote"></div><div id="profile-status" role="status" aria-live="polite"></div>
+  <details style="margin-top:18px;border-top:1px solid #ead9d9;padding-top:12px">
+    <summary style="cursor:pointer;color:var(--danger)">注销账号 · 不可恢复</summary>
+    <p class="auth-footnote">删除你的资料、对话及参考快照、长期记忆、活动记录、运行追踪和登录绑定。共享知识库不受影响。第三方账号请先设置密码。</p>
+    <div class="auth-field"><label for="account-delete-confirm">输入“注销我的账号”</label><input id="account-delete-confirm" maxlength="20" autocomplete="off"/></div>
+    <p class="auth-footnote">请在上方“当前密码”中填写密码。</p>
+    <button type="button" class="tb-chip" style="color:var(--danger)" onclick="deleteMyAccount(this)">永久注销我的账号</button>
+    <p id="account-delete-status" role="status" aria-live="polite"></p>
+  </details>
 </dialog>
 <div id="sidebar-toggle" onclick="toggleSidebar()">&#8250;</div>
 
@@ -2697,9 +2705,24 @@ async function doLogout(){
   try{
     await fetch('/api/auth/logout',{method:'POST',headers:{'X-Auth-Token':_authToken}});
   }catch(e){}
+  clearLocalAccount();
+}
+function clearLocalAccount(){
+  disconnectAll();
   delCookie('auth_token'); delCookie('auth_user');
   _authToken=''; _currentUser=''; _currentDbSession='';
   _profile=null;document.getElementById('profile-dialog').close();
+  _profileAvatar='';
+  document.getElementById('chat-area').textContent='';
+  for(const id of ['profile-current-password','profile-new-password','profile-confirm-password','account-delete-confirm',
+    'profile-name','profile-username','profile-birthday','profile-email','profile-email-code','profile-avatar-file',
+    'recovery-email','recovery-code','recovery-password','recovery-confirm'])document.getElementById(id).value='';
+  for(const id of ['profile-email-state','profile-created','profile-status','account-delete-status','recovery-status','agent-debug-content','agent-runs-history'])document.getElementById(id).textContent='';
+  latestAgentTrace=null;liveAgentEvents=[];agentHistoryMode=false;
+  document.getElementById('agent-debug').classList.remove('show');
+  document.getElementById('profile-avatar').removeAttribute('src');
+  document.getElementById('memory-list').textContent='';
+  document.getElementById('memory-count').textContent='';
   document.getElementById('sb-sessions').innerHTML=
     '<div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>';
   document.getElementById('sb-avatar').textContent='?';
@@ -2715,6 +2738,23 @@ async function doLogout(){
   document.getElementById('auth-username').value='';
   document.getElementById('auth-password').value='';
   setTimeout(()=>document.getElementById('auth-username').focus(),300);
+}
+
+async function deleteMyAccount(button){
+  const status=document.getElementById('account-delete-status'),token=_authToken;
+  const confirmation=document.getElementById('account-delete-confirm').value,
+        current_password=document.getElementById('profile-current-password').value;
+  if(!token||confirmation!=='注销我的账号'||!current_password){status.textContent='请填写当前密码和完整确认文字';return;}
+  if(!confirm('永久删除当前账号及其所有项目内关联数据？此操作无法从界面撤销。'))return;
+  button.disabled=true;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+  try{
+    const response=await fetch('/api/profile/account/delete',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':token},
+      body:JSON.stringify({confirmation,current_password}),signal:controller.signal});
+    const data=await response.json();if(!response.ok)throw new Error(data.error||'注销失败，账号未删除');
+    if(_authToken===token){clearLocalAccount();document.getElementById('auth-err').textContent=data.message;}
+  }catch(error){status.textContent=error.name==='AbortError'?'请求超时，注销结果尚未确认；请重新登录确认账号状态。':error.message;}
+  finally{clearTimeout(timeout);button.disabled=false;}
 }
 
 function toggleSidebar(){

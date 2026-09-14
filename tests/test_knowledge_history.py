@@ -14,6 +14,7 @@ class KnowledgeHistoryTests(unittest.TestCase):
         server.DB_PATH=Path(self.temp.name)/'test.db'
         server._init_db()
         conn=server._get_db()
+        conn.execute("INSERT INTO users(id,username,password_hash,created_at) VALUES(1,'owner','test-hash','2026')")
         conn.execute("INSERT INTO chat_sessions VALUES('owned',1,'测试','2026','2026')")
         conn.commit();conn.close()
         self.client=TestClient(server.app)
