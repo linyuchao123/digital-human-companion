@@ -1155,6 +1155,7 @@ async function initPixiAndModel(){
     tickAutoAnim();
     // 应用外部驱动参数（会覆盖自主动画中对应参数）
     applyDriveParams(c);
+    tickSpeechChoreography();
     tickGesture(c);
     }
     tickWakeUp(c); // 最后应用，避免驱动帧和自主眨眼抢占入场眼睛。
@@ -1239,6 +1240,28 @@ const GESTURES={
   Listen:{duration:3.2,params:{PARAM_ANGLE_Z:8,PARAM_ANGLE_Y:4,PARAM_EYE_BALL_Y:0.1}}
 };
 let _gesture=null,_gestureLast=0;
+let _speechChoreography=null;
+function startSpeechChoreography(text,generation){
+  // 仅编排已有轻量动作；不重复问候/摇头，也不改写眼睛和嘴型参数。
+  const motion=/难过|难受|低落|压力|孤独|陪着|慢慢来/.test(text)?'Comfort':
+    /想一想|想想|考虑|梳理/.test(text)?'Think':'Listen';
+  _speechChoreography={generation,motion,clock:_useBrowserTTS?'browser':'audio',
+    start:_useBrowserTTS?performance.now()/1000:(_audioCtx?.currentTime||0),next:8,count:0};
+}
+function tickSpeechChoreography(){
+  const plan=_speechChoreography;
+  if(!plan) return;
+  if(plan.generation!==_ttsGeneration||!connected){_speechChoreography=null;return;}
+  if(!ttsSpeaking) return;
+  if(document.hidden||_wakeUp||_gesture||isPlayingMotion) return;
+  // 缓冲耗尽或音频上下文暂停时，不按墙钟继续表演。
+  if(plan.clock==='audio'&&(!_audioCtx||_audioCtx.state!=='running'||(!_audioSrc&&!_streamSources.size))) return;
+  if(plan.clock==='audio'&&_getLipSyncTarget()<=0.02) return;
+  const elapsed=(plan.clock==='browser'?performance.now()/1000:_audioCtx.currentTime)-plan.start;
+  if(elapsed<plan.next||plan.count>=3) return;
+  startGesture(plan.motion);
+  if(_gesture){plan.count++;plan.next=elapsed+10;}
+}
 let _wakeUp=null;
 function wakeSmooth(value){const x=Math.max(0,Math.min(1,value));return x*x*(3-2*x);}
 function wakePose(seconds){
@@ -1760,6 +1783,7 @@ function _ensureAudioCtx(){
 
 function _stopAudio(){
   _ttsGeneration++;
+  _speechChoreography=null;
   if(_speechStartTimer!==null) clearTimeout(_speechStartTimer);
   _speechStartTimer=null;_speechStartAction=null;
   for(const source of _streamSources){try{source.stop();}catch(error){}}
@@ -1775,7 +1799,7 @@ async function speakText(text,onSpeechStart=null){
   if(!ttsEnabled||!text) return;
   if(_isListening&&_voiceMode==='server') return; // 避免录音期间采集数字人自己的播报。
   _stopAudio();
-  _speechStartAction=onSpeechStart;
+  _speechStartAction=()=>{if(onSpeechStart) onSpeechStart();startSpeechChoreography(text,_ttsGeneration);};
   const generation=_ttsGeneration;
   const useServerTTS=await _canUseServerTTS();
   if(generation!==_ttsGeneration) return;
@@ -1898,6 +1922,7 @@ async function _speakViaServerTTS(text,generation){
     source.onended=()=>{
       source.disconnect();
       if(generation!==_ttsGeneration||_audioSrc!==source) return;
+      _speechChoreography=null;
       ttsSpeaking=false; _mouthSmooth=0; _audioSrc=null; _useBrowserTTS=false;
       document.getElementById('speaking-indicator').classList.remove('show');
     };
@@ -1956,7 +1981,7 @@ async function _playStreamTTS(text,voice,generation,controller){
     }
     if(!started) return false;
     setTimeout(()=>{
-      if(generation===_ttsGeneration){ttsSpeaking=false;_mouthSmooth=0;document.getElementById('speaking-indicator').classList.remove('show');}
+      if(generation===_ttsGeneration){_speechChoreography=null;ttsSpeaking=false;_mouthSmooth=0;document.getElementById('speaking-indicator').classList.remove('show');}
     },Math.max(0,(at-ctx.currentTime)*1000));
     return true;
   }catch(error){
@@ -1989,6 +2014,7 @@ function _speakViaBrowser(text,generation){
     };
     utt.onend=utt.onerror=()=>{
       if(generation!==_ttsGeneration) return;
+      _speechChoreography=null;
       ttsSpeaking=false; _mouthSmooth=0; _useBrowserTTS=false; _lipText='';
       document.getElementById('speaking-indicator').classList.remove('show');
     };
