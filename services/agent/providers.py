@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import asyncio
+import json
+from typing import AsyncIterator
 from typing import Any, Protocol, Sequence
 
 import httpx
@@ -67,6 +70,48 @@ class OpenAICompatibleCompanionProvider:
     async def generate(self, messages: Sequence[ChatMessage]) -> str:
         return await self._generate(messages, COMPANION_SYSTEM_PROMPT)
 
+    async def generate_stream(self, messages: Sequence[ChatMessage]) -> AsyncIterator[str]:
+        payload = {"model": self.config.model, "messages": [
+            {"role": "system", "content": COMPANION_SYSTEM_PROMPT},
+            *(message.model_dump() for message in messages)],
+            "temperature": self.config.temperature, "max_tokens": self.config.max_tokens,
+            **self.config.extra_body, "stream": True}
+        client = self._client or httpx.AsyncClient(base_url=self.config.base_url.rstrip('/'),
+            timeout=self.config.timeout_seconds)
+        seen = False
+        try:
+            async with asyncio.timeout(self.config.timeout_seconds):
+                async with client.stream('POST', '/chat/completions', json=payload,
+                    headers={"Authorization": f"Bearer {self.config.api_key}"}) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if len(line) > 65536:
+                            raise CompanionProviderError('模型流式事件超限')
+                        if not line.startswith('data:'):
+                            continue
+                        data = line[5:].strip()
+                        if data == '[DONE]':
+                            if not seen:
+                                raise CompanionProviderError('模型返回空回复')
+                            return
+                        event = json.loads(data)
+                        choices = event.get('choices', [])
+                        if not choices:
+                            continue
+                        content = choices[0].get('delta', {}).get('content')
+                        if content is None or content == '':
+                            continue
+                        if not isinstance(content, str):
+                            raise CompanionProviderError('模型增量格式错误')
+                        seen = True
+                        yield content
+                    raise CompanionProviderError('模型回复流未正常结束')
+        except (httpx.HTTPError, TimeoutError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+            raise CompanionProviderError('模型流式请求失败或超时') from exc
+        finally:
+            if self._client is None:
+                await client.aclose()
+
     async def select_tool(self, text: str) -> str:
         return await self._generate([ChatMessage(role='user',content=text)], ROUTING_PROMPT, routing=True)
 
@@ -118,12 +163,34 @@ class FallbackCompanionProvider:
         except CompanionProviderError:
             return await self._fallback.generate(messages)
 
+    async def generate_stream(self, messages: Sequence[ChatMessage]) -> AsyncIterator[str]:
+        started = False
+        try:
+            async for delta in stream_companion(self._primary, messages):
+                started = True
+                yield delta
+        except CompanionProviderError:
+            # 已展示的半句话不能拼接另一模型的全新回答。
+            if started:
+                raise
+            async for delta in stream_companion(self._fallback, messages):
+                yield delta
+
     async def select_tool(self, text: str) -> str:
         # Routing has a short total deadline; do not invoke a second cloud model.
         selector = getattr(self._primary, 'select_tool', None)
         if selector is None:
             return '{"tool":"chat"}'
         return await selector(text)
+
+
+async def stream_companion(provider: CompanionProvider, messages: Sequence[ChatMessage]) -> AsyncIterator[str]:
+    stream = getattr(provider, 'generate_stream', None)
+    if stream is None:
+        yield await provider.generate(messages)
+    else:
+        async for delta in stream(messages):
+            yield delta
 
 
 def create_companion_provider(

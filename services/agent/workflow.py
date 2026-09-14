@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+from contextvars import ContextVar
 from html import escape
 from time import perf_counter
 from typing import Any, Awaitable, Callable, Literal, Sequence
@@ -25,7 +26,7 @@ from .memory import (
     extract_forget_query,
     extract_memory_candidate,
 )
-from .providers import CompanionProvider, FakeCompanionProvider
+from .providers import CompanionProvider, FakeCompanionProvider, stream_companion
 from .safety import SafetyTriage
 from .state import (
     AgentEvent,
@@ -44,6 +45,7 @@ SAFE_RESPONSE = (
 )
 MAX_CONTEXT_MESSAGES = 40
 AgentEventSink = Callable[[AgentEvent], Awaitable[None]]
+_text_delta_sink: ContextVar[Any] = ContextVar('text_delta_sink', default=None)
 
 
 class DigitalXinyuWorkflow:
@@ -533,7 +535,17 @@ class DigitalXinyuWorkflow:
                 role="system",
                 content=knowledge_context(knowledge, state.get("knowledge_status", "empty")),
             ))
-        response = await self._provider.generate(provider_messages)
+        sink = _text_delta_sink.get()
+        if sink is None:
+            response = await self._provider.generate(provider_messages)
+        else:
+            parts = []
+            async for delta in stream_companion(self._provider, provider_messages):
+                parts.append(delta)
+                if sum(map(len, parts)) > 8192:
+                    raise ValueError('模型回复超过长度限制')
+                await sink(delta)
+            response = ''.join(parts).strip()
         return self._complete_node(
             state,
             "companion",
@@ -683,7 +695,15 @@ class DigitalXinyuWorkflow:
             # 事件流属于可观测能力，发送失败不能中断安全响应和主对话。
             return
 
-    async def run(
+    async def run(self, *, text_delta_sink=None, **kwargs) -> AgentState:
+        # ContextVar 隔离并发用户；回调不进入图状态、数据库或检查点。
+        token = _text_delta_sink.set(text_delta_sink)
+        try:
+            return await self._run(**kwargs)
+        finally:
+            _text_delta_sink.reset(token)
+
+    async def _run(
         self,
         *,
         user_text: str,
