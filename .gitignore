@@ -90,3 +90,5 @@ temp/
 *.sqlite
 *.sqlite3
 data/users.db
+eval/asr/private-recordings/
+eval/asr/reports/
