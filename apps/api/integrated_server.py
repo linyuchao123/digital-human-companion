@@ -1855,7 +1855,7 @@ async def ws_main(websocket: WebSocket):
                 # 手动文字输入（ASR不可用时的降级）
                 text = msg.get("text", "").strip()
                 if text:
-                    spawn_session_task(_trigger_llm(text, state, websocket))
+                    spawn_session_task(_trigger_llm(text, state, websocket, _request_id(msg)))
 
             elif msg_type == "control":
                 action = msg.get("action", "")
@@ -1974,7 +1974,7 @@ async def _handle_audio(msg: dict, state: SessionState, ws: WebSocket, loop):
         if text:
             await _send(ws, {"type": "asr_result", "text": text, "is_final": True,
                              "provider": provider, "fallback_reason": fallback_reason})
-            await _trigger_llm(text, state, ws)
+            await _trigger_llm(text, state, ws, _request_id(msg))
         else:
             await _send(ws, {"type": "asr_error", "code": "empty_result", "message": "未识别到文字或模型加载失败，请重试或使用文字输入"})
 
@@ -1999,7 +1999,13 @@ def _parse_motion_and_clean(reply: str):
     return clean_text, motion
 
 
-async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
+def _request_id(msg):
+    value=msg.get('request_id')
+    pattern=r'[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+    return value if isinstance(value,str) and re.fullmatch(pattern,value,re.IGNORECASE) else None
+
+
+async def _trigger_llm(text: str, state: SessionState, ws: WebSocket, request_id=None):
     """通过数字心屿智能体工作流生成回复并同步数字人状态。"""
     if not text or state.llm_running:
         return
@@ -2007,7 +2013,7 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket):
     trace_id = str(uuid.uuid4())
     slow_notice = None
     try:
-        await _send(ws, {"type": "llm_thinking", "trace_id": trace_id, "text": "小安正在思考..."})
+        await _send(ws, {"type": "llm_thinking", "trace_id": trace_id, "request_id": request_id, "text": "小安正在思考..."})
         from services.agent import ChatMessage
 
         session_id = state.db_session_id or state.session_id

@@ -80,6 +80,27 @@ class AgentWebSocketFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('excerpt',reply['knowledge_sources'][0])
         self.assertNotIn('score',reply['knowledge_sources'][0])
 
+    async def test_request_id_is_validated_and_echoed_for_latency_correlation(self):
+        request_id = "123e4567-e89b-42d3-a456-426614174000"
+        self.assertEqual(
+            integrated_server._request_id({"request_id": request_id}), request_id
+        )
+        for invalid in (
+            "not-a-uuid",
+            "123e4567-e89b-02d3-a456-426614174000",
+            "123e4567-e89b-42d3-z456-426614174000",
+            None,
+            123,
+        ):
+            self.assertIsNone(integrated_server._request_id({"request_id": invalid}))
+
+        websocket = CaptureWebSocket()
+        await integrated_server._trigger_llm(
+            "你好", integrated_server.SessionState("timing-session"), websocket, request_id
+        )
+        self.assertEqual(websocket.messages[0]["type"], "llm_thinking")
+        self.assertEqual(websocket.messages[0]["request_id"], request_id)
+
     async def test_websocket_chat_keeps_context_between_turns(self):
         state = integrated_server.SessionState("guest-context")
 

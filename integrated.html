@@ -594,9 +594,12 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <div class="ad-title">🧭 智能体工作流</div>
     <span class="ad-badge" id="agent-provider-badge">等待运行</span>
     <button class="ad-history-btn" id="agent-history-btn" onclick="toggleAgentHistory()">最近运行</button>
+    <button class="ad-history-btn" onclick="renderTtsMetrics()">语音指标</button>
+    <button class="ad-history-btn" onclick="downloadTtsMetrics()">导出</button>
   </div>
   <div id="agent-debug-content" class="ad-empty">发送消息后，这里会显示工作流节点、安全分诊和数字人动作指令。</div>
   <div id="agent-runs-history" class="ad-runs"></div>
+  <div id="tts-metrics" class="ad-runs"></div>
 </aside>
 
 <aside id="activity-history-panel" aria-label="活动记录">
@@ -725,6 +728,55 @@ let isPlayingMotion=false;
 let developerMode=false;
 let agentHistoryMode=false, latestAgentTrace=null;
 let liveAgentEvents=[];
+let _inputTimings=new Map();
+let _inputTimingSeq=0;
+function _newInputTiming(kind){
+  _inputTimingSeq=(_inputTimingSeq+1)%1000;
+  const fallbackSuffix=`${String(Date.now()).slice(-9)}${String(_inputTimingSeq).padStart(3,'0')}`;
+  const requestId=globalThis.crypto?.randomUUID?.()||`00000000-0000-4000-8000-${fallbackSuffix}`,
+    timing={kind,submittedAt:performance.now()};
+  _inputTimings.set(requestId,timing);
+  if(_inputTimings.size>20)_inputTimings.delete(_inputTimings.keys().next().value);
+  return requestId;
+}
+function _bindInputTrace(requestId,traceId){
+  const timing=_inputTimings.get(requestId)||null;
+  if(requestId)_inputTimings.delete(requestId);
+  if(timing&&traceId){timing.thinkingAt=performance.now();_inputTimings.set(traceId,timing);}
+  return timing;
+}
+function _takeReplyTiming(traceId){
+  const timing=_inputTimings.get(traceId)||null;
+  if(traceId)_inputTimings.delete(traceId);
+  if(timing)timing.textReadyAt=performance.now();
+  return timing;
+}
+function _percentile(values,fraction){
+  if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b);
+  return sorted[Math.min(sorted.length-1,Math.ceil(sorted.length*fraction)-1)];
+}
+function ttsMetricsSummary(rows=window.__ttsStreamMetrics||[]){
+  const recent=rows.slice(-20),numeric=key=>recent.map(row=>row[key]).filter(Number.isFinite);
+  return {samples:recent.length,completed:recent.filter(row=>row.status==='completed').length,
+    completionRate:recent.length?recent.filter(row=>row.status==='completed').length/recent.length:null,
+    medianFirstByteMs:_percentile(numeric('firstByteMs'),.5),
+    medianTextToAudioMs:_percentile(numeric('firstAudioScheduledMs'),.5),
+    medianInputToAudioMs:_percentile(numeric('inputToFirstAudioScheduledMs'),.5),
+    p95InputToAudioMs:_percentile(numeric('inputToFirstAudioScheduledMs'),.95),
+    totalUnderruns:recent.reduce((sum,row)=>sum+(Number(row.underruns)||0),0)};
+}
+function renderTtsMetrics(){
+  const root=document.getElementById('tts-metrics'),summary=ttsMetricsSummary();root.replaceChildren();
+  const line=document.createElement('div');line.className='ad-empty';
+  line.textContent=summary.samples?`最近 ${summary.samples} 次 · 完成率 ${(summary.completionRate*100).toFixed(0)}% · 首字节 ${Math.round(summary.medianFirstByteMs??0)}ms · 文字到首音 ${Math.round(summary.medianTextToAudioMs??0)}ms · 提交到首音 ${summary.medianInputToAudioMs===null?'--':Math.round(summary.medianInputToAudioMs)+'ms'} · P95 ${summary.p95InputToAudioMs===null?'--':Math.round(summary.p95InputToAudioMs)+'ms'} · 缓冲耗尽 ${summary.totalUnderruns} 次`:'还没有流式语音指标。';
+  root.appendChild(line);
+}
+function downloadTtsMetrics(){
+  const rows=(window.__ttsStreamMetrics||[]).map(({requestAt,recorded,...row})=>row);
+  const blob=new Blob([JSON.stringify({generatedAt:new Date().toISOString(),summary:ttsMetricsSummary(rows),samples:rows},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download='tts-local-metrics.json';anchor.click();
+  setTimeout(()=>URL.revokeObjectURL(url),0);
+}
 
 /* ═══════════ 粒子 ═══════════ */
 (function(){
@@ -1101,6 +1153,7 @@ function disconnectAll(){
   if(chatWs){chatWs.close();chatWs=null;chatWsReady=false;}
   stopVoiceInput(false);
   _stopAudio();
+  _inputTimings.clear();
   connected=false;
   // 隐藏聊天/控制栏
   document.getElementById('bottom-bar').classList.remove('show');
@@ -1478,14 +1531,20 @@ function connectChatWS(){
       chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
     }
   };
-  chatWs.onclose=()=>{disableContinuousVoice();window.stopCameraPerception?.('连接已断开');chatWsReady=false;driveWsReady=false;wsParamsBuffer={};updateOverallStatus();
+  chatWs.onclose=()=>{_inputTimings.clear();disableContinuousVoice();window.stopCameraPerception?.('连接已断开');chatWsReady=false;driveWsReady=false;wsParamsBuffer={};updateOverallStatus();
     if(connected) setTimeout(connectChatWS,3000);};
   chatWs.onerror=()=>{};
   chatWs.onmessage=(e)=>{try{handleChatMessage(JSON.parse(e.data));}catch(err){}};
 }
 function chatSend(data){
   if(!chatWs||chatWs.readyState!==WebSocket.OPEN) return false;
-  try{chatWs.send(JSON.stringify(data));return true;}catch(error){return false;}
+  let requestId=null;
+  try{
+    if(data.type==='text_input'||data.type==='audio'){
+      requestId=_newInputTiming(data.type==='audio'?'voice':'text');data={...data,request_id:requestId};
+    }
+    chatWs.send(JSON.stringify(data));return true;
+  }catch(error){if(requestId)_inputTimings.delete(requestId);return false;}
 }
 
 function handleChatMessage(msg){
@@ -1516,7 +1575,10 @@ function handleChatMessage(msg){
       if(msg.code==='unavailable') _preferBrowserVoice=true;
       alert(msg.message||'语音识别失败，请重试');
       break;
-    case 'llm_thinking':beginStreamReply(msg.trace_id);showThinking(true);break;
+    case 'llm_thinking':{
+      _bindInputTrace(msg.request_id,msg.trace_id);
+      beginStreamReply(msg.trace_id);showThinking(true);break;
+    }
     case 'llm_delta':appendStreamReply(msg);break;
     case 'llm_waiting':
       if(msg.trace_id===_streamReply.trace&&!_streamReply.bubble){
@@ -1533,6 +1595,7 @@ function handleChatMessage(msg){
       if(msg.trace_id&&msg.trace_id!==_streamReply.trace) break;
       showThinking(false);
       const cleanText=msg.text.replace(/\[MOTION:[^\]]+\]/gi,'').trim();
+      const replyTiming=_takeReplyTiming(msg.trace_id);
       finishStreamReply(msg,cleanText);
       renderWebSources(msg.sources);
       renderKnowledgeSources(msg.knowledge_sources);
@@ -1542,7 +1605,7 @@ function handleChatMessage(msg){
       const replyMotion=msg.motion&&msg.motion!=='Idle'?()=>playMotion(msg.motion):null;
       if(ttsEnabled){
         const voiceEpoch=_continuousEpoch;
-        speakText(cleanText,replyMotion).finally(()=>{
+        speakText(cleanText,replyMotion,replyTiming).finally(()=>{
           if(voiceEpoch===_continuousEpoch){_continuousWaiting=false;scheduleContinuousVoice();}
         });
       }else{
@@ -1909,7 +1972,7 @@ function _stopAudio(){
   document.getElementById('speaking-indicator').classList.remove('show');
 }
 
-async function speakText(text,onSpeechStart=null){
+async function speakText(text,onSpeechStart=null,replyTiming=null){
   // 来源编号只用于阅读溯源，不读成语音正文。
   if(typeof text==='string')text=text.replace(/\[\d{1,3}\]/g,'');
   if(!ttsEnabled||!text) return;
@@ -1919,7 +1982,7 @@ async function speakText(text,onSpeechStart=null){
   const generation=_ttsGeneration;
   const useServerTTS=await _canUseServerTTS();
   if(generation!==_ttsGeneration) return;
-  const ok=useServerTTS?await _speakViaServerTTS(text,generation):false;
+  const ok=useServerTTS?await _speakViaServerTTS(text,generation,replyTiming):false;
   if(!ok&&generation===_ttsGeneration){
     const selected=document.getElementById('tts-voice-select')?.value||'';
     if(selected.startsWith('qwen3_tts:')||selected.startsWith('cosyvoice:')){
@@ -1996,7 +2059,7 @@ async function _canUseServerTTS(){
   return _ttsCapabilityPromise;
 }
 
-async function _speakViaServerTTS(text,generation){
+async function _speakViaServerTTS(text,generation,replyTiming=null){
   try{
     const controller=new AbortController();
     _ttsAbort=controller;
@@ -2006,7 +2069,7 @@ async function _speakViaServerTTS(text,generation){
     const voice=select&&!select.disabled?select.value:catalog.default_voice;
     // 流式路径校验格式并保留首段缓冲；首音频失败才使用同音色完整音频。
     if(TTS_STREAM_ENABLED&&voice?.startsWith('qwen3_tts:')){
-      const streamed=await _playStreamTTS(text,voice,generation,controller);
+      const streamed=await _playStreamTTS(text,voice,generation,controller,replyTiming);
       if(streamed) return true;
     }
     console.log('[TTS] 请求服务端语音...',voice||'默认音色');
@@ -2057,16 +2120,22 @@ async function _speakViaServerTTS(text,generation){
   }
 }
 
-async function _playStreamTTS(text,voice,generation,controller){
+function ttsInitialBufferSeconds(rows=window.__ttsStreamMetrics||[]){
+  const recent=rows.slice(-5);return recent.filter(row=>(Number(row.underruns)||0)>0).length>=2?.56:.32;
+}
+async function _playStreamTTS(text,voice,generation,controller,replyTiming=null){
   let started=false,reader=null,eof=false,watchdog=null;
   const active=new Set(),now=()=>performance.now();
-  const metric={requestAt:now(),firstByteMs:null,firstAudioScheduledMs:null,underruns:0,status:'loading'};
+  const initialBufferSeconds=ttsInitialBufferSeconds();
+  const metric={requestAt:now(),inputKind:replyTiming?.kind||null,firstByteMs:null,firstAudioScheduledMs:null,
+    inputToFirstAudioScheduledMs:null,outputLatencyMs:null,initialBufferMs:initialBufferSeconds*1000,underruns:0,status:'loading'};
   // 仅保留本机数值统计，不包含正文、音频或身份信息。
   const record=()=>{
     if(metric.recorded)return;metric.recorded=true;
     const rows=window.__ttsStreamMetrics||(window.__ttsStreamMetrics=[]);
     rows.push({...metric,elapsedMs:now()-metric.requestAt});
     if(rows.length>100)rows.shift();
+    if(typeof renderTtsMetrics==='function'&&developerMode)renderTtsMetrics();
   };
   const finish=()=>{
     if(!eof||active.size)return;
@@ -2102,6 +2171,7 @@ async function _playStreamTTS(text,voice,generation,controller){
       if(!started){
         const delay=(at-ctx.currentTime)*1000;
         metric.firstAudioScheduledMs=now()-metric.requestAt+delay;
+        if(Number.isFinite(replyTiming?.submittedAt))metric.inputToFirstAudioScheduledMs=now()-replyTiming.submittedAt+delay;
         metric.outputLatencyMs=((ctx.outputLatency||ctx.baseLatency)||0)*1000;
         // 从排程起保持忙碌，避免连续模式抢先重新开启麦克风。
         ttsSpeaking=true;
@@ -2123,7 +2193,8 @@ async function _playStreamTTS(text,voice,generation,controller){
         const joined=new Uint8Array(pending.length+value.length);joined.set(pending);joined.set(value,pending.length);pending=joined;
       }
       const length=pending.length-pending.length%2;
-      if(length>=streamChunkBytes(sampleRate,started)||done&&length){schedule(pending.slice(0,length));pending=pending.slice(length);}
+      const required=started?streamChunkBytes(sampleRate,true):Math.ceil(sampleRate*initialBufferSeconds)*2;
+      if(length>=required||done&&length){schedule(pending.slice(0,length));pending=pending.slice(length);}
       if(done){if(pending.length)throw new Error('Incomplete PCM sample');break;}
     }
     if(!started) return false;
@@ -2720,7 +2791,8 @@ function clearLocalAccount(){
   for(const id of ['profile-current-password','profile-new-password','profile-confirm-password','account-delete-confirm',
     'profile-name','profile-username','profile-birthday','profile-email','profile-email-code','profile-avatar-file',
     'recovery-email','recovery-code','recovery-password','recovery-confirm'])document.getElementById(id).value='';
-  for(const id of ['profile-email-state','profile-created','profile-status','account-delete-status','recovery-status','agent-debug-content','agent-runs-history'])document.getElementById(id).textContent='';
+  for(const id of ['profile-email-state','profile-created','profile-status','account-delete-status','recovery-status','agent-debug-content','agent-runs-history','tts-metrics'])document.getElementById(id).textContent='';
+  window.__ttsStreamMetrics=[];_inputTimings.clear();
   latestAgentTrace=null;liveAgentEvents=[];agentHistoryMode=false;
   document.getElementById('agent-debug').classList.remove('show');
   document.getElementById('profile-avatar').removeAttribute('src');

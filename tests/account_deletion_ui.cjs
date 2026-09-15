@@ -5,6 +5,7 @@ const elements=new Map();
 const element=id=>{if(!elements.has(id))elements.set(id,{value:'private',textContent:'private',classList:{remove(){}},close(){},removeAttribute(){},focus(){}});return elements.get(id);};
 let calls=0,stops=0,consent=false,ok=false;
 const ctx=vm.createContext({document:{getElementById:element},_authToken:'owner-token',_currentUser:'owner',_currentDbSession:'session',_profile:{},_profileAvatar:'private',_sidebarOpen:false,
+  window:{__ttsStreamMetrics:[{status:'completed'}]},_inputTimings:new Map(),
   disconnectAll(){stops++;},delCookie(){},confirm:()=>consent,AbortController,setTimeout:()=>1,clearTimeout(){},fetch:async(url,options)=>{
     calls++;assert.equal(url,'/api/profile/account/delete');assert.equal(options.headers['X-Auth-Token'],'owner-token');
     assert.equal(JSON.parse(options.body).current_password,'password');
