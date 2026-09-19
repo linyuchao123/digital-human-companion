@@ -106,6 +106,8 @@ class AgentState(TypedDict, total=False):
     messages: list[ChatMessage]
     conversation_summary: str
     visual_observation: str
+    dialogue_mode: Literal["daily", "emotional"]
+    emotion_style: Literal["confidant", "gentle"]
     intent: str
     selected_tool: str
     routing_source: str

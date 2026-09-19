@@ -12,6 +12,7 @@ from services.agent import (
     OpenAICompatibleConfig,
     create_companion_provider,
 )
+from services.agent.providers import reset_generation_profile, set_generation_profile
 
 
 class FakeCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
@@ -34,6 +35,25 @@ class FakeCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
 
 
 class OpenAICompatibleCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dialogue_profiles_change_prompt_and_budget_without_mutating_config(self):
+        payloads = []
+        def handle_request(request):
+            payloads.append(json.loads(request.content))
+            return httpx.Response(200, json={"choices":[{"message":{"content":"好"}}]})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle_request), base_url="https://example.test") as client:
+            provider = OpenAICompatibleCompanionProvider(OpenAICompatibleConfig(api_key="key"), client)
+            daily = set_generation_profile("daily", "confidant")
+            await provider.generate([ChatMessage(role="user", content="最近焦虑")])
+            reset_generation_profile(daily)
+            emotional = set_generation_profile("emotional", "gentle")
+            await provider.generate([ChatMessage(role="user", content="最近焦虑")])
+            reset_generation_profile(emotional)
+        self.assertIn("日常对话模式", payloads[0]["messages"][0]["content"])
+        self.assertEqual(payloads[0]["max_tokens"], 250)
+        self.assertIn("温柔亲昵", payloads[1]["messages"][0]["content"])
+        self.assertEqual(payloads[1]["max_tokens"], 900)
+        self.assertEqual(provider.config.max_tokens, 250)
+
     async def test_provider_sends_openai_compatible_request(self):
         captured = {}
 

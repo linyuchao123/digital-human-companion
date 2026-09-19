@@ -6,6 +6,7 @@ import httpx
 from services.agent.providers import (
     CompanionProviderError, FakeCompanionProvider, FallbackCompanionProvider,
     OpenAICompatibleCompanionProvider, OpenAICompatibleConfig,
+    generation_settings,
 )
 from services.agent.state import ChatMessage
 from services.agent.workflow import DigitalXinyuWorkflow
@@ -76,3 +77,17 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn('text_delta_sink',result)
             return parts
         self.assertEqual(await asyncio.gather(run('你好'),run('再见')),[['你好','回复'],['再见','回复']])
+
+    async def test_concurrent_workflows_keep_dialogue_profiles_isolated(self):
+        class Provider:
+            async def generate(self, messages):
+                await asyncio.sleep(0)
+                prompt, _, budget = generation_settings()
+                return ("情感" if "情感对话模式" in prompt else "日常") + str(budget)
+        workflow = DigitalXinyuWorkflow(provider=Provider())
+        async def run(mode, style):
+            result = await workflow.run(user_text="测试", trace_id=mode, session_id=mode,
+                                        dialogue_mode=mode, emotion_style=style)
+            return result["final_response"]
+        self.assertEqual(await asyncio.gather(run("daily","confidant"), run("emotional","gentle")),
+                         ["日常250", "情感900"])

@@ -28,7 +28,10 @@ from .memory import (
     extract_forget_query,
     extract_memory_candidate,
 )
-from .providers import CompanionProvider, FakeCompanionProvider, stream_companion
+from .providers import (
+    CompanionProvider, FakeCompanionProvider, reset_generation_profile,
+    set_generation_profile, stream_companion,
+)
 from .safety import SafetyTriage
 from .state import (
     AgentEvent,
@@ -614,6 +617,8 @@ class DigitalXinyuWorkflow:
         memory_consent: bool,
         conversation_summary: str = '',
         visual_observation: str = '',
+        dialogue_mode: str = 'daily',
+        emotion_style: str = 'confidant',
     ) -> AgentState:
         recent, summary = compact_context(messages, conversation_summary, MAX_CONTEXT_MESSAGES - 2)
         return {
@@ -625,6 +630,8 @@ class DigitalXinyuWorkflow:
             "messages": recent,
             "conversation_summary": summary,
             "visual_observation": visual_observation,
+            "dialogue_mode": dialogue_mode,
+            "emotion_style": emotion_style,
             "user_id": user_id,
             "execution_path": [],
             "node_timings_ms": {},
@@ -710,9 +717,13 @@ class DigitalXinyuWorkflow:
     async def run(self, *, text_delta_sink=None, **kwargs) -> AgentState:
         # ContextVar 隔离并发用户；回调不进入图状态、数据库或检查点。
         token = _text_delta_sink.set(text_delta_sink)
+        profile_token = set_generation_profile(
+            kwargs.get('dialogue_mode', 'daily'), kwargs.get('emotion_style', 'confidant')
+        )
         try:
             return await self._run(**kwargs)
         finally:
+            reset_generation_profile(profile_token)
             _text_delta_sink.reset(token)
 
     async def _run(
@@ -728,6 +739,8 @@ class DigitalXinyuWorkflow:
         event_sink: AgentEventSink | None = None,
         conversation_summary: str = '',
         visual_observation: str = '',
+        dialogue_mode: str = 'daily',
+        emotion_style: str = 'confidant',
     ) -> AgentState:
         initial_state = self._initial_state(
             user_text=user_text,
@@ -738,6 +751,8 @@ class DigitalXinyuWorkflow:
             memory_consent=memory_consent,
             conversation_summary=conversation_summary,
             visual_observation=visual_observation,
+            dialogue_mode=dialogue_mode,
+            emotion_style=emotion_style,
         )
         if event_sink is None:
             return await self.graph.ainvoke(initial_state, config=config)

@@ -1836,6 +1836,8 @@ class SessionState:
         self.agent_messages: list[dict[str, str]] = []
         self.conversation_summary = ''
         self.memory_consent: bool = False
+        self.dialogue_mode: str = "daily"
+        self.emotion_style: str = "confidant"
 
 # 驱动 WebSocket 客户端集合（供 /ws/drive 广播）
 _drive_clients: set = set()
@@ -1985,6 +1987,17 @@ async def ws_main(websocket: WebSocket):
                 state.agent_messages = (
                     _db_load_message_context(db_sid) if db_sid else []
                 )
+                if db_sid:
+                    with _get_db() as conn:
+                        settings = conn.execute(
+                            "SELECT dialogue_mode,emotion_style FROM chat_sessions WHERE id=? AND user_id=?",
+                            (db_sid, user_id),
+                        ).fetchone()
+                    state.dialogue_mode = settings["dialogue_mode"] if settings else "daily"
+                    state.emotion_style = settings["emotion_style"] if settings else "confidant"
+                else:
+                    state.dialogue_mode = "daily"
+                    state.emotion_style = "confidant"
                 state.conversation_summary = ''
                 state.memory_consent = _memory_enabled_for_user(user_id)
                 print(f"[WS] 用户 {user_id} 绑定会话 {db_sid}")
@@ -2205,6 +2218,8 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket, request_id
             visual_observation=state.camera_observation.summary(),
             user_id=state.user_id,
             memory_consent=state.memory_consent,
+            dialogue_mode=state.dialogue_mode,
+            emotion_style=state.emotion_style,
             event_sink=send_agent_event,
             text_delta_sink=send_delta,
         ), timeout=60)
@@ -2296,8 +2311,8 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket, request_id
                     print('[DB] 会话摘录更新未完成')
                 finally:conn.close()
             state.msg_count += 1
-            # 第2条消息后触发标题生成（后台异步）
-            if state.msg_count == 2:
+            # 首轮形成初始标题，之后每四轮适度重新概括；手动标题在生成函数内受保护。
+            if state.msg_count == 1 or state.msg_count % 4 == 0:
                 asyncio.create_task(_auto_generate_title(state.db_session_id, ws))
 
     except Exception as e:
@@ -2316,6 +2331,10 @@ async def _auto_generate_title(db_session_id: str, ws: WebSocket):
     """后台自动为会话生成标题，并通过 WebSocket 推送更新"""
     try:
         conn = _get_db()
+        session = conn.execute("SELECT title_manual FROM chat_sessions WHERE id=?", (db_session_id,)).fetchone()
+        if not session or session["title_manual"]:
+            conn.close()
+            return
         msgs = conn.execute(
             "SELECT role,content FROM chat_messages WHERE session_id=? ORDER BY id ASC LIMIT 6",
             (db_session_id,)
@@ -2334,19 +2353,20 @@ async def _auto_generate_title(db_session_id: str, ws: WebSocket):
                         headers={"Authorization": f"Bearer {QWEN_API_KEY}"},
                         json={"model": QWEN_MODEL, "messages": [
                             {"role": "system", "content": "你是文本摘要助手，只输出结果。"},
-                            {"role": "user", "content": f"请用5-8个汉字总结以下对话的主题，只输出词语，不要标点：\n{summary}"}
+                            {"role": "user", "content": f"请用8-16个汉字准确概括以下对话主题，只输出标题，不要标点：\n{summary}"}
                         ], "max_tokens": 20, "temperature": 0.3}
                     )
                     data = resp.json()
-                    title = data["choices"][0]["message"]["content"].strip()[:15]
+                    title = data["choices"][0]["message"]["content"].strip()[:16]
             except Exception:
                 pass
         conn2 = _get_db()
-        conn2.execute("UPDATE chat_sessions SET title=? WHERE id=?", (title, db_session_id))
+        cursor = conn2.execute("UPDATE chat_sessions SET title=? WHERE id=? AND title_manual=0", (title, db_session_id))
         conn2.commit()
         conn2.close()
         # 推送标题更新给前端
-        await _send(ws, {"type": "session_title", "session_id": db_session_id, "title": title})
+        if cursor.rowcount:
+            await _send(ws, {"type": "session_title", "session_id": db_session_id, "title": title})
     except Exception as e:
         print(f"[Title] 自动生成标题失败: {e}")
 
