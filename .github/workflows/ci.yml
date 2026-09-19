@@ -68,6 +68,8 @@ jobs:
           node tests/avatar_speech_sync.cjs
           node tests/tts_stream_lifecycle.cjs
           node tests/tts_metrics.cjs
+          node tests/tts_sentence_queue.cjs
+          node tests/responsive_workspace.cjs
           node tests/avatar_long_speech.cjs
           node tests/camera_quality.cjs
           node tests/camera_lifecycle.cjs

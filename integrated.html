@@ -674,6 +674,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
       <div class="wc-name">你好，我是小安</div>
       <div class="wc-hint">我是你的AI情感陪护伙伴<br>有什么想聊的，随时告诉我</div>
     </div>
+    <button id="load-older-messages" class="tb-chip" style="display:none;margin:8px auto 2px" onclick="loadOlderMessages()">加载更早消息</button>
     <div id="chat-area"></div>
   </div>
   <div id="read-panel">
@@ -730,6 +731,7 @@ let chatWs=null, driveWs=null, chatWsReady=false, driveWsReady=false;
 let ttsEnabled=true, ttsSpeaking=false;
 let micOnly=false, micStream=null, micRecorder=null, micChunks=[];
 let pixiApp=null, live2dModel=null;
+let _live2dBaseSize=null,_live2dResizeObserver=null;
 let wsParamsBuffer = {};
 let driveFrameCount=0, connected=false;
 let isPlayingMotion=false;
@@ -1195,14 +1197,18 @@ async function initPixiAndModel(){
     backgroundAlpha:0,antialias:true,resolution:window.devicePixelRatio||1,
   });
   live2dModel=await PIXI.live2d.Live2DModel.from(MODEL_PATH,{autoInteract:false,autoUpdate:true});
-  const scW=wrap.clientWidth/live2dModel.width;
-  const scH=wrap.clientHeight/live2dModel.height;
+  _live2dBaseSize={width:live2dModel.width,height:live2dModel.height};
+  const scW=wrap.clientWidth/_live2dBaseSize.width;
+  const scH=wrap.clientHeight/_live2dBaseSize.height;
   const sc=Math.min(scW,scH)*0.9;
   live2dModel.scale.set(sc);
   live2dModel.x=wrap.clientWidth/2;
   live2dModel.y=wrap.clientHeight/2;
   live2dModel.anchor.set(0.5,0.5);
   pixiApp.stage.addChild(live2dModel);
+  _live2dResizeObserver?.disconnect();
+  _live2dResizeObserver=new ResizeObserver(()=>resizeLive2D());
+  _live2dResizeObserver.observe(wrap);
 
   // 禁用内置自动行为
   const im=live2dModel.internalModel;
@@ -2401,9 +2407,9 @@ function renderKnowledgeFollowups(sources){
   }
   box.appendChild(hint);bubble.appendChild(box);
 }
-function renderKnowledgeSources(sources){
+function renderKnowledgeSources(sources,targetBubble=null){
   if(!Array.isArray(sources)||!sources.length) return;
-  const bubble=document.querySelector('#chat-area .bubble-row:last-child.ai .bubble');
+  const bubble=targetBubble||document.querySelector('#chat-area .bubble-row:last-child.ai .bubble');
   if(!bubble) return;
   const details=document.createElement('details');details.className='knowledge-references';
   details.style.cssText='margin-top:10px;border-top:1px solid #d6e4f4;padding-top:8px;font-size:12px;line-height:1.7';
@@ -2423,7 +2429,7 @@ function renderKnowledgeSources(sources){
   });
   bubble.appendChild(details);
 }
-function addBubble(role,text,label,timestamp=null){
+function addBubble(role,text,label,timestamp=null,prepend=false){
   showThinking(false);
   const area=document.getElementById('chat-area');
   const wc=document.getElementById('welcome-card');
@@ -2437,8 +2443,10 @@ function addBubble(role,text,label,timestamp=null){
     const tag=document.createElement('div');tag.className='emo-tag';tag.textContent=label;
     b.appendChild(document.createElement('br'));b.appendChild(tag);
   }
-  row.appendChild(meta);row.appendChild(b);area.appendChild(row);
-  area.scrollTop=area.scrollHeight;
+  row.appendChild(meta);row.appendChild(b);
+  if(prepend)area.insertBefore(row,area.firstChild);else area.appendChild(row);
+  if(!prepend)area.scrollTop=area.scrollHeight;
+  return row;
 }
 async function toggleActivityHistory(){
   const panel=document.getElementById('activity-history-panel');
@@ -2543,18 +2551,19 @@ function sendText(){
 }
 
 /* ═══════════ 窗口自适应 ═══════════ */
-window.addEventListener('resize',()=>{
-  if(pixiApp&&live2dModel){
+function resizeLive2D(){
+  if(pixiApp&&live2dModel&&_live2dBaseSize){
     const wrap=document.getElementById('live2d-wrap');
     pixiApp.renderer.resize(wrap.clientWidth,wrap.clientHeight);
-    const scW=wrap.clientWidth/live2dModel.width;
-    const scH=wrap.clientHeight/live2dModel.height;
+    const scW=wrap.clientWidth/_live2dBaseSize.width;
+    const scH=wrap.clientHeight/_live2dBaseSize.height;
     const sc=Math.min(scW,scH)*0.9;
     live2dModel.scale.set(sc);
     live2dModel.x=wrap.clientWidth/2;
     live2dModel.y=wrap.clientHeight/2;
   }
-});
+}
+window.addEventListener('resize',resizeLive2D);
 
 /* ═══════════ 启动 ═══════════ */
 window.addEventListener('load',()=>{
@@ -2834,6 +2843,8 @@ function clearLocalAccount(){
   disconnectAll();
   delCookie('auth_token'); delCookie('auth_user');
   _authToken=''; _currentUser=''; _currentDbSession='';
+  _sessions=[];_sessionCursor=null;_messageCursor=null;_sessionSwitchEpoch++;
+  beginStreamReply(null);
   _profile=null;document.getElementById('profile-dialog').close();
   _profileAvatar='';
   document.getElementById('chat-area').textContent='';
@@ -2900,8 +2911,8 @@ function toggleSidebar(){
   });
   document.addEventListener('mousemove',e=>{
     if(!dragging) return;
-    const newW=Math.min(400,Math.max(180,startW+(e.clientX-startX)));
-    sidebar.style.width=newW+'px';
+    const newW=Math.min(400,Math.max(320,startW+(e.clientX-startX)));
+    document.documentElement.style.setProperty('--panel-width',newW+'px');
     document.documentElement.style.setProperty('--sb-width',newW+'px');
     toggle.style.left=(_sidebarOpen?newW:0)+'px';
   });
@@ -3009,6 +3020,7 @@ async function switchSession(sessionId,force=false){
     if(sessionId!==_currentDbSession)return;
     if(epoch!==_sessionSwitchEpoch)return;
     _messageCursor=data.next_before_id||null;
+    document.getElementById('load-older-messages').style.display=_messageCursor?'inline-flex':'none';
     const area=document.getElementById('chat-area');
     area.innerHTML='';
     for(const m of (data.messages||[])){
@@ -3023,6 +3035,24 @@ async function switchSession(sessionId,force=false){
   if(chatWs&&chatWs.readyState===WebSocket.OPEN){
     chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:sessionId}));
   }
+}
+
+async function loadOlderMessages(){
+  if(!_messageCursor||!_currentDbSession)return;
+  const sessionId=_currentDbSession,epoch=_sessionSwitchEpoch,button=document.getElementById('load-older-messages');
+  button.disabled=true;const area=document.getElementById('chat-area'),previousHeight=area.scrollHeight;
+  try{
+    const response=await fetch(`/api/sessions/${sessionId}/messages?limit=50&before_id=${_messageCursor}`,{headers:{'X-Auth-Token':_authToken}});
+    if(!response.ok)throw new Error('历史消息加载失败');const data=await response.json();
+    if(sessionId!==_currentDbSession||epoch!==_sessionSwitchEpoch)return;
+    for(const message of [...(data.messages||[])].reverse()){
+      const row=addBubble(message.role==='user'?'user':'ai',message.content,message.emotion_label||'',message.ts,true);
+      if(message.role==='assistant')renderKnowledgeSources(message.knowledge_sources,row.querySelector('.bubble'));
+    }
+    _messageCursor=data.next_before_id||null;button.style.display=_messageCursor?'inline-flex':'none';
+    area.scrollTop=area.scrollHeight-previousHeight;
+  }catch(error){button.textContent='加载失败，点击重试';}
+  finally{button.disabled=false;}
 }
 
 function applySessionHeader(session){
