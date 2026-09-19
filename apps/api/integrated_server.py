@@ -1872,7 +1872,10 @@ async def ws_drive(websocket: WebSocket):
 @app.websocket("/ws/main")
 async def ws_main(websocket: WebSocket):
     origin=websocket.headers.get('origin')
-    allowed={x.strip() for x in os.getenv('ALLOWED_ORIGINS','http://127.0.0.1:8801,http://localhost:8801').split(',')}
+    allowed={x.strip() for x in os.getenv(
+        'ALLOWED_ORIGINS',
+        'http://127.0.0.1:8800,http://localhost:8800,http://127.0.0.1:8801,http://localhost:8801',
+    ).split(',')}
     if origin and origin not in allowed:
         await websocket.close(code=1008)
         return

@@ -14,11 +14,13 @@
   --text:#1a2340;--text2:rgba(26,35,64,.6);
   --r:10px;--r-lg:16px;--r-xl:22px;
   --shadow:0 8px 32px rgba(0,0,0,.18);--shadow-sm:0 2px 12px rgba(0,0,0,.1);
+  --panel-width:clamp(320px,22vw,400px);--panel-gap:16px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;
   font-family:'PingFang SC','Microsoft YaHei','Segoe UI',sans-serif;
   font-size:13px;user-select:none}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ══ 背景 ══ */
 #bg{position:fixed;inset:0;z-index:0;
@@ -57,6 +59,7 @@ html,body{height:100%;overflow:hidden;
   font-size:11px;font-family:inherit;transition:all .2s;display:inline-flex;align-items:center;gap:4px;box-shadow:var(--shadow-sm)}
 .tb-chip:hover{background:rgba(255,255,255,.7);color:var(--text)}
 .tb-chip.on{background:rgba(52,200,122,.15);border-color:rgba(52,200,122,.5);color:#1a9955;font-weight:600}
+.topbar-secondary{position:relative}.topbar-secondary>summary{list-style:none}.topbar-secondary>summary::-webkit-details-marker{display:none}.topbar-menu{position:absolute;right:0;top:36px;width:220px;padding:10px;display:flex;flex-direction:column;gap:7px;background:rgba(244,250,255,.96);border:1px solid rgba(255,255,255,.8);border-radius:14px;box-shadow:var(--shadow);z-index:250}.topbar-menu>*{width:100%;justify-content:flex-start}
 .tts-voice-select{height:28px;max-width:150px;padding:0 24px 0 10px;border-radius:14px;
   border:1px solid rgba(255,255,255,.65);background:rgba(255,255,255,.52);color:var(--text2);
   font-size:11px;font-family:inherit;outline:none;cursor:pointer;box-shadow:var(--shadow-sm)}
@@ -151,7 +154,7 @@ html,body{height:100%;overflow:hidden;
 #send-btn:hover{transform:scale(1.08)}
 
 /* ══ 右侧聊天面板 ══ */
-#chat-panel{position:fixed;top:56px;right:16px;bottom:72px;z-index:150;width:300px;
+#chat-panel{position:fixed;top:56px;right:var(--panel-gap);bottom:72px;z-index:150;width:var(--panel-width);
   display:none;flex-direction:column;
   background:rgba(255,255,255,0.22);backdrop-filter:blur(28px) saturate(1.8);
   -webkit-backdrop-filter:blur(28px) saturate(1.8);border:1px solid rgba(255,255,255,.55);
@@ -161,6 +164,8 @@ html,body{height:100%;overflow:hidden;
 .cp-head{flex-shrink:0;padding:12px 16px 10px;border-bottom:1px solid rgba(255,255,255,.4);
   display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.1)}
 .cp-title{font-size:13px;font-weight:700;color:var(--text);flex:1}
+.cp-subtitle{font-size:10px;color:var(--text2);margin-top:3px}.cp-controls{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.cp-controls select,.cp-controls button{height:26px;border:1px solid rgba(79,142,247,.25);border-radius:13px;background:rgba(255,255,255,.56);color:var(--text);padding:0 9px;font-size:10px;cursor:pointer}
 .cp-mode-btn{height:24px;padding:0 10px;border-radius:12px;border:1px solid rgba(255,255,255,.5);
   background:transparent;color:var(--text2);cursor:pointer;font-size:10px;font-family:inherit;transition:all .2s}
 .cp-mode-btn:hover{background:rgba(255,255,255,.5);color:var(--text)}
@@ -185,7 +190,7 @@ html,body{height:100%;overflow:hidden;
 .knowledge-followups button:focus-visible{outline:2px solid #4f8ef7;outline-offset:2px}
 .knowledge-followup-hint{width:100%;font-size:10px;color:var(--text2);line-height:1.5}
 .bubble-meta{font-size:9px;color:var(--text2);margin-bottom:3px;padding:0 4px}
-.bubble{max-width:88%;padding:9px 13px;border-radius:14px;font-size:12px;line-height:1.6;word-break:break-all}
+.bubble{max-width:88%;padding:9px 13px;border-radius:14px;font-size:12px;line-height:1.6;word-break:break-word;user-select:text}
 .bubble.user{background:linear-gradient(135deg,rgba(79,142,247,.75),rgba(60,110,230,.7));
   color:#fff;border-radius:14px 14px 4px 14px;box-shadow:0 3px 12px rgba(79,142,247,.3)}
 .bubble.ai{background:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.8);
@@ -305,8 +310,8 @@ body.emo-happy #bg{background:linear-gradient(180deg,#c8f0e0 0%,#d8f5ea 30%,#eef
 body.emo-sad #bg{background:linear-gradient(180deg,#b8c8e0 0%,#ccd5e8 30%,#dde3f0 65%,#eceef5 100%)}
 body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e5e2f5 65%,#f0eff8 100%)}
 
-@media(max-width:900px){#chat-panel{width:260px}#bottom-bar{width:90vw;min-width:300px}}
-@media(max-width:600px){#chat-panel{width:calc(100vw - 32px)}#bottom-bar{width:calc(100vw - 32px)}#agent-debug{width:calc(100vw - 32px)}}
+@media(max-width:1100px){#sidebar{z-index:190;box-shadow:12px 0 40px rgba(45,70,120,.2)}#sb-resize{display:none}}
+@media(max-width:700px){#chat-panel{left:16px;right:16px;width:auto;bottom:78px}.logo{max-width:130px;overflow:hidden}.cp-head{align-items:flex-start}#bottom-bar{width:calc(100vw - 32px);min-width:0}.topbar-secondary{display:none!important}}
 
 /* ══ 左侧历史对话栏 ══ */
 #camera-panel{position:fixed;top:74px;left:calc(var(--sb-width,240px) + 16px);z-index:35;width:220px;max-width:calc(100vw - 32px);padding:14px;border-radius:20px;background:rgba(255,255,255,.86);border:1px solid rgba(255,255,255,.8);box-shadow:0 12px 36px rgba(40,65,100,.13);backdrop-filter:blur(16px);color:var(--text)}
@@ -320,10 +325,10 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 .camera-actions .tb-chip{font-size:11px;padding:0 10px}
 .camera-note{display:block;margin-top:10px;font-size:10px;line-height:1.6;color:var(--text2)}
 @media(max-width:700px){#camera-panel{left:16px;top:110px;width:190px}}
-#sidebar{position:fixed;left:0;top:0;width:240px;height:100%;z-index:30;
+#sidebar{position:fixed;left:var(--panel-gap);top:56px;width:var(--panel-width);height:calc(100% - 72px);z-index:30;border-radius:var(--r-xl);
   background:rgba(255,255,255,0.30);backdrop-filter:blur(20px) saturate(1.6);
   -webkit-backdrop-filter:blur(20px) saturate(1.6);
-  border-right:1px solid rgba(255,255,255,0.5);
+  border:1px solid rgba(255,255,255,0.5);
   display:flex;flex-direction:column;transform:translateX(-100%);
   transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:4px 0 24px rgba(79,142,247,.08);
   min-width:180px;max-width:400px}
@@ -351,6 +356,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 .sb-session:hover{background:rgba(79,142,247,.12)}
 .sb-session.active{background:rgba(79,142,247,.18);border-left:2px solid var(--accent)}
 .sb-session-title{font-size:12px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-session-copy{min-width:0;flex:1}.sb-session-meta{font-size:9px;color:var(--text2);margin-top:3px}.sb-main-badge{font-size:9px;color:var(--accent);margin-right:5px}.sb-session.main{order:-1;border:1px solid rgba(79,142,247,.18)}
 .sb-session.active .sb-session-title{color:var(--accent);font-weight:600}
 .sb-del-btn{opacity:0;width:20px;height:20px;border:none;background:none;color:var(--text2);cursor:pointer;
   font-size:14px;flex-shrink:0;border-radius:4px;transition:all .15s;line-height:20px;text-align:center}
@@ -439,6 +445,8 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 .social-divider{display:flex;align-items:center;gap:10px;font-size:11px;color:#8793a8;margin-top:20px}.social-divider::before,.social-divider::after{content:'';height:1px;background:#e5eaf3;flex:1}
 #auth-method-note{font-size:11px;color:#8793a8;line-height:1.7;margin-top:10px}.email-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 @media(max-width:650px){#auth-box{grid-template-columns:1fr}.auth-brand{min-height:0;padding:22px 28px}.auth-brand h1{font-size:23px;margin:15px 0 8px}.auth-brand p,.auth-brand small{display:none}.auth-form{padding:28px}.profile-grid{grid-template-columns:1fr}}
+@media(max-width:1100px){#sidebar{z-index:190;box-shadow:12px 0 40px rgba(45,70,120,.2)}#sb-resize{display:none}}
+@media(max-width:700px){#sidebar{width:calc(100vw - 32px)}#chat-panel{left:16px;right:16px;width:auto;bottom:78px}.logo{max-width:130px;overflow:hidden}.cp-head{align-items:flex-start}#bottom-bar{width:calc(100vw - 32px);min-width:0}.topbar-secondary{display:none!important}#drive-info{display:none!important}}
 @media(prefers-reduced-motion:reduce){#auth-modal *{transition:none}}
 </style>
 </head>
@@ -547,20 +555,15 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <button id="disconnect-btn" onclick="disconnectAll()">🔌 断开连接</button>
   <div class="spacer"></div>
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
-  <span class="tb-chip" id="asr-provider-label" title="实际录音识别来源">🎤 ASR</span>
-  <select class="tts-voice-select" id="tts-voice-select" title="选择服务端语音音色" disabled>
-    <option value="">正在读取音色…</option>
-  </select>
-  <select class="tts-voice-select" title="预览动作；自动动作根据对话内容选择" onchange="playMotion(this.value);this.value=''">
-    <option value="">🎭 动作预览</option>
-    <optgroup label="原模型动作"><option value="FlickUp">原动作 1</option><option value="Tap">原动作 2</option><option value="Flick3">原动作 3</option><option value="Idle">原动作 4</option></optgroup>
-    <optgroup label="新增轻量动作"><option value="Hello">问候</option><option value="Nod">点头</option><option value="ShakeHead">摇头</option><option value="Think">思考</option><option value="Celebrate">庆祝</option><option value="Comfort">安慰</option><option value="Listen">倾听</option></optgroup>
-  </select>
-<button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()" title="管理长期记忆授权与已保存内容">🧠 长期记忆</button>
-<button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
-<button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()" title="显示智能体节点、风控与形象指令">🧭 开发者模式</button>
 <button class="tb-chip" id="camera-btn" onclick="toggleCameraPerception()">👁 摄像头感知</button>
-<button class="tb-chip" onclick="window.open('/rag','_blank')" title="打开心理学知识库管理页面">📚 知识库</button>
+<details class="topbar-secondary"><summary class="tb-chip">⚙ 设置与工具</summary><div class="topbar-menu">
+  <select class="tts-voice-select" id="tts-voice-select" title="选择服务端语音音色" disabled><option value="">正在读取音色…</option></select>
+  <button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()">🧠 长期记忆</button>
+  <button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
+  <button class="tb-chip" onclick="window.open('/rag','_blank')">📚 知识库</button>
+  <button class="tb-chip" onclick="switchTab('read')">📖 朗读工具</button>
+</div></details>
+<button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()">🧭 开发者</button>
 </div>
 
 <!-- ══ Live2D 场景 ══ -->
@@ -597,6 +600,9 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <button class="ad-history-btn" onclick="renderTtsMetrics()">语音指标</button>
     <button class="ad-history-btn" onclick="downloadTtsMetrics()">导出</button>
   </div>
+  <div class="ad-head"><span class="tb-chip" id="asr-provider-label">🎤 ASR</span><select class="tts-voice-select" aria-label="动作预览" onchange="playMotion(this.value);this.value=''">
+    <option value="">🎭 动作预览</option><option value="FlickUp">原动作 1</option><option value="Tap">原动作 2</option><option value="Flick3">原动作 3</option><option value="Hello">问候</option><option value="Nod">点头</option><option value="Comfort">安慰</option><option value="Listen">倾听</option>
+  </select></div>
   <div id="agent-debug-content" class="ad-empty">发送消息后，这里会显示工作流节点、安全分诊和数字人动作指令。</div>
   <div id="agent-runs-history" class="ad-runs"></div>
   <div id="tts-metrics" class="ad-runs"></div>
@@ -654,10 +660,12 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <!-- ══ 右侧聊天面板 ══ -->
 <div id="chat-panel">
   <div class="cp-head">
-    <div><div class="cp-title">💬 与小安对话</div></div>
-    <div style="display:flex;gap:4px;flex-shrink:0">
-      <button class="cp-mode-btn active" id="tab-chat" onclick="switchTab('chat')">对话</button>
-      <button class="cp-mode-btn" id="tab-read" onclick="switchTab('read')">朗读</button>
+    <div style="min-width:0;flex:1"><div class="cp-title" id="current-session-title">主对话</div><div class="cp-subtitle" id="current-session-time">继续上一次的故事</div></div>
+    <div class="cp-controls">
+      <button onclick="newSession()">＋ 新对话</button>
+      <select id="dialogue-mode" aria-label="对话模式" onchange="updateDialogueMode()"><option value="daily">日常对话</option><option value="emotional">情感对话</option></select>
+      <select id="emotion-style" aria-label="情感风格" onchange="updateDialogueMode()" hidden><option value="confidant">知心</option><option value="gentle">温柔亲昵</option></select>
+      <button onclick="renameCurrentSession()" title="修改会话标题">改名</button>
     </div>
   </div>
   <div id="chat-panel-wrap">
@@ -1605,7 +1613,9 @@ function handleChatMessage(msg){
       const replyMotion=msg.motion&&msg.motion!=='Idle'?()=>playMotion(msg.motion):null;
       if(ttsEnabled){
         const voiceEpoch=_continuousEpoch;
-        speakText(cleanText,replyMotion,replyTiming).finally(()=>{
+        if(replyMotion)replyMotion();
+        const speechEpoch=_replySpeech.epoch;
+        waitReplySpeech(speechEpoch).finally(()=>{
           if(voiceEpoch===_continuousEpoch){_continuousWaiting=false;scheduleContinuousVoice();}
         });
       }else{
@@ -2292,7 +2302,38 @@ function updateEmotion(emotion){
   document.getElementById('tts-btn').title='当前情绪主题：'+(({Happy:'喜悦 · 绿色',Sad:'悲伤 · 蓝灰色',Anxiety:'焦虑 · 紫色',Concerned:'关切 · 紫色'})[emotion]||'平静 · 默认蓝色');
 }
 let _streamReply={trace:null,bubble:null,text:''};
+let _replySpeech={epoch:0,buffer:'',queued:[],running:false,enqueuedText:'',finalized:false};
+function cleanSpeechText(text){return String(text||'').replace(/\[\d{1,3}\]/g,'').replace(/\[MOTION:[^\]]+\]/gi,'').replace(/<[^>]+>/g,'').trim();}
+function splitSpeechBuffer(final=false){
+  const result=[];let source=_replySpeech.buffer;
+  const boundary=/^([\s\S]*?[。！？!?])/;
+  while(true){const match=source.match(boundary);if(!match)break;result.push(match[1]);source=source.slice(match[1].length);}
+  if(final&&source.trim()){result.push(source);source='';}
+  _replySpeech.buffer=source;
+  return result.flatMap(segment=>{
+    const clean=cleanSpeechText(segment);if(clean.length<=180)return clean?[clean]:[];
+    const pieces=[];let pending='';for(const part of clean.split(/(?<=[，；、,;])/)){if((pending+part).length>180&&pending){pieces.push(pending);pending='';}pending+=part;}if(pending)pieces.push(pending);return pieces;
+  });
+}
+function queueReplySpeech(delta,final=false){
+  if(typeof ttsEnabled==='undefined'||!ttsEnabled)return;_replySpeech.buffer+=delta;
+  for(const segment of splitSpeechBuffer(final)){_replySpeech.queued.push(segment);_replySpeech.enqueuedText+=segment;}
+  runReplySpeechQueue(_replySpeech.epoch);
+}
+async function waitReplySpeech(epoch){
+  while(epoch===_replySpeech.epoch&&(_replySpeech.running||_replySpeech.queued.length||ttsSpeaking))await new Promise(r=>setTimeout(r,100));
+}
+async function runReplySpeechQueue(epoch){
+  if(_replySpeech.running||epoch!==_replySpeech.epoch)return;_replySpeech.running=true;
+  try{while(epoch===_replySpeech.epoch&&_replySpeech.queued.length){
+    const segment=_replySpeech.queued.shift();await speakText(segment,null,_inputTimings.get(_streamReply.trace)||null);
+    const startedAt=Date.now();while(epoch===_replySpeech.epoch&&!ttsSpeaking&&Date.now()-startedAt<2500)await new Promise(r=>setTimeout(r,40));
+    while(epoch===_replySpeech.epoch&&ttsSpeaking)await new Promise(r=>setTimeout(r,80));
+  }}finally{if(epoch===_replySpeech.epoch)_replySpeech.running=false;}
+}
 function beginStreamReply(trace){
+  _replySpeech={epoch:_replySpeech.epoch+1,buffer:'',queued:[],running:false,enqueuedText:'',finalized:false};
+  if(typeof _stopAudio==='function')_stopAudio();
   if(_streamReply.bubble?.isConnected) _streamReply.bubble.dataset.incomplete='true';
   _streamReply={trace,bubble:null,text:''};
   document.getElementById('thinking-text').textContent='思考中...';
@@ -2303,6 +2344,7 @@ function appendStreamReply(msg){
   if(!_streamReply.bubble){addBubble('ai','');_streamReply.bubble=document.querySelector('#chat-area .bubble-row:last-child .bubble');}
   if(!_streamReply.bubble?.isConnected) return;
   _streamReply.text+=msg.text;
+  queueReplySpeech(msg.text,false);
   _streamReply.bubble.textContent=_streamReply.text;
   _streamReply.bubble.setAttribute('aria-busy','true');
   const area=document.getElementById('chat-area');area.scrollTop=area.scrollHeight;
@@ -2312,6 +2354,9 @@ function finishStreamReply(msg,text){
   if(bubble?.isConnected){bubble.textContent=text;bubble.setAttribute('aria-busy','false');
     if(msg.emotion_label){const tag=document.createElement('div');tag.className='emo-tag';tag.textContent=msg.emotion_label;bubble.appendChild(tag);}}
   else addBubble('ai',text,msg.emotion_label);
+  if(!_replySpeech.enqueuedText&&!_streamReply.text)queueReplySpeech(text,true);
+  else queueReplySpeech('',true);
+  _replySpeech.finalized=true;
   _streamReply={trace:null,bubble:null,text:''};
 }
 function showThinking(show){
@@ -2378,14 +2423,15 @@ function renderKnowledgeSources(sources){
   });
   bubble.appendChild(details);
 }
-function addBubble(role,text,label){
+function addBubble(role,text,label,timestamp=null){
   showThinking(false);
   const area=document.getElementById('chat-area');
   const wc=document.getElementById('welcome-card');
   if(wc&&area.children.length===0) wc.style.display='none';
   const row=document.createElement('div');row.className='bubble-row '+role;
   const meta=document.createElement('div');meta.className='bubble-meta';
-  meta.textContent=role==='ai'?'小安':'你';
+  const time=timestamp?new Date(timestamp):new Date();
+  meta.textContent=(role==='ai'?'小安':'你')+' · '+(Number.isNaN(time.valueOf())?'':time.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}));
   const b=document.createElement('div');b.className='bubble '+role;b.textContent=text;
   if(role==='ai'&&label){
     const tag=document.createElement('div');tag.className='emo-tag';tag.textContent=label;
@@ -2652,6 +2698,7 @@ async function changeProfilePassword(button){
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;}
 }
 let _authToken='', _currentUser='', _currentDbSession='', _sidebarOpen=false;
+let _sessions=[],_sessionCursor=null,_messageCursor=null,_sessionSwitchEpoch=0;
 
 function getCookie(name){
   const m=document.cookie.match(new RegExp('(?:^|; )'+name+'=([^;]*)'));
@@ -2748,9 +2795,11 @@ async function _onLoginSuccess(token,username,silent){
   document.getElementById('sb-logout-btn').textContent='退出';
   // 自动打开侧边栏
   if(!_sidebarOpen) toggleSidebar();
+  const mainResponse=await fetch('/api/sessions/main',{method:'POST',headers:{'X-Auth-Token':_authToken}});
+  if(!mainResponse.ok) throw new Error('主对话恢复失败');
+  const main=await mainResponse.json();
   await loadSessions();
-  // 若无历史记录则自动创建新会话
-  if(!_currentDbSession) await newSession();
+  await switchSession(main.session_id,true);
   document.getElementById('memory-btn').classList.add('authenticated');
   await loadMemorySettings();
   if(!silent) console.log('[Auth] 登录成功:',username);
@@ -2865,9 +2914,10 @@ function toggleSidebar(){
 async function loadSessions(){
   if(!_authToken) return;
   try{
-    const res=await fetch('/api/sessions',{headers:{'X-Auth-Token':_authToken}});
+    const res=await fetch('/api/sessions?limit=30',{headers:{'X-Auth-Token':_authToken}});
     const data=await res.json();
-    renderSessions(data.sessions||[]);
+    _sessions=data.sessions||[];_sessionCursor=data.next_cursor||null;
+    renderSessions(_sessions);
   }catch(e){console.error('[Sessions]',e);}
 }
 
@@ -2890,62 +2940,63 @@ function renderSessions(sessions){
     container.innerHTML='<div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>';
     return;
   }
-  const groups=_groupByDate(sessions);
+  const main=sessions.filter(s=>s.is_main);const groups=_groupByDate(sessions.filter(s=>!s.is_main));
   container.textContent='';
+  if(main.length){renderSessionGroup(container,'置顶',main);}
   for(const [label,list] of Object.entries(groups)){
     if(!list.length) continue;
-    const groupLabel=document.createElement('div');
-    groupLabel.className='sb-group-label';
-    groupLabel.textContent=label;
-    container.appendChild(groupLabel);
-    for(const s of list){
+    renderSessionGroup(container,label,list);
+  }
+  if(_sessionCursor){const more=document.createElement('button');more.className='tb-chip';more.style.margin='10px auto';more.textContent='加载更多';more.onclick=loadMoreSessions;container.appendChild(more);}
+}
+function renderSessionGroup(container,label,list){
+  const groupLabel=document.createElement('div');groupLabel.className='sb-group-label';groupLabel.textContent=label;container.appendChild(groupLabel);
+  for(const s of list){
       const session=document.createElement('div');
-      session.className=`sb-session${s.id===_currentDbSession?' active':''}`;
+      session.className=`sb-session${s.id===_currentDbSession?' active':''}${s.is_main?' main':''}`;
       session.dataset.id=s.id;
       session.addEventListener('click',()=>switchSession(s.id));
-
+      const copy=document.createElement('div');copy.className='sb-session-copy';
       const title=document.createElement('span');
       title.className='sb-session-title';
       title.id=`st-${s.id}`;
-      title.textContent=s.title||'新对话';
+      title.textContent=(s.is_main?'★ ':'')+(s.title||'新对话');
+      const meta=document.createElement('div');meta.className='sb-session-meta';meta.textContent=`创建 ${formatSessionTime(s.created_at)} · 更新 ${formatSessionTime(s.updated_at)}`;
+      copy.append(title,meta);
 
       const deleteButton=document.createElement('button');
       deleteButton.className='sb-del-btn';
-      deleteButton.title='删除';
-      deleteButton.textContent='✕';
+      deleteButton.title=s.is_main?'清空主对话':'删除';
+      deleteButton.textContent=s.is_main?'⌫':'✕';
       deleteButton.addEventListener('click',event=>{
         event.stopPropagation();
-        deleteSession(s.id);
+        s.is_main?clearSession(s.id):deleteSession(s.id);
       });
-
-      session.append(title,deleteButton);
+      session.append(copy,deleteButton);
       container.appendChild(session);
-    }
   }
 }
+function formatSessionTime(value){const d=new Date(value);return Number.isNaN(d.valueOf())?'未知':new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d);}
+async function loadMoreSessions(){if(!_sessionCursor)return;const res=await fetch('/api/sessions?limit=30&cursor='+encodeURIComponent(_sessionCursor),{headers:{'X-Auth-Token':_authToken}});const data=await res.json();_sessions.push(...(data.sessions||[]));_sessionCursor=data.next_cursor||null;renderSessions(_sessions);}
 
 async function newSession(){
   disableContinuousVoice();
   beginStreamReply(null);
+  _stopAudio();_sessionSwitchEpoch++;
   if(!_authToken) return;
   try{
     const res=await fetch('/api/sessions',{method:'POST',headers:{'X-Auth-Token':_authToken}});
     const data=await res.json();
-    _currentDbSession=data.session_id;
-    // 清空对话区
-    document.getElementById('chat-area').innerHTML='';
-    // 通知后端绑定新会话
-    if(chatWs&&chatWs.readyState===WebSocket.OPEN){
-      chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));
-    }
     await loadSessions();
+    await switchSession(data.session_id,true);
   }catch(e){console.error('[NewSession]',e);}
 }
 
-async function switchSession(sessionId){
+async function switchSession(sessionId,force=false){
   disableContinuousVoice();
   beginStreamReply(null);
-  if(sessionId===_currentDbSession) return;
+  _stopAudio();const epoch=++_sessionSwitchEpoch;
+  if(sessionId===_currentDbSession&&!force) return;
   _currentDbSession=sessionId;
   // 刷新侧边栏高亮
   document.querySelectorAll('.sb-session').forEach(el=>{
@@ -2953,21 +3004,52 @@ async function switchSession(sessionId){
   });
   // 加载历史消息
   try{
-    const res=await fetch(`/api/sessions/${sessionId}/messages`,{headers:{'X-Auth-Token':_authToken}});
+    const res=await fetch(`/api/sessions/${sessionId}/messages?limit=50`,{headers:{'X-Auth-Token':_authToken}});
     const data=await res.json();
     if(sessionId!==_currentDbSession)return;
+    if(epoch!==_sessionSwitchEpoch)return;
+    _messageCursor=data.next_before_id||null;
     const area=document.getElementById('chat-area');
     area.innerHTML='';
     for(const m of (data.messages||[])){
-      addBubble(m.role==='user'?'user':'ai', m.content, m.emotion_label||'');
+      addBubble(m.role==='user'?'user':'ai', m.content, m.emotion_label||'',m.ts);
       if(m.role==='assistant')renderKnowledgeSources(m.knowledge_sources);
     }
     area.scrollTop=area.scrollHeight;
   }catch(e){console.error('[SwitchSession]',e);}
+  const session=_sessions.find(item=>item.id===sessionId);
+  if(session)applySessionHeader(session);
   // 通知后端切换会话（恢复LLM历史记录）
   if(chatWs&&chatWs.readyState===WebSocket.OPEN){
     chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:sessionId}));
   }
+}
+
+function applySessionHeader(session){
+  document.getElementById('current-session-title').textContent=session.title||'新对话';
+  document.getElementById('current-session-time').textContent='创建于 '+formatSessionTime(session.created_at);
+  document.getElementById('dialogue-mode').value=session.dialogue_mode||'daily';
+  document.getElementById('emotion-style').value=session.emotion_style||'confidant';
+  document.getElementById('emotion-style').hidden=(session.dialogue_mode||'daily')!=='emotional';
+}
+async function updateDialogueMode(){
+  if(!_currentDbSession)return;_stopAudio();beginStreamReply(null);
+  const mode=document.getElementById('dialogue-mode').value,style=document.getElementById('emotion-style').value;
+  document.getElementById('emotion-style').hidden=mode!=='emotional';
+  const res=await fetch(`/api/sessions/${_currentDbSession}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({dialogue_mode:mode,emotion_style:style})});
+  if(res.ok){const changed=await res.json();const idx=_sessions.findIndex(s=>s.id===changed.id);if(idx>=0)_sessions[idx]=changed;if(chatWs?.readyState===WebSocket.OPEN)chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));}
+}
+async function renameCurrentSession(){
+  const current=_sessions.find(s=>s.id===_currentDbSession);if(!current)return;
+  const title=prompt('输入会话标题（最多32字）',current.title||'');if(!title?.trim())return;
+  const res=await fetch(`/api/sessions/${current.id}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({title:title.trim()})});
+  if(res.ok){await loadSessions();applySessionHeader(_sessions.find(s=>s.id===current.id));}
+}
+async function clearSession(sessionId){
+  if(!confirm('清空主对话的全部内容？此操作不可恢复。'))return;
+  if(!confirm('再次确认：保留主对话，但永久删除其中所有消息？'))return;
+  const res=await fetch(`/api/sessions/${sessionId}/clear`,{method:'POST',headers:{'X-Auth-Token':_authToken}});
+  if(res.ok){await loadSessions();await switchSession(sessionId,true);}
 }
 
 async function deleteSession(sessionId){
@@ -2979,9 +3061,17 @@ async function deleteSession(sessionId){
       document.getElementById('chat-area').innerHTML='';
     }
     await loadSessions();
-    if(!_currentDbSession) await newSession();
+    if(!_currentDbSession){const main=await fetch('/api/sessions/main',{method:'POST',headers:{'X-Auth-Token':_authToken}}).then(r=>r.json());await loadSessions();await switchSession(main.session_id,true);}
   }catch(e){console.error('[DeleteSession]',e);}
 }
+
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){
+    document.querySelectorAll('.topbar-secondary[open]').forEach(item=>item.removeAttribute('open'));
+    document.getElementById('activity-history-panel').classList.remove('show');
+    toggleMemoryPanel(false);
+  }
+});
 
 </script>
 <aside id="camera-panel" hidden aria-label="摄像头感知预览">
