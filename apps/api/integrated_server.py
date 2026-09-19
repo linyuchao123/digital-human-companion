@@ -152,6 +152,37 @@ def _init_db():
             conn.execute("ALTER TABLE activity_tasks ADD COLUMN removed_at TEXT")
         user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         message_columns = {row[1] for row in conn.execute("PRAGMA table_info(chat_messages)")}
+        session_columns = {row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)")}
+        session_additions = {
+            "is_main": "INTEGER NOT NULL DEFAULT 0",
+            "dialogue_mode": "TEXT NOT NULL DEFAULT 'daily'",
+            "emotion_style": "TEXT NOT NULL DEFAULT 'confidant'",
+            "title_manual": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for name, definition in session_additions.items():
+            if name not in session_columns:
+                conn.execute(f"ALTER TABLE chat_sessions ADD COLUMN {name} {definition}")
+        # 可重复迁移：每个账号只保留一个主对话。优先选择最近更新且有消息的历史。
+        user_ids = [row[0] for row in conn.execute("SELECT id FROM users")]
+        for user_id in user_ids:
+            mains = conn.execute(
+                "SELECT id FROM chat_sessions WHERE user_id=? AND is_main=1 ORDER BY updated_at DESC, rowid DESC",
+                (user_id,),
+            ).fetchall()
+            if mains:
+                keep = mains[0][0]
+                conn.execute("UPDATE chat_sessions SET is_main=0 WHERE user_id=? AND id<>?", (user_id, keep))
+                continue
+            candidate = conn.execute(
+                """SELECT s.id FROM chat_sessions s
+                   WHERE s.user_id=? AND EXISTS(SELECT 1 FROM chat_messages m WHERE m.session_id=s.id)
+                   ORDER BY s.updated_at DESC, s.rowid DESC LIMIT 1""",
+                (user_id,),
+            ).fetchone()
+            if candidate:
+                conn.execute("UPDATE chat_sessions SET is_main=1 WHERE id=?", (candidate[0],))
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_main ON chat_sessions(user_id) WHERE is_main=1")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_page ON chat_sessions(user_id,is_main DESC,updated_at DESC,id DESC)")
         if 'knowledge_sources' not in message_columns:
             conn.execute("ALTER TABLE chat_messages ADD COLUMN knowledge_sources TEXT NOT NULL DEFAULT '[]'")
         for name in ("display_name", "birthday", "avatar"):
@@ -1261,17 +1292,34 @@ async def get_agent_runs(request: Request, limit: int = 20):
         conn.close()
 
 @app.get("/api/sessions")
-async def get_sessions(request: Request):
+async def get_sessions(request: Request, limit: int = 30, cursor: str = ""):
     user_id = _get_user_id_from_request(request)
     if not user_id:
         return JSONResponse({"error": "未登录"}, status_code=401)
     conn = _get_db()
     try:
+        safe_limit = min(max(limit, 1), 100)
+        params: list[Any] = [user_id]
+        where = "user_id=?"
+        if cursor:
+            try:
+                updated_at, session_id = base64.urlsafe_b64decode(cursor.encode()).decode().split("|", 1)
+            except (ValueError, UnicodeDecodeError):
+                return JSONResponse({"error": "分页游标无效"}, status_code=400)
+            where += " AND is_main=0 AND (updated_at < ? OR (updated_at=? AND id<?))"
+            params.extend((updated_at, updated_at, session_id))
         rows = conn.execute(
-            "SELECT id,title,created_at,updated_at FROM chat_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 100",
-            (user_id,)
+            f"""SELECT id,title,created_at,updated_at,is_main,dialogue_mode,emotion_style,title_manual
+                FROM chat_sessions WHERE {where}
+                ORDER BY is_main DESC,updated_at DESC,id DESC LIMIT ?""",
+            (*params, safe_limit + 1),
         ).fetchall()
-        return JSONResponse({"sessions": [dict(r) for r in rows]})
+        page = [dict(row) for row in rows[:safe_limit]]
+        next_cursor = None
+        if len(rows) > safe_limit and page:
+            last = page[-1]
+            next_cursor = base64.urlsafe_b64encode(f"{last['updated_at']}|{last['id']}".encode()).decode()
+        return JSONResponse({"sessions": page, "next_cursor": next_cursor})
     finally:
         conn.close()
 
@@ -1284,6 +1332,13 @@ async def create_session(request: Request):
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
     conn = _get_db()
     try:
+        blank = conn.execute(
+            """SELECT s.* FROM chat_sessions s WHERE s.user_id=? AND s.is_main=0
+               AND NOT EXISTS(SELECT 1 FROM chat_messages m WHERE m.session_id=s.id)
+               ORDER BY s.created_at DESC LIMIT 1""", (user_id,),
+        ).fetchone()
+        if blank:
+            return JSONResponse({**dict(blank), "session_id": blank["id"], "reused": True})
         conn.execute(
             "INSERT INTO chat_sessions(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
             (session_id, user_id, "新对话", now, now)
@@ -1294,7 +1349,7 @@ async def create_session(request: Request):
         conn.close()
 
 @app.get("/api/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str, request: Request):
+async def get_session_messages(session_id: str, request: Request, limit: int = 50, before_id: int | None = None):
     user_id = _get_user_id_from_request(request)
     if not user_id:
         return JSONResponse({"error": "未登录"}, status_code=401)
@@ -1305,9 +1360,14 @@ async def get_session_messages(session_id: str, request: Request):
         ).fetchone()
         if not sess:
             return JSONResponse({"error": "会话不存在"}, status_code=404)
+        safe_limit = min(max(limit, 1), 100)
+        before_clause = " AND id<?" if before_id is not None else ""
+        params = (session_id, before_id, safe_limit + 1) if before_id is not None else (session_id, safe_limit + 1)
         msgs = conn.execute(
-            "SELECT role,content,emotion_label,ts,knowledge_sources FROM chat_messages WHERE session_id=? ORDER BY id ASC",
-            (session_id,)
+            f"""SELECT id,role,content,emotion_label,ts,knowledge_sources FROM (
+                 SELECT id,role,content,emotion_label,ts,knowledge_sources FROM chat_messages
+                 WHERE session_id=?{before_clause} ORDER BY id DESC LIMIT ?)
+                 ORDER BY id ASC""", params,
         ).fetchall()
         from services.agent.references import reference_snapshot
         messages=[]
@@ -1318,7 +1378,10 @@ async def get_session_messages(session_id: str, request: Request):
             except (ValueError,TypeError):
                 item['knowledge_sources']=[]
             messages.append(item)
-        return JSONResponse({"messages": messages})
+        has_more = len(messages) > safe_limit
+        if has_more:
+            messages = messages[1:]
+        return JSONResponse({"messages": messages, "next_before_id": messages[0]["id"] if has_more and messages else None})
     finally:
         conn.close()
 
@@ -1330,14 +1393,99 @@ async def delete_session(session_id: str, request: Request):
     conn = _get_db()
     try:
         session = conn.execute(
-            "SELECT id FROM chat_sessions WHERE id=? AND user_id=?",
+            "SELECT id,is_main FROM chat_sessions WHERE id=? AND user_id=?",
             (session_id, user_id),
         ).fetchone()
         if not session:
             return JSONResponse({"error": "会话不存在"}, status_code=404)
+        if session["is_main"]:
+            return JSONResponse({"error": "主对话不可删除，请使用清空操作"}, status_code=409)
         conn.execute("DELETE FROM session_notes WHERE session_id=? AND user_id=?", (session_id,user_id))
         conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
         conn.execute("DELETE FROM chat_sessions WHERE id=?", (session_id,))
+        conn.commit()
+        return JSONResponse({"ok": True})
+    finally:
+        conn.close()
+
+class SessionSettingsRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=32)
+    dialogue_mode: str | None = None
+    emotion_style: str | None = None
+
+@app.post("/api/sessions/main")
+async def ensure_main_session(request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    conn = _get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM chat_sessions WHERE user_id=? AND is_main=1", (user_id,)).fetchone()
+        if not row:
+            row = conn.execute(
+                """SELECT s.* FROM chat_sessions s WHERE s.user_id=?
+                   ORDER BY EXISTS(SELECT 1 FROM chat_messages m WHERE m.session_id=s.id) DESC,
+                            s.updated_at DESC,s.rowid DESC LIMIT 1""", (user_id,),
+            ).fetchone()
+            if row:
+                conn.execute("UPDATE chat_sessions SET is_main=1 WHERE id=?", (row["id"],))
+            else:
+                sid = str(uuid.uuid4())
+                conn.execute("""INSERT INTO chat_sessions
+                    (id,user_id,title,created_at,updated_at,is_main,dialogue_mode,emotion_style,title_manual)
+                    VALUES(?,?,?,?,?,1,'daily','confidant',0)""", (sid,user_id,"主对话",now,now))
+                row = conn.execute("SELECT * FROM chat_sessions WHERE id=?", (sid,)).fetchone()
+        conn.commit()
+        return JSONResponse({**dict(row), "session_id": row["id"]})
+    finally:
+        conn.close()
+
+@app.patch("/api/sessions/{session_id}")
+async def update_session(session_id: str, payload: SessionSettingsRequest, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    if payload.dialogue_mode not in (None, "daily", "emotional"):
+        return JSONResponse({"error": "对话模式无效"}, status_code=422)
+    if payload.emotion_style not in (None, "confidant", "gentle"):
+        return JSONResponse({"error": "情感风格无效"}, status_code=422)
+    fields: list[str] = []; values: list[Any] = []
+    if payload.title is not None:
+        title = re.sub(r"[\r\n\t]+", " ", payload.title).strip()
+        if not title:
+            return JSONResponse({"error": "标题不能为空"}, status_code=422)
+        fields += ["title=?", "title_manual=1"]; values.append(title)
+    if payload.dialogue_mode is not None:
+        fields.append("dialogue_mode=?"); values.append(payload.dialogue_mode)
+    if payload.emotion_style is not None:
+        fields.append("emotion_style=?"); values.append(payload.emotion_style)
+    if not fields:
+        return JSONResponse({"error": "没有可更新的设置"}, status_code=422)
+    conn = _get_db()
+    try:
+        cursor = conn.execute(f"UPDATE chat_sessions SET {','.join(fields)} WHERE id=? AND user_id=?", (*values, session_id, user_id))
+        if not cursor.rowcount:
+            return JSONResponse({"error": "会话不存在"}, status_code=404)
+        conn.commit()
+        return JSONResponse(dict(conn.execute("SELECT * FROM chat_sessions WHERE id=?", (session_id,)).fetchone()))
+    finally:
+        conn.close()
+
+@app.post("/api/sessions/{session_id}/clear")
+async def clear_session(session_id: str, request: Request):
+    user_id = _get_user_id_from_request(request)
+    if not user_id:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    conn = _get_db()
+    try:
+        session = conn.execute("SELECT is_main FROM chat_sessions WHERE id=? AND user_id=?", (session_id,user_id)).fetchone()
+        if not session:
+            return JSONResponse({"error": "会话不存在"}, status_code=404)
+        conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
+        conn.execute("DELETE FROM session_notes WHERE session_id=? AND user_id=?", (session_id,user_id))
+        conn.execute("UPDATE chat_sessions SET title=CASE WHEN is_main=1 THEN '主对话' ELSE '新对话' END,title_manual=0,updated_at=? WHERE id=?", (time.strftime("%Y-%m-%dT%H:%M:%S"),session_id))
         conn.commit()
         return JSONResponse({"ok": True})
     finally:
@@ -1351,11 +1499,14 @@ async def generate_session_title(session_id: str, request: Request):
     conn = _get_db()
     try:
         session = conn.execute(
-            "SELECT id FROM chat_sessions WHERE id=? AND user_id=?",
+            "SELECT id,title_manual FROM chat_sessions WHERE id=? AND user_id=?",
             (session_id, user_id),
         ).fetchone()
         if not session:
             return JSONResponse({"error": "会话不存在"}, status_code=404)
+        if session["title_manual"]:
+            current = conn.execute("SELECT title FROM chat_sessions WHERE id=?", (session_id,)).fetchone()[0]
+            return JSONResponse({"title": current, "session_id": session_id, "manual": True})
         msgs = conn.execute(
             "SELECT role,content FROM chat_messages WHERE session_id=? ORDER BY id ASC LIMIT 6",
             (session_id,)
@@ -1373,18 +1524,18 @@ async def generate_session_title(session_id: str, request: Request):
                         headers={"Authorization": f"Bearer {QWEN_API_KEY}"},
                         json={"model": QWEN_MODEL, "messages": [
                             {"role": "system", "content": "你是文本摘要助手，只输出结果。"},
-                            {"role": "user", "content": f"请用5-8个汉字总结以下对话的主题，只输出词语，不要标点：\n{summary}"}
+                            {"role": "user", "content": f"请用8-16个汉字准确概括以下对话主题，只输出标题，不要标点：\n{summary}"}
                         ], "max_tokens": 20, "temperature": 0.3}
                     )
                     data = resp.json()
-                    title = data["choices"][0]["message"]["content"].strip()[:15]
+                    title = data["choices"][0]["message"]["content"].strip()[:16]
             except Exception as e:
                 print(f"[Title] 生成失败: {e}")
                 title = msgs[0]["content"][:10] if msgs else "新对话"
         else:
             title = msgs[0]["content"][:10] if msgs else "新对话"
         conn.execute(
-            "UPDATE chat_sessions SET title=? WHERE id=? AND user_id=?",
+            "UPDATE chat_sessions SET title=? WHERE id=? AND user_id=? AND title_manual=0",
             (title, session_id, user_id),
         )
         conn.commit()
