@@ -32,7 +32,8 @@ cloud = [
   "openai>=2.0,<3.0",
 ]
 vision = [
-  "mediapipe>=0.10,<1.0",
+  # Newer releases remove the ``solutions`` namespace used by the live camera endpoint.
+  "mediapipe>=0.10.10,<=0.10.21",
   "opencv-contrib-python>=4.8,<5.0",
   "protobuf>=3.20,<6.0",
 ]
@@ -55,6 +56,11 @@ ml = [
 rag = [
   "chromadb>=0.5,<2.0",
   "jieba>=0.42,<1.0",
+  # Keep Chroma telemetry compatible with MediaPipe's protobuf<5 requirement.
+  "opentelemetry-api<1.35",
+  "opentelemetry-exporter-otlp-proto-grpc<1.35",
+  "opentelemetry-proto<1.35",
+  "opentelemetry-sdk<1.35",
   "sentence-transformers>=2.6,<6.0",
   "tiktoken>=0.7,<1.0",
 ]

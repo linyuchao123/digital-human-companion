@@ -162,10 +162,14 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   overflow:hidden;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s}
 #chat-panel.show{display:flex}
 .cp-head{flex-shrink:0;padding:12px 16px 10px;border-bottom:1px solid rgba(255,255,255,.4);
-  display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.1)}
-.cp-title{font-size:13px;font-weight:700;color:var(--text);flex:1}
-.cp-subtitle{font-size:10px;color:var(--text2);margin-top:3px}.cp-controls{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  display:flex;flex-direction:column;align-items:stretch;gap:9px;background:rgba(255,255,255,.1)}
+.cp-session-summary{min-width:0}
+.cp-title{font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-subtitle{font-size:10px;color:var(--text2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-controls{display:grid;grid-template-columns:auto minmax(88px,1fr) minmax(82px,1fr) auto;gap:6px;align-items:center}
 .cp-controls select,.cp-controls button{height:26px;border:1px solid rgba(79,142,247,.25);border-radius:13px;background:rgba(255,255,255,.56);color:var(--text);padding:0 9px;font-size:10px;cursor:pointer}
+.cp-controls select{min-width:0;width:100%}
+.cp-controls .mode-placeholder{visibility:hidden;pointer-events:none}
 .cp-mode-btn{height:24px;padding:0 10px;border-radius:12px;border:1px solid rgba(255,255,255,.5);
   background:transparent;color:var(--text2);cursor:pointer;font-size:10px;font-family:inherit;transition:all .2s}
 .cp-mode-btn:hover{background:rgba(255,255,255,.5);color:var(--text)}
@@ -197,14 +201,20 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   color:var(--text);border-radius:4px 14px 14px 14px;box-shadow:0 3px 12px rgba(0,0,0,.06);backdrop-filter:blur(8px)}
 .bubble.ai .emo-tag{display:inline-block;font-size:9px;margin-top:4px;padding:1px 7px;border-radius:8px;
   background:rgba(124,92,191,.1);border:1px solid rgba(124,92,191,.2);color:var(--accent2)}
-#read-panel{display:none;flex:1;overflow-y:auto;padding:12px;flex-direction:column;gap:10px}
+#read-panel{display:none;flex:1;overflow-y:auto;padding:14px;flex-direction:column;gap:12px}
 #read-panel.show{display:flex}
+#read-panel .read-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#read-panel .read-title{font-size:13px;font-weight:700;color:var(--text)}
+#read-panel .read-hint{font-size:11px;color:var(--text2);line-height:1.6;margin:0}
+#read-panel .read-voice-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:9px;font-size:11px;color:var(--text2)}
+#read-panel .tts-voice-select{width:100%;max-width:none;background:rgba(255,255,255,.62);border-color:rgba(79,142,247,.2)}
 #read-panel textarea{flex:1;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);
   border-radius:12px;padding:10px 12px;color:var(--text);font-size:12px;font-family:inherit;
   resize:none;outline:none;min-height:120px}
 .read-btn{height:36px;border-radius:18px;border:none;
   background:linear-gradient(135deg,#4f8ef7,#7c5cbf);color:#fff;font-size:12px;
   font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 4px 16px rgba(79,142,247,.35);transition:all .2s}
+.read-actions{display:grid;grid-template-columns:1fr auto;gap:8px}.read-stop{height:36px;padding:0 14px;border-radius:18px;border:1px solid rgba(79,142,247,.25);background:rgba(255,255,255,.55);color:var(--text2);cursor:pointer}
 #chat-panel-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
 #chat-panel-wrap.hide{display:none}
 @keyframes fade-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -311,7 +321,7 @@ body.emo-sad #bg{background:linear-gradient(180deg,#b8c8e0 0%,#ccd5e8 30%,#dde3f
 body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e5e2f5 65%,#f0eff8 100%)}
 
 @media(max-width:1100px){#sidebar{z-index:190;box-shadow:12px 0 40px rgba(45,70,120,.2)}#sb-resize{display:none}}
-@media(max-width:700px){#chat-panel{left:16px;right:16px;width:auto;bottom:78px}.logo{max-width:130px;overflow:hidden}.cp-head{align-items:flex-start}#bottom-bar{width:calc(100vw - 32px);min-width:0}.topbar-secondary{display:none!important}}
+@media(max-width:700px){#chat-panel{left:16px;right:16px;width:auto;bottom:78px}.logo{max-width:130px;overflow:hidden}.cp-head{align-items:stretch}#bottom-bar{width:calc(100vw - 32px);min-width:0}.topbar-secondary{display:none!important}}
 
 /* ══ 左侧历史对话栏 ══ */
 #camera-panel{position:fixed;top:74px;left:calc(var(--sb-width,240px) + 16px);z-index:35;width:220px;max-width:calc(100vw - 32px);padding:14px;border-radius:20px;background:rgba(255,255,255,.86);border:1px solid rgba(255,255,255,.8);box-shadow:0 12px 36px rgba(40,65,100,.13);backdrop-filter:blur(16px);color:var(--text)}
@@ -374,12 +384,12 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   background:rgba(231,76,60,.08);color:var(--danger);cursor:pointer;font-size:11px;transition:all .2s;white-space:nowrap}
 #sb-logout-btn:hover{background:var(--danger-dim)}
 /* 侧边栏切换按钮 */
-#sidebar-toggle{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:35;
-  width:18px;height:50px;background:rgba(79,142,247,.18);border:1px solid rgba(79,142,247,.3);
+#sidebar-toggle{position:fixed;left:0;top:118px;z-index:195;
+  width:20px;height:54px;background:rgba(79,142,247,.18);border:1px solid rgba(79,142,247,.3);
   border-left:none;border-radius:0 8px 8px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  font-size:11px;color:var(--accent);transition:all .2s;backdrop-filter:blur(8px)}
+  font-size:13px;color:var(--accent);transition:left .28s cubic-bezier(.4,0,.2,1),background .2s,width .2s;backdrop-filter:blur(8px)}
 #sidebar-toggle:hover{background:rgba(79,142,247,.3);width:22px}
-#sidebar.open ~ #sidebar-toggle{left:var(--sb-width,240px)}
+#sidebar.open ~ #sidebar-toggle{left:calc(var(--panel-gap) + var(--panel-width) - 1px)}
 
 /* ══ 登录弹窗 ══ */
 #auth-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
@@ -446,7 +456,7 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 #auth-method-note{font-size:11px;color:#8793a8;line-height:1.7;margin-top:10px}.email-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 @media(max-width:650px){#auth-box{grid-template-columns:1fr}.auth-brand{min-height:0;padding:22px 28px}.auth-brand h1{font-size:23px;margin:15px 0 8px}.auth-brand p,.auth-brand small{display:none}.auth-form{padding:28px}.profile-grid{grid-template-columns:1fr}}
 @media(max-width:1100px){#sidebar{z-index:190;box-shadow:12px 0 40px rgba(45,70,120,.2)}#sb-resize{display:none}}
-@media(max-width:700px){#sidebar{width:calc(100vw - 32px)}#chat-panel{left:16px;right:16px;width:auto;bottom:78px}.logo{max-width:130px;overflow:hidden}.cp-head{align-items:flex-start}#bottom-bar{width:calc(100vw - 32px);min-width:0}.topbar-secondary{display:none!important}#drive-info{display:none!important}}
+@media(max-width:700px){#sidebar{width:calc(100vw - 32px)}#sidebar.open ~ #sidebar-toggle{left:calc(100vw - 17px)}#chat-panel{left:16px;right:16px;width:auto;bottom:78px}.logo{max-width:130px;overflow:hidden}.cp-head{align-items:stretch}#bottom-bar{width:calc(100vw - 32px);min-width:0}.topbar-secondary{display:none!important}#drive-info{display:none!important}}
 @media(prefers-reduced-motion:reduce){#auth-modal *{transition:none}}
 </style>
 </head>
@@ -557,7 +567,6 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
 <button class="tb-chip" id="camera-btn" onclick="toggleCameraPerception()">👁 摄像头感知</button>
 <details class="topbar-secondary"><summary class="tb-chip">⚙ 设置与工具</summary><div class="topbar-menu">
-  <select class="tts-voice-select" id="tts-voice-select" title="选择服务端语音音色" disabled><option value="">正在读取音色…</option></select>
   <button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()">🧠 长期记忆</button>
   <button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
   <button class="tb-chip" onclick="window.open('/rag','_blank')">📚 知识库</button>
@@ -660,12 +669,12 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 <!-- ══ 右侧聊天面板 ══ -->
 <div id="chat-panel">
   <div class="cp-head">
-    <div style="min-width:0;flex:1"><div class="cp-title" id="current-session-title">主对话</div><div class="cp-subtitle" id="current-session-time">继续上一次的故事</div></div>
+    <div class="cp-session-summary"><div class="cp-title" id="current-session-title">主对话</div><div class="cp-subtitle" id="current-session-time">继续上一次的故事</div></div>
     <div class="cp-controls">
       <button onclick="newSession()">＋ 新对话</button>
       <select id="dialogue-mode" aria-label="对话模式" onchange="updateDialogueMode()"><option value="daily">日常对话</option><option value="emotional">情感对话</option></select>
-      <select id="emotion-style" aria-label="情感风格" onchange="updateDialogueMode()" hidden><option value="confidant">知心</option><option value="gentle">温柔亲昵</option></select>
-      <button onclick="renameCurrentSession()" title="修改会话标题">改名</button>
+      <select id="emotion-style" class="mode-placeholder" aria-label="情感风格" aria-hidden="true" onchange="updateDialogueMode()" disabled><option value="confidant">知心</option><option value="gentle">温柔亲昵</option></select>
+      <button id="read-tool-button" onclick="switchTab('read')" title="打开朗读工具">朗读</button>
     </div>
   </div>
   <div id="chat-panel-wrap">
@@ -678,9 +687,11 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
     <div id="chat-area"></div>
   </div>
   <div id="read-panel">
-    <p style="font-size:11px;color:var(--text2);text-align:center;padding:4px 0">输入文字，小安将为你朗读</p>
+    <div class="read-head"><span class="read-title">朗读工具</span><button class="tb-chip" onclick="switchTab('chat')">返回对话</button></div>
+    <p class="read-hint">输入文字并选择音色，小安将按你的选择朗读。</p>
+    <label class="read-voice-row"><span>音色</span><select class="tts-voice-select" id="tts-voice-select" title="选择朗读音色" disabled><option value="">正在读取音色…</option></select></label>
     <textarea id="read-text" placeholder="在此输入需要朗读的文字..."></textarea>
-    <button class="read-btn" onclick="speakText(document.getElementById('read-text').value)">开始朗读 ▶</button>
+    <div class="read-actions"><button class="read-btn" onclick="speakText(document.getElementById('read-text').value)">开始朗读 ▶</button><button class="read-stop" onclick="_stopAudio()">停止</button></div>
   </div>
 </div>
 
@@ -801,10 +812,9 @@ function downloadTtsMetrics(){
 
 /* ═══════════ 面板控制 ═══════════ */
 function switchTab(tab){
-  document.getElementById('tab-chat').classList.toggle('active',tab==='chat');
-  document.getElementById('tab-read').classList.toggle('active',tab==='read');
   document.getElementById('chat-panel-wrap').classList.toggle('hide',tab!=='chat');
   document.getElementById('read-panel').classList.toggle('show',tab==='read');
+  document.getElementById('read-tool-button')?.classList.toggle('active',tab==='read');
 }
 
 function toggleDeveloperMode(){
@@ -1177,7 +1187,6 @@ function disconnectAll(){
     _sidebarOpen=false;
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebar-toggle').innerHTML='&#8250;';
-    document.getElementById('sidebar-toggle').style.left='0';
   }
   // 显示连接屏（z-index 覆盖所有元素）
   const cs = document.getElementById('connect-screen');
@@ -2902,7 +2911,6 @@ function toggleSidebar(){
 (function(){
   const sidebar=document.getElementById('sidebar');
   const handle=document.getElementById('sb-resize');
-  const toggle=document.getElementById('sidebar-toggle');
   let dragging=false, startX=0, startW=0;
   handle.addEventListener('mousedown',e=>{
     dragging=true; startX=e.clientX; startW=sidebar.offsetWidth;
@@ -2914,7 +2922,6 @@ function toggleSidebar(){
     const newW=Math.min(400,Math.max(320,startW+(e.clientX-startX)));
     document.documentElement.style.setProperty('--panel-width',newW+'px');
     document.documentElement.style.setProperty('--sb-width',newW+'px');
-    toggle.style.left=(_sidebarOpen?newW:0)+'px';
   });
   document.addEventListener('mouseup',()=>{
     if(!dragging) return;
@@ -3060,20 +3067,20 @@ function applySessionHeader(session){
   document.getElementById('current-session-time').textContent='创建于 '+formatSessionTime(session.created_at);
   document.getElementById('dialogue-mode').value=session.dialogue_mode||'daily';
   document.getElementById('emotion-style').value=session.emotion_style||'confidant';
-  document.getElementById('emotion-style').hidden=(session.dialogue_mode||'daily')!=='emotional';
+  setEmotionStyleVisibility((session.dialogue_mode||'daily')==='emotional');
+}
+function setEmotionStyleVisibility(visible){
+  const style=document.getElementById('emotion-style');
+  style.disabled=!visible;
+  style.classList.toggle('mode-placeholder',!visible);
+  style.setAttribute('aria-hidden',String(!visible));
 }
 async function updateDialogueMode(){
   if(!_currentDbSession)return;_stopAudio();beginStreamReply(null);
   const mode=document.getElementById('dialogue-mode').value,style=document.getElementById('emotion-style').value;
-  document.getElementById('emotion-style').hidden=mode!=='emotional';
+  setEmotionStyleVisibility(mode==='emotional');
   const res=await fetch(`/api/sessions/${_currentDbSession}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({dialogue_mode:mode,emotion_style:style})});
   if(res.ok){const changed=await res.json();const idx=_sessions.findIndex(s=>s.id===changed.id);if(idx>=0)_sessions[idx]=changed;if(chatWs?.readyState===WebSocket.OPEN)chatWs.send(JSON.stringify({type:'init',token:_authToken,session_id:_currentDbSession}));}
-}
-async function renameCurrentSession(){
-  const current=_sessions.find(s=>s.id===_currentDbSession);if(!current)return;
-  const title=prompt('输入会话标题（最多32字）',current.title||'');if(!title?.trim())return;
-  const res=await fetch(`/api/sessions/${current.id}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({title:title.trim()})});
-  if(res.ok){await loadSessions();applySessionHeader(_sessions.find(s=>s.id===current.id));}
 }
 async function clearSession(sessionId){
   if(!confirm('清空主对话的全部内容？此操作不可恢复。'))return;
