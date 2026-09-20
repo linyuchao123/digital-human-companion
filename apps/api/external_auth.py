@@ -40,6 +40,8 @@ def init_auth_tables(conn):
             expires REAL,attempts INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS password_reset_codes(user_id INTEGER PRIMARY KEY,email TEXT,salt TEXT,digest TEXT,
             expires REAL,attempts INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS registration_email_codes(email TEXT PRIMARY KEY,salt TEXT,digest TEXT,
+            expires REAL,attempts INTEGER DEFAULT 0);
     """)
 
 
@@ -73,6 +75,10 @@ def normalize_email(value):
 
 def email_digest(user_id,email,salt,code):
     return hmac.new(os.environ['EMAIL_VERIFICATION_SECRET'].encode(),f'{user_id}:{email}:{salt}:{code}'.encode(),hashlib.sha256).hexdigest()
+
+
+def registration_digest(email,salt,code):
+    return hmac.new(os.environ['EMAIL_VERIFICATION_SECRET'].encode(),f'registration:{email}:{salt}:{code}'.encode(),hashlib.sha256).hexdigest()
 
 
 def send_verification_email(address,code,purpose='邮箱绑定'):
@@ -142,6 +148,10 @@ class PasswordResetConfirm(PasswordResetRequest):
     new_password: str=Field(min_length=8,max_length=64)
 
 
+class RegistrationEmailRequest(BaseModel):
+    email: str=Field(min_length=3,max_length=254)
+
+
 class TicketExchange(BaseModel):
     ticket: str=Field(min_length=20,max_length=128)
 
@@ -159,7 +169,29 @@ def install_external_auth(app,get_db,verify,hash_password,check_password):
     @app.get('/api/auth/options')
     async def options():
         return {'wechat':bool(configuration('wechat')),'qq':bool(configuration('qq')),'email_binding':email_ready(),
-                'password_recovery':email_ready()}
+                'password_recovery':email_ready(),'email_registration':email_ready()}
+
+    @app.post('/api/auth/register/email/send')
+    async def send_registration_email(payload: RegistrationEmailRequest,request: Request):
+        if not email_ready():return error('邮件服务尚未配置，暂不能使用邮箱验证码注册',503)
+        try:address=normalize_email(payload.email)
+        except ValueError:return error('邮箱格式不正确')
+        ip=request.client.host if request.client else 'unknown'
+        if not allow_request(('register-email-ip',ip),5,900) or not allow_request(('register-email-address',digest(address)),1,60):
+            return error('发送过于频繁，请稍后再试',429)
+        with get_db() as conn:
+            conn.execute('DELETE FROM registration_email_codes WHERE expires<?',(time.time(),))
+            if conn.execute("SELECT id FROM users WHERE email=? AND email_verified_at<>''",(address,)).fetchone():
+                return error('该邮箱已注册，可以直接登录或找回密码',409)
+            code=f'{secrets.randbelow(1000000):06d}';salt=secrets.token_hex(16)
+            conn.execute('INSERT OR REPLACE INTO registration_email_codes VALUES(?,?,?,?,0)',
+                         (address,salt,registration_digest(address,salt,code),time.time()+600));conn.commit()
+        try:await asyncio.to_thread(send_verification_email,address,code,'注册')
+        except Exception:
+            with get_db() as conn:
+                conn.execute('DELETE FROM registration_email_codes WHERE email=? AND salt=?',(address,salt));conn.commit()
+            return error('邮件发送失败，请检查邮件服务配置',502)
+        return {'ok':True,'expires_in':600,'message':'验证码已发送，10分钟内有效'}
 
     def reset_digest(user_id,address,salt,code):
         return email_digest(user_id,address,'password-reset:'+salt,code)

@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const html=fs.readFileSync('integrated.html','utf8');
+const backend=fs.readFileSync('apps/api/external_auth.py','utf8');
+assert(html.includes('id="auth-register-email"')&&html.includes('id="auth-email-code"'),'注册页必须包含邮箱验证码区域');
+assert(html.includes("fetch('/api/auth/register/email/send'"),'前端必须通过同源接口发送注册验证码');
+assert(html.includes("_authOptions.email_registration"),'注册页必须根据服务端邮件能力切换状态');
+assert(html.includes('auth-code-row')&&html.includes('auth-password-wrap'),'注册表单必须使用新的紧凑验证码与密码布局');
+assert(backend.includes("@app.post('/api/auth/register/email/send')"),'后端必须提供注册验证码接口');
+assert(backend.includes('registration_digest')&&backend.includes('registration_email_codes'),'验证码必须摘要存储并独立于正式账号');
+console.log('邮箱验证码注册与高级认证界面测试通过');

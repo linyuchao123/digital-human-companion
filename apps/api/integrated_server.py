@@ -1002,6 +1002,10 @@ async def auth_register(request: Request):
         return JSONResponse({"error":"请填写有效用户名和密码"},status_code=400)
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
+    email_value = body.get("email", "")
+    email_code = body.get("email_code", "")
+    if not isinstance(email_value,str) or not isinstance(email_code,str):
+        return JSONResponse({"error":"邮箱或验证码格式不正确"},status_code=400)
     if not HAS_BCRYPT:
         return JSONResponse({"error":"密码服务不可用"}, status_code=503)
     if not username or not password:
@@ -1012,23 +1016,53 @@ async def auth_register(request: Request):
         return JSONResponse({"error": "密码须8-64位，UTF-8长度不超过72字节"}, status_code=400)
     if not re.fullmatch(r"[\w-]{2,20}",username):
         return JSONResponse({"error":"用户名仅支持文字、数字、下划线和连字符"},status_code=400)
+    from apps.api.external_auth import email_ready, normalize_email, registration_digest
+    email_required = os.getenv('PUBLIC_DEPLOYMENT','false').lower() == 'true' and email_ready()
+    if email_required and (not email_value or not email_code):
+        return JSONResponse({"error":"请先完成邮箱验证码验证"},status_code=400)
+    address = ''
+    if email_value or email_code:
+        if not email_ready():
+            return JSONResponse({"error":"邮件服务尚未配置，暂不能使用邮箱注册"},status_code=503)
+        try: address = normalize_email(email_value)
+        except ValueError: return JSONResponse({"error":"邮箱格式不正确"},status_code=400)
+        if not re.fullmatch(r'\d{6}',email_code):
+            return JSONResponse({"error":"请输入六位邮箱验证码"},status_code=400)
     conn = _get_db()
     try:
+        conn.execute('BEGIN IMMEDIATE')
         exists = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
         if exists:
             return JSONResponse({"error": "用户名已存在"}, status_code=409)
+        if address:
+            if conn.execute("SELECT id FROM users WHERE email=? AND email_verified_at<>''",(address,)).fetchone():
+                return JSONResponse({"error":"该邮箱已注册，可以直接登录"},status_code=409)
+            row=conn.execute('SELECT * FROM registration_email_codes WHERE email=?',(address,)).fetchone()
+            if not row or row['expires']<=time.time() or row['attempts']>=5:
+                return JSONResponse({"error":"验证码不正确或已失效，请重新发送"},status_code=400)
+            conn.execute('UPDATE registration_email_codes SET attempts=attempts+1 WHERE email=?',(address,))
+            if not hmac.compare_digest(row['digest'],registration_digest(address,row['salt'],email_code)):
+                conn.commit()
+                return JSONResponse({"error":"验证码不正确或已失效，请重新发送"},status_code=400)
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
-        conn.execute(
-            "INSERT INTO users(username,password_hash,created_at) VALUES(?,?,?)",
-            (username, _hash_password(password), now)
-        )
-        conn.commit()
-        user_id = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()["id"]
+        if address:
+            cursor=conn.execute(
+                "INSERT INTO users(username,password_hash,created_at,email,email_verified_at) VALUES(?,?,?,?,?)",
+                (username,_hash_password(password),now,address,now))
+            conn.execute('DELETE FROM registration_email_codes WHERE email=?',(address,))
+        else:
+            cursor=conn.execute(
+                "INSERT INTO users(username,password_hash,created_at) VALUES(?,?,?)",
+                (username, _hash_password(password), now))
+        user_id = cursor.lastrowid
         token = str(uuid.uuid4())
         expires = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + 7*86400))
         conn.execute("INSERT INTO auth_tokens(token,user_id,expires_at) VALUES(?,?,?)", (token, user_id, expires))
         conn.commit()
         return JSONResponse({"token": token, "username": username, "user_id": user_id})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return JSONResponse({"error":"用户名或邮箱已被使用"},status_code=409)
     finally:
         conn.close()
 
