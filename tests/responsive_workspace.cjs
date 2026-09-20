@@ -6,6 +6,8 @@ assert(html.includes('#sidebar.open ~ #sidebar-toggle{left:calc(var(--panel-gap)
        '侧边栏收束按钮必须贴合面板右边缘');
 assert(html.includes('#sidebar-toggle{position:fixed;left:0;top:50%;transform:translateY(-50%)'),
        '侧边栏收束按钮必须保持垂直居中');
+assert(html.includes('width:20px;height:48px')&&html.includes('body.app-connected #sidebar-toggle'),
+       '侧栏把手必须轻量化并仅在连接成功后显示');
 assert(html.includes('.cp-controls{display:grid;grid-template-columns:'),'会话标题和操作区必须使用稳定的两行布局');
 assert(html.includes("setEmotionStyleVisibility(mode==='emotional')"),'情感风格切换必须保留头部布局空间');
 assert(!html.includes('renameCurrentSession()'),'不再展示会话改名入口');
@@ -19,6 +21,9 @@ assert(!html.includes("getElementById('tab-chat')")&&!html.includes("getElementB
        '朗读切换不可再访问已移除的旧页签');
 assert(html.includes('_live2dBaseSize={width:live2dModel.width,height:live2dModel.height}'));
 assert(html.includes('wrap.clientWidth/_live2dBaseSize.width'),'缩放必须使用原始模型尺寸');
+assert.equal((html.match(/Math\.min\(scW,scH\)\*LIVE2D_VIEW_SCALE/g)||[]).length,2,
+       '首次加载和窗口变化必须共用标准桌面比例');
+assert(html.includes("if(live2dModel){resizeLive2D();return;}"),'再次连接也必须恢复默认数字人比例');
 assert(html.includes('new ResizeObserver(()=>resizeLive2D())'));
 assert(html.includes('if(sessionId!==_currentDbSession||epoch!==_sessionSwitchEpoch)return;')||
        html.includes("if(sessionId!==_currentDbSession)return;\n    if(epoch!==_sessionSwitchEpoch)return;"));

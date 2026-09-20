@@ -387,15 +387,18 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
 #sb-logout-btn:hover{background:var(--danger-dim)}
 /* 侧边栏切换按钮 */
 #sidebar-toggle{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:205;
-  width:28px;height:72px;background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(199,220,255,.72));
-  border:1px solid rgba(79,142,247,.3);border-left:none;border-radius:0 18px 18px 0;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;color:var(--accent);box-shadow:5px 8px 24px rgba(62,104,180,.18);
-  transition:left .32s cubic-bezier(.22,1,.36,1),transform .22s ease,background .22s ease,box-shadow .22s ease,width .22s ease;
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-#sidebar-toggle::before{content:'';position:absolute;left:5px;top:18px;bottom:18px;width:2px;border-radius:2px;background:rgba(79,142,247,.2)}
-.sidebar-toggle-icon{font-size:18px;line-height:1;transform:translateX(1px);transition:transform .24s cubic-bezier(.22,1,.36,1)}
-#sidebar-toggle:hover{width:31px;transform:translateY(-50%) translateX(3px);background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(190,216,255,.9));box-shadow:7px 10px 28px rgba(62,104,180,.25)}
-#sidebar-toggle:hover .sidebar-toggle-icon{transform:translateX(3px) scale(1.08)}
+  width:20px;height:48px;background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(199,220,255,.28));
+  border:1px solid rgba(79,142,247,.18);border-left:none;border-radius:0 13px 13px 0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:rgba(79,142,247,.76);box-shadow:3px 5px 14px rgba(62,104,180,.09);
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:left .32s cubic-bezier(.22,1,.36,1),transform .22s ease,background .22s ease,box-shadow .22s ease,width .22s ease,opacity .22s ease,visibility .22s;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+body.app-connected #sidebar-toggle{opacity:.72;visibility:visible;pointer-events:auto}
+#sidebar-toggle::before{content:'';position:absolute;left:4px;top:13px;bottom:13px;width:1px;border-radius:2px;background:rgba(79,142,247,.16)}
+.sidebar-toggle-icon{font-size:14px;line-height:1;transform:translateX(1px);transition:transform .24s cubic-bezier(.22,1,.36,1)}
+#sidebar-toggle:hover{width:22px;opacity:1;transform:translateY(-50%) translateX(2px);background:linear-gradient(180deg,rgba(255,255,255,.64),rgba(190,216,255,.48));box-shadow:4px 7px 17px rgba(62,104,180,.15)}
+body.app-connected #sidebar-toggle:hover{opacity:1}
+#sidebar-toggle:hover .sidebar-toggle-icon{transform:translateX(2px) scale(1.06)}
 #sidebar-toggle:active{transform:translateY(-50%) translateX(1px) scale(.96)}
 #sidebar.open ~ #sidebar-toggle{left:calc(var(--panel-gap) + var(--panel-width) - 1px)}
 #sidebar.open ~ #sidebar-toggle .sidebar-toggle-icon{transform:translateX(-1px)}
@@ -745,6 +748,8 @@ const PARAM_MAP = {
 };
 const MOTION_GROUP_MAP = {'FlickUp':'FlickUp','Tap':'Tap','Flick3':'Flick3','Idle':'Idle'};
 const MOTION_COOLDOWN_MS = 3000;
+// 保持连接后数字人与工作区的默认比例稳定，对应标准桌面视图的 90% 等比适配。
+const LIVE2D_VIEW_SCALE = 0.9;
 let lastMotionTime = 0;
 
 /* ═══════════ 状态 ═══════════ */
@@ -1157,6 +1162,8 @@ async function connectAll(){
       document.getElementById('disconnect-btn').classList.add('show');
       document.getElementById('drive-info').classList.add('show');
       connected=true;
+      document.body.classList.add('app-connected');
+      resizeLive2D();
       // 若已登录则自动展开侧边栏
       if(_authToken && !_sidebarOpen) toggleSidebar();
     },900);
@@ -1185,6 +1192,7 @@ function disconnectAll(){
   _stopAudio();
   _inputTimings.clear();
   connected=false;
+  document.body.classList.remove('app-connected');
   // 隐藏聊天/控制栏
   document.getElementById('bottom-bar').classList.remove('show');
   document.getElementById('chat-panel').classList.remove('show');
@@ -1211,7 +1219,7 @@ function disconnectAll(){
 
 /* ═══════════ Live2D 初始化 ═══════════ */
 async function initPixiAndModel(){
-  if(live2dModel) return; // 已加载
+  if(live2dModel){resizeLive2D();return;} // 已加载时恢复默认画面比例
   if(!window.PIXI||!PIXI.live2d) throw new Error('Live2D SDK 未加载');
   const canvas=document.getElementById('live2d-canvas');
   const wrap=document.getElementById('live2d-wrap');
@@ -1223,7 +1231,7 @@ async function initPixiAndModel(){
   _live2dBaseSize={width:live2dModel.width,height:live2dModel.height};
   const scW=wrap.clientWidth/_live2dBaseSize.width;
   const scH=wrap.clientHeight/_live2dBaseSize.height;
-  const sc=Math.min(scW,scH)*0.9;
+  const sc=Math.min(scW,scH)*LIVE2D_VIEW_SCALE;
   live2dModel.scale.set(sc);
   live2dModel.x=wrap.clientWidth/2;
   live2dModel.y=wrap.clientHeight/2;
@@ -2600,7 +2608,7 @@ function resizeLive2D(){
     pixiApp.renderer.resize(wrap.clientWidth,wrap.clientHeight);
     const scW=wrap.clientWidth/_live2dBaseSize.width;
     const scH=wrap.clientHeight/_live2dBaseSize.height;
-    const sc=Math.min(scW,scH)*0.9;
+    const sc=Math.min(scW,scH)*LIVE2D_VIEW_SCALE;
     live2dModel.scale.set(sc);
     live2dModel.x=wrap.clientWidth/2;
     live2dModel.y=wrap.clientHeight/2;
