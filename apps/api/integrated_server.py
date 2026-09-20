@@ -269,6 +269,13 @@ def _db_load_message_context(session_id: str, limit: int = 40) -> list[dict[str,
         conn.close()
 
 
+def _normalize_session_title(value: str) -> str:
+    title = re.sub(r"[\s\r\n\t，。！？、,:：;；'\"“”‘’《》【】]+", "", value or "")[:16]
+    if len(title) < 8:
+        title = (title + "相关话题记录")[:16]
+    return title or "新的对话记录"
+
+
 def _memory_enabled_for_user(user_id: int) -> bool:
     conn = _get_db()
     try:
@@ -1300,21 +1307,28 @@ async def get_sessions(request: Request, limit: int = 30, cursor: str = ""):
     try:
         safe_limit = min(max(limit, 1), 100)
         params: list[Any] = [user_id]
-        where = "user_id=?"
+        where = "user_id=? AND is_main=0"
         if cursor:
             try:
                 updated_at, session_id = base64.urlsafe_b64decode(cursor.encode()).decode().split("|", 1)
             except (ValueError, UnicodeDecodeError):
                 return JSONResponse({"error": "分页游标无效"}, status_code=400)
-            where += " AND is_main=0 AND (updated_at < ? OR (updated_at=? AND id<?))"
+            where += " AND (updated_at < ? OR (updated_at=? AND id<?))"
             params.extend((updated_at, updated_at, session_id))
         rows = conn.execute(
             f"""SELECT id,title,created_at,updated_at,is_main,dialogue_mode,emotion_style,title_manual
                 FROM chat_sessions WHERE {where}
-                ORDER BY is_main DESC,updated_at DESC,id DESC LIMIT ?""",
+                ORDER BY updated_at DESC,id DESC LIMIT ?""",
             (*params, safe_limit + 1),
         ).fetchall()
         page = [dict(row) for row in rows[:safe_limit]]
+        if not cursor:
+            main = conn.execute(
+                """SELECT id,title,created_at,updated_at,is_main,dialogue_mode,emotion_style,title_manual
+                   FROM chat_sessions WHERE user_id=? AND is_main=1""", (user_id,),
+            ).fetchone()
+            if main:
+                page.insert(0, dict(main))
         next_cursor = None
         if len(rows) > safe_limit and page:
             last = page[-1]
@@ -1528,12 +1542,12 @@ async def generate_session_title(session_id: str, request: Request):
                         ], "max_tokens": 20, "temperature": 0.3}
                     )
                     data = resp.json()
-                    title = data["choices"][0]["message"]["content"].strip()[:16]
+                    title = _normalize_session_title(data["choices"][0]["message"]["content"])
             except Exception as e:
                 print(f"[Title] 生成失败: {e}")
-                title = msgs[0]["content"][:10] if msgs else "新对话"
+                title = _normalize_session_title(msgs[0]["content"]) if msgs else "新对话"
         else:
-            title = msgs[0]["content"][:10] if msgs else "新对话"
+            title = _normalize_session_title(msgs[0]["content"]) if msgs else "新对话"
         conn.execute(
             "UPDATE chat_sessions SET title=? WHERE id=? AND user_id=? AND title_manual=0",
             (title, session_id, user_id),
@@ -2346,7 +2360,7 @@ async def _auto_generate_title(db_session_id: str, ws: WebSocket):
         if not msgs:
             return
         summary = "\n".join(f"{'用户' if m['role']=='user' else '小安'}: {m['content'][:40]}" for m in msgs)
-        title = msgs[0]["content"][:10] if msgs else "新对话"
+        title = _normalize_session_title(msgs[0]["content"]) if msgs else "新对话"
         if QWEN_API_KEY:
             try:
                 import httpx
@@ -2360,7 +2374,7 @@ async def _auto_generate_title(db_session_id: str, ws: WebSocket):
                         ], "max_tokens": 20, "temperature": 0.3}
                     )
                     data = resp.json()
-                    title = data["choices"][0]["message"]["content"].strip()[:16]
+                    title = _normalize_session_title(data["choices"][0]["message"]["content"])
             except Exception:
                 pass
         conn2 = _get_db()

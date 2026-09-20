@@ -86,6 +86,29 @@ class ChatSessionTests(unittest.TestCase):
         second_ids = {item["id"] for item in second["sessions"]}
         self.assertFalse(first_ids & second_ids)
 
+    def test_main_session_does_not_consume_normal_session_page_or_cursor(self):
+        main = self.main().json()["session_id"]
+        user_id = self.client.get("/api/profile", headers=self.headers[0]).json()["id"]
+        with server._get_db() as conn:
+            for index in range(3):
+                conn.execute("INSERT INTO chat_sessions(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
+                             (f"tiny-{index}",user_id,str(index),"2026",f"2030-01-0{index+1}"))
+            conn.commit()
+        seen=[];cursor=None
+        for _ in range(3):
+            suffix=f"&cursor={cursor}" if cursor else ""
+            page=self.client.get(f"/api/sessions?limit=1{suffix}",headers=self.headers[0]).json()
+            if not cursor:self.assertEqual(page["sessions"][0]["id"],main)
+            seen.extend(item["id"] for item in page["sessions"] if not item["is_main"])
+            cursor=page["next_cursor"]
+        self.assertEqual(seen,["tiny-2","tiny-1","tiny-0"])
+
+    def test_automatic_title_normalization_is_between_8_and_16_characters(self):
+        for raw in ("你好", "工作压力与睡眠困扰已经持续很长一段时间", "  焦虑，睡眠！  "):
+            title=server._normalize_session_title(raw)
+            self.assertGreaterEqual(len(title),8)
+            self.assertLessEqual(len(title),16)
+
 
 if __name__ == "__main__":
     unittest.main()
