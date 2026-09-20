@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const html=fs.readFileSync('integrated.html','utf8');
+const backend=fs.readFileSync('apps/api/integrated_server.py','utf8');
+assert.equal((html.match(/data-avatar-select/g)||[]).length,3,'两个选择器和同步查询必须共享形象标记');
+assert(html.includes('id="wav2lip-video"')&&html.includes('id="wav2lip-audio"'),'必须提供分离的 WebRTC 音视频元素');
+assert(html.includes("async function initLiveTalking()"),'必须实现 Wav2Lip WebRTC 适配器');
+assert(html.includes("fetch('/api/avatar/livetalking/offer'"),'必须经同源后端完成 SDP 协商');
+assert(html.includes("fetch('/api/avatar/livetalking/audio'"),'必须把现有 TTS 音频用于口型驱动');
+assert(html.includes("_selectedAvatarMode()!=='wav2lip'&&TTS_STREAM_ENABLED"),'Wav2Lip 必须使用可上传的完整音频而非裸 PCM 流');
+assert(backend.includes('LIVETALKING_BASE_URL')&&backend.includes('LIVETALKING_AVATAR_ID'));
+assert(backend.includes('@app.post("/api/avatar/livetalking/offer")'));
+assert(backend.includes('@app.post("/api/avatar/livetalking/audio")'));
+assert(backend.includes('follow_redirects=False'),'固定上游代理不得跟随未知重定向');
+console.log('LiveTalking 第二数字人选择、WebRTC 和现有音色桥接测试通过');

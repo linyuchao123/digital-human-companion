@@ -196,6 +196,13 @@ TTS 文本通过 `POST /api/tts` 的 JSON 请求体传输，不进入 URL、浏�
 接口限制单次 500 字。音色必须来自服务端白名单目录，音频及错误响应均设置
 `Cache-Control: no-store`。公网部署时密钥只能由服务端密钥管理注入，不能放进前端或提交到仓库。
 
+### 第二数字人：LiveTalking / Wav2Lip
+
+连接页和“设置与工具”支持在 Live2D 小安与 LiveTalking Wav2Lip 写实视频数字人之间切换。
+Wav2Lip 作为独立 NVIDIA GPU 服务运行，本项目复用现有对话和 Qwen3/CosyVoice 音色，通过
+WebRTC 显示画面并上传合成音频驱动口型。具体部署、素材授权和验收步骤见
+[LiveTalking / Wav2Lip 第二数字人接入](./docs/livetalking-wav2lip.md)。
+
 ---
 
 ## 1. 背景与意义

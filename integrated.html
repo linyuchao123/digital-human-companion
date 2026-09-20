@@ -71,6 +71,11 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 #scene{position:fixed;inset:0;z-index:10}
 #live2d-wrap{position:absolute;inset:0}
 #live2d-canvas{width:100%;height:100%;display:block;pointer-events:none}
+#wav2lip-wrap{position:absolute;inset:44px 0 0;display:none;align-items:center;justify-content:center;overflow:hidden;pointer-events:none}
+#wav2lip-video{width:100%;height:100%;display:block;object-fit:contain;background:transparent}
+#wav2lip-audio{display:none}
+#scene.avatar-wav2lip #live2d-wrap{display:none}
+#scene.avatar-wav2lip #wav2lip-wrap{display:flex}
 
 /* ══ 连接屏 ══ */
 #connect-screen{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;
@@ -94,6 +99,8 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 /* 驱动WS地址输入 */
 .cs-ws-row{display:flex;align-items:center;gap:8px}
 .cs-ws-row label{font-size:11px;color:var(--text2)}
+.cs-avatar-select{width:200px;height:32px;border-radius:16px;border:1px solid rgba(200,220,255,.75);
+  background:rgba(255,255,255,.68);padding:0 12px;font:inherit;color:var(--text);outline:none;text-align:center}
 #drive-ws-input{width:200px;height:30px;border-radius:15px;border:1px solid rgba(200,220,255,.7);
   background:rgba(255,255,255,.6);padding:0 12px;font-size:11px;color:var(--text);
   font-family:inherit;outline:none;text-align:center}
@@ -579,6 +586,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   <button class="tb-chip on" id="tts-btn" onclick="toggleTTS()">🔊 语音</button>
 <button class="tb-chip" id="camera-btn" onclick="toggleCameraPerception()">👁 摄像头感知</button>
 <details class="topbar-secondary"><summary class="tb-chip">⚙ 设置与工具</summary><div class="topbar-menu">
+  <label class="topbar-voice-field"><span>🧑 数字人形象</span><select class="tts-voice-select" id="topbar-avatar-select" data-avatar-select aria-label="顶栏数字人形象"><option value="live2d">小安 · Live2D</option><option value="wav2lip">播报员 · Wav2Lip（需服务）</option></select></label>
   <label class="topbar-voice-field"><span>🎙 播报音色</span><select class="tts-voice-select" id="topbar-tts-voice-select" data-tts-voice-select aria-label="顶栏播报音色" disabled><option value="">正在读取音色…</option></select></label>
   <button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()">🧠 长期记忆</button>
   <button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
@@ -589,12 +597,19 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
 </div>
 
 <!-- ══ Live2D 场景 ══ -->
-<div id="scene"><div id="live2d-wrap"><canvas id="live2d-canvas"></canvas></div></div>
+<div id="scene">
+  <div id="live2d-wrap"><canvas id="live2d-canvas"></canvas></div>
+  <div id="wav2lip-wrap"><video id="wav2lip-video" autoplay playsinline muted></video><audio id="wav2lip-audio" autoplay></audio></div>
+</div>
 
 <!-- ══ 连接屏 ══ -->
 <div id="connect-screen">
   <div class="cs-title">🌸 数字心屿 · AI情绪陪伴数字人</div>
   <div class="cs-sub">基于深度学习模型驱动的情感陪护数字人系统<br>24维面部参数实时驱动 + 心理对话引擎</div>
+  <div class="cs-ws-row">
+    <label for="connect-avatar-select">数字人形象：</label>
+    <select class="cs-avatar-select" id="connect-avatar-select" data-avatar-select aria-label="连接数字人形象"><option value="live2d">小安 · Live2D</option><option value="wav2lip">播报员 · Wav2Lip（需服务）</option></select>
+  </div>
   <div class="cs-ws-row">
     <label>会话通道：</label>
     <input type="text" id="drive-ws-input" readonly title="驱动与对话共用当前用户的会话连接" />
@@ -758,6 +773,8 @@ let ttsEnabled=true, ttsSpeaking=false;
 let micOnly=false, micStream=null, micRecorder=null, micChunks=[];
 let pixiApp=null, live2dModel=null;
 let _live2dBaseSize=null,_live2dResizeObserver=null;
+let liveTalkingPc=null,liveTalkingSessionId='',liveTalkingAvatarId='wav2lip256_avatar1';
+let _avatarCatalogPromise=null,_liveTalkingSpeakingTimer=null;
 let wsParamsBuffer = {};
 let driveFrameCount=0, connected=false;
 let isPlayingMotion=false;
@@ -1129,6 +1146,81 @@ function renderAgentEvent(event){
 }
 
 /* ═══════════ 连接总控 ═══════════ */
+function _avatarSelects(){return Array.from(document.querySelectorAll('[data-avatar-select]'));}
+function _selectedAvatarMode(){return localStorage.getItem('avatar_mode')==='wav2lip'?'wav2lip':'live2d';}
+function _syncAvatarSelection(value){
+  if(!['live2d','wav2lip'].includes(value)||connected)return;
+  localStorage.setItem('avatar_mode',value);
+  for(const select of _avatarSelects())select.value=value;
+  const item=selectAvatarCatalogItem(value),status=document.getElementById('cs-status');
+  if(status)status.textContent=value==='wav2lip'&&!item?.available?'需要先在 .env 配置 LIVETALKING_BASE_URL':'';
+}
+function _setAvatarSelectorsDisabled(disabled){for(const select of _avatarSelects())select.disabled=disabled;}
+function selectAvatarCatalogItem(id){return (window.__avatarCatalog||[]).find(item=>item.id===id)||null;}
+async function _loadAvatarCatalog(){
+  if(!_avatarCatalogPromise)_avatarCatalogPromise=(async()=>{
+    try{
+      const response=await fetch('/api/avatar/catalog',{cache:'no-store'}),payload=await response.json();
+      window.__avatarCatalog=Array.isArray(payload.avatars)?payload.avatars:[];
+      const wav=selectAvatarCatalogItem('wav2lip');if(wav?.avatar_id)liveTalkingAvatarId=wav.avatar_id;
+      for(const select of _avatarSelects()){
+        const option=Array.from(select.options).find(item=>item.value==='wav2lip');
+        if(option)option.textContent=wav?.available?'播报员 · Wav2Lip':'播报员 · Wav2Lip（需服务）';
+        select.onchange=()=>_syncAvatarSelection(select.value);
+      }
+    }catch(error){window.__avatarCatalog=[];console.warn('[Avatar] 形象目录读取失败',error);}
+    _syncAvatarSelection(_selectedAvatarMode());
+    return window.__avatarCatalog;
+  })();
+  return _avatarCatalogPromise;
+}
+
+function _waitForIceGathering(pc){
+  if(pc.iceGatheringState==='complete')return Promise.resolve();
+  return new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>{cleanup();reject(new Error('WebRTC ICE 收集超时'));},10000);
+    const change=()=>{if(pc.iceGatheringState==='complete'){cleanup();resolve();}};
+    const cleanup=()=>{clearTimeout(timeout);pc.removeEventListener('icegatheringstatechange',change);};
+    pc.addEventListener('icegatheringstatechange',change);
+  });
+}
+async function initLiveTalking(){
+  await _loadAvatarCatalog();
+  const item=selectAvatarCatalogItem('wav2lip');
+  if(!item?.available)throw new Error('Wav2Lip 服务未配置，请设置 LIVETALKING_BASE_URL');
+  stopLiveTalking(false);
+  const pc=new RTCPeerConnection({sdpSemantics:'unified-plan'});liveTalkingPc=pc;
+  const video=document.getElementById('wav2lip-video'),audio=document.getElementById('wav2lip-audio');
+  pc.addTransceiver('video',{direction:'recvonly'});pc.addTransceiver('audio',{direction:'recvonly'});
+  pc.addEventListener('track',event=>{
+    const stream=event.streams[0]||new MediaStream([event.track]);
+    if(event.track.kind==='video')video.srcObject=stream;else audio.srcObject=stream;
+  });
+  const offer=await pc.createOffer();await pc.setLocalDescription(offer);await _waitForIceGathering(pc);
+  const response=await fetch('/api/avatar/livetalking/offer',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},
+    body:JSON.stringify({sdp:pc.localDescription.sdp,type:'offer',avatar:item.avatar_id||liveTalkingAvatarId})});
+  const answer=await response.json();
+  if(!response.ok||!answer.sdp||!answer.sessionid)throw new Error(answer.message||'Wav2Lip WebRTC 协商失败');
+  liveTalkingSessionId=String(answer.sessionid);
+  await pc.setRemoteDescription({type:answer.type||'answer',sdp:answer.sdp});
+  await new Promise((resolve,reject)=>{
+    if(pc.connectionState==='connected')return resolve();
+    const timeout=setTimeout(()=>{cleanup();reject(new Error('Wav2Lip 视频连接超时'));},15000);
+    const change=()=>{
+      if(pc.connectionState==='connected'){cleanup();resolve();}
+      else if(['failed','closed'].includes(pc.connectionState)){cleanup();reject(new Error('Wav2Lip 视频连接失败'));}
+    };
+    const cleanup=()=>{clearTimeout(timeout);pc.removeEventListener('connectionstatechange',change);};
+    pc.addEventListener('connectionstatechange',change);
+  });
+}
+function stopLiveTalking(interrupt=true){
+  if(_liveTalkingSpeakingTimer){clearTimeout(_liveTalkingSpeakingTimer);_liveTalkingSpeakingTimer=null;}
+  if(interrupt&&liveTalkingSessionId)fetch('/api/avatar/livetalking/interrupt',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({sessionid:liveTalkingSessionId})}).catch(()=>{});
+  liveTalkingPc?.close();liveTalkingPc=null;liveTalkingSessionId='';
+  for(const id of ['wav2lip-video','wav2lip-audio']){const element=document.getElementById(id);if(element)element.srcObject=null;}
+}
+
 let _connectionGeneration=0;
 async function connectAll(){
   const generation=++_connectionGeneration;
@@ -1139,7 +1231,9 @@ async function connectAll(){
   st.textContent='加载数字人模型...';
 
   try{
-    await initPixiAndModel();
+    const avatarMode=_selectedAvatarMode();
+    if(avatarMode==='wav2lip'){st.textContent='连接 Wav2Lip 视频服务...';await initLiveTalking();}
+    else await initPixiAndModel();
     if(generation!==_connectionGeneration) return;
     st.textContent='连接驱动服务...';
     // 驱动与对话使用同一条会话 WebSocket，禁止连接共享广播通道。
@@ -1156,12 +1250,14 @@ async function connectAll(){
       const cs=document.getElementById('connect-screen');
       cs.style.zIndex=''; // 恢复正常 z-index
       cs.classList.add('hidden'); // display:none 隐藏
-      startWakeUp();
+      document.getElementById('scene').classList.toggle('avatar-wav2lip',avatarMode==='wav2lip');
+      if(avatarMode==='live2d')startWakeUp();
       document.getElementById('bottom-bar').classList.add('show');
       document.getElementById('chat-panel').classList.add('show');
       document.getElementById('disconnect-btn').classList.add('show');
       document.getElementById('drive-info').classList.add('show');
       connected=true;
+      _setAvatarSelectorsDisabled(true);
       document.body.classList.add('app-connected');
       resizeLive2D();
       // 若已登录则自动展开侧边栏
@@ -1174,6 +1270,7 @@ async function connectAll(){
     },3400);
 
   }catch(e){
+    stopLiveTalking(false);
     st.textContent='连接失败: '+e.message;
     btn.classList.remove('loading');
     btn.innerHTML='<span>🔗</span><span>重新连接</span>';
@@ -1192,6 +1289,9 @@ function disconnectAll(){
   _stopAudio();
   _inputTimings.clear();
   connected=false;
+  stopLiveTalking();
+  document.getElementById('scene').classList.remove('avatar-wav2lip');
+  _setAvatarSelectorsDisabled(false);
   document.body.classList.remove('app-connected');
   // 隐藏聊天/控制栏
   document.getElementById('bottom-bar').classList.remove('show');
@@ -2008,6 +2108,10 @@ function _ensureAudioCtx(){
 function _stopAudio(){
   _ttsGeneration++;
   _speechChoreography=null;
+  if(_liveTalkingSpeakingTimer){clearTimeout(_liveTalkingSpeakingTimer);_liveTalkingSpeakingTimer=null;}
+  if(ttsSpeaking&&liveTalkingSessionId){
+    fetch('/api/avatar/livetalking/interrupt',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({sessionid:liveTalkingSessionId})}).catch(()=>{});
+  }
   if(_speechStartTimer!==null) clearTimeout(_speechStartTimer);
   _speechStartTimer=null;_speechStartAction=null;
   for(const source of _streamSources){try{source.stop();}catch(error){}}
@@ -2127,6 +2231,43 @@ async function _canUseServerTTS(){
   return _ttsCapabilityPromise;
 }
 
+async function _speakViaLiveTalkingAudio(arrayBuf,mediaType,generation){
+  if(!liveTalkingSessionId||liveTalkingPc?.connectionState!=='connected')return false;
+  const form=new FormData();
+  form.append('sessionid',liveTalkingSessionId);
+  const contentType=mediaType||'audio/wav',extension=contentType.includes('mpeg')?'mp3':contentType.includes('aac')?'aac':'wav';
+  form.append('file',new Blob([arrayBuf],{type:contentType}),`speech.${extension}`);
+  const response=await fetch('/api/avatar/livetalking/audio',{method:'POST',headers:{'X-Auth-Token':_authToken},body:form});
+  if(!response.ok)return false;
+  let expectedMs=12000;
+  try{const decoded=await _ensureAudioCtx().decodeAudioData(arrayBuf.slice(0));expectedMs=Math.max(2000,decoded.duration*1000+5000);}catch(error){}
+  if(generation!==_ttsGeneration)return true;
+  ttsSpeaking=true;_useBrowserTTS=false;
+  document.getElementById('speaking-indicator').classList.add('show');
+  document.getElementById('thinking-bar').classList.remove('show');
+  notifySpeechStarted(generation);
+  const finish=()=>{
+    if(generation!==_ttsGeneration)return;
+    ttsSpeaking=false;_speechChoreography=null;_mouthSmooth=0;
+    document.getElementById('speaking-indicator').classList.remove('show');
+  };
+  _liveTalkingSpeakingTimer=setTimeout(finish,expectedMs);
+  (async()=>{
+    let observed=false;
+    const deadline=Date.now()+expectedMs;
+    while(generation===_ttsGeneration&&Date.now()<deadline){
+      await new Promise(resolve=>setTimeout(resolve,350));
+      try{
+        const status=await fetch('/api/avatar/livetalking/speaking',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({sessionid:liveTalkingSessionId})});
+        const payload=await status.json(),speaking=payload.data===true;
+        if(speaking)observed=true;
+        else if(observed){clearTimeout(_liveTalkingSpeakingTimer);_liveTalkingSpeakingTimer=null;finish();break;}
+      }catch(error){}
+    }
+  })();
+  return true;
+}
+
 async function _speakViaServerTTS(text,generation,replyTiming=null){
   try{
     const controller=new AbortController();
@@ -2135,7 +2276,7 @@ async function _speakViaServerTTS(text,generation,replyTiming=null){
     if(generation!==_ttsGeneration) return true;
     const voice=_selectedTtsVoice(catalog.default_voice);
     // 流式路径校验格式并保留首段缓冲；首音频失败才使用同音色完整音频。
-    if(TTS_STREAM_ENABLED&&voice?.startsWith('qwen3_tts:')){
+    if(_selectedAvatarMode()!=='wav2lip'&&TTS_STREAM_ENABLED&&voice?.startsWith('qwen3_tts:')){
       const streamed=await _playStreamTTS(text,voice,generation,controller,replyTiming);
       if(streamed) return true;
     }
@@ -2152,6 +2293,9 @@ async function _speakViaServerTTS(text,generation,replyTiming=null){
     }
     const arrayBuf=await resp.arrayBuffer();
     if(controller.signal.aborted||generation!==_ttsGeneration) return true;
+    if(_selectedAvatarMode()==='wav2lip'){
+      return await _speakViaLiveTalkingAudio(arrayBuf,resp.headers.get('Content-Type'),generation);
+    }
     const ctx=_ensureAudioCtx();
     const audioBuf=await ctx.decodeAudioData(arrayBuf);
     if(generation!==_ttsGeneration) return true;
@@ -2619,6 +2763,7 @@ window.addEventListener('resize',resizeLive2D);
 /* ═══════════ 启动 ═══════════ */
 window.addEventListener('load',()=>{
   window.speechSynthesis&&window.speechSynthesis.getVoices();
+  _loadAvatarCatalog();
   _loadTtsVoices();
   initAuth();
   loadAuthMethods();

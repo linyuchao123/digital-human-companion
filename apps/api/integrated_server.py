@@ -31,12 +31,12 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -684,6 +684,25 @@ QWEN_MODEL = (
     or "qwen-plus"
 )
 RAG_EMBEDDING_MODEL_PATH = os.environ.get("RAG_EMBEDDING_MODEL_PATH", "").strip()
+LIVETALKING_BASE_URL = os.environ.get("LIVETALKING_BASE_URL", "").strip().rstrip("/")
+LIVETALKING_AVATAR_ID = os.environ.get("LIVETALKING_AVATAR_ID", "wav2lip256_avatar1").strip()
+
+
+def _validated_livetalking_base_url() -> str:
+    """只接受由部署者配置的 HTTP(S) 服务源，避免把接口变成任意 URL 代理。"""
+    if not LIVETALKING_BASE_URL:
+        return ""
+    parsed = urlsplit(LIVETALKING_BASE_URL)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        return ""
+    return LIVETALKING_BASE_URL
 
 # ══════════════════════════════════════════════════════════════
 # FastAPI 应用
@@ -771,6 +790,107 @@ async def api_status(request: Request):
         },
         "port": request.scope.get("server", (None, None))[1],
     })
+
+
+class LiveTalkingOfferRequest(BaseModel):
+    sdp: str = Field(min_length=1, max_length=200_000)
+    type: str = Field(pattern="^offer$")
+    avatar: str | None = Field(default=None, max_length=128)
+
+
+class LiveTalkingSessionRequest(BaseModel):
+    sessionid: str = Field(min_length=1, max_length=128)
+
+
+def _livetalking_unavailable():
+    return JSONResponse({
+        "error": "livetalking_unavailable",
+        "message": "尚未配置 LiveTalking 服务；请设置 LIVETALKING_BASE_URL 并重启后端。",
+    }, status_code=503)
+
+
+@app.get("/api/avatar/catalog")
+async def api_avatar_catalog():
+    base_url = _validated_livetalking_base_url()
+    return JSONResponse({"avatars": [
+        {"id": "live2d", "name": "小安 · Live2D", "available": True, "transport": "canvas"},
+        {"id": "wav2lip", "name": "播报员 · Wav2Lip", "available": bool(base_url),
+         "transport": "webrtc", "avatar_id": LIVETALKING_AVATAR_ID or "wav2lip256_avatar1",
+         "reason": None if base_url else "service_not_configured"},
+    ]})
+
+
+@app.post("/api/avatar/livetalking/offer")
+async def api_livetalking_offer(payload: LiveTalkingOfferRequest):
+    base_url = _validated_livetalking_base_url()
+    if not base_url:
+        return _livetalking_unavailable()
+    import httpx
+    upstream = {"sdp": payload.sdp, "type": payload.type,
+                "avatar": payload.avatar or LIVETALKING_AVATAR_ID or "wav2lip256_avatar1"}
+    try:
+        async with httpx.AsyncClient(timeout=35.0, follow_redirects=False) as client:
+            response = await client.post(f"{base_url}/offer", json=upstream)
+            response.raise_for_status()
+            answer = response.json()
+        if not isinstance(answer, dict) or not answer.get("sdp") or not answer.get("sessionid"):
+            raise ValueError("invalid offer response")
+        return JSONResponse({"sdp": answer["sdp"], "type": answer.get("type", "answer"),
+                             "sessionid": str(answer["sessionid"])})
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as error:
+        print(f"[LiveTalking] WebRTC 协商失败: {type(error).__name__}")
+        return JSONResponse({"error": "livetalking_offer_failed", "message": "Wav2Lip 服务连接失败"}, status_code=502)
+
+
+@app.post("/api/avatar/livetalking/audio")
+async def api_livetalking_audio(sessionid: str = Form(...), file: UploadFile = File(...)):
+    base_url = _validated_livetalking_base_url()
+    if not base_url:
+        return _livetalking_unavailable()
+    if not sessionid or len(sessionid) > 128:
+        return JSONResponse({"error": "invalid_session"}, status_code=400)
+    audio = await file.read(20 * 1024 * 1024 + 1)
+    if not audio or len(audio) > 20 * 1024 * 1024:
+        return JSONResponse({"error": "invalid_audio"}, status_code=400)
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=45.0, follow_redirects=False) as client:
+            response = await client.post(
+                f"{base_url}/humanaudio",
+                data={"sessionid": sessionid},
+                files={"file": (file.filename or "speech.wav", audio, file.content_type or "audio/wav")},
+            )
+            response.raise_for_status()
+            result = response.json()
+        return JSONResponse(result if isinstance(result, dict) else {"code": 0, "msg": "ok"})
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as error:
+        print(f"[LiveTalking] 音频驱动失败: {type(error).__name__}")
+        return JSONResponse({"error": "livetalking_audio_failed", "message": "Wav2Lip 音频驱动失败"}, status_code=502)
+
+
+async def _livetalking_session_command(path: str, sessionid: str):
+    base_url = _validated_livetalking_base_url()
+    if not base_url:
+        return _livetalking_unavailable()
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
+            response = await client.post(f"{base_url}/{path}", json={"sessionid": sessionid})
+            response.raise_for_status()
+            result = response.json()
+        return JSONResponse(result if isinstance(result, dict) else {"code": 0, "msg": "ok"})
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError):
+        return JSONResponse({"error": f"livetalking_{path}_failed"}, status_code=502)
+
+
+@app.post("/api/avatar/livetalking/interrupt")
+async def api_livetalking_interrupt(payload: LiveTalkingSessionRequest):
+    return await _livetalking_session_command("interrupt_talk", payload.sessionid)
+
+
+@app.post("/api/avatar/livetalking/speaking")
+async def api_livetalking_speaking(payload: LiveTalkingSessionRequest):
+    return await _livetalking_session_command("is_speaking", payload.sessionid)
 
 
 @app.get('/api/health/ready')

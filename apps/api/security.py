@@ -28,16 +28,18 @@ def install_http_security(app, verify, public):
     @app.middleware("http")
     async def security(request, call_next):
         path=request.url.path
-        costly=path in {"/api/tts", "/api/tts/stream", "/api/agent/chat", "/api/upload_video"}
+        costly=path in {"/api/tts", "/api/tts/stream", "/api/agent/chat", "/api/upload_video",
+                        "/api/avatar/livetalking/offer", "/api/avatar/livetalking/audio"}
+        protected=costly or path.startswith('/api/avatar/livetalking/')
         user=verify(request.headers.get('X-Auth-Token',''))
-        if costly and public() and user is None:
+        if protected and public() and user is None:
             return JSONResponse({'error':'请先登录'},status_code=401)
         if path.startswith('/api/auth/') or costly or path.startswith('/api/profile'):
             key=(request.client.host if request.client else 'unknown',user,'auth' if '/auth/' in path else 'costly')
             if not allow_request(key,(20 if public() else 120) if '/auth/' in path else 30):
                 return JSONResponse({'error':'请求过于频繁，请稍后重试'},status_code=429,headers={'Retry-After':'60'})
         if request.method in {'POST','PATCH','PUT'}:
-            maximum=20*1024*1024 if path=='/api/upload_video' else 256*1024
+            maximum=20*1024*1024 if path in {'/api/upload_video','/api/avatar/livetalking/audio'} else 256*1024
             body=bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
