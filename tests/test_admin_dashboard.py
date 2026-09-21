@@ -84,3 +84,37 @@ class AdminDashboardTests(unittest.TestCase):
         serialized = response.text
         self.assertNotIn("private message", serialized)
         self.assertNotIn("private title", serialized)
+
+    def test_feedback_mailbox_is_user_writable_and_admin_managed(self):
+        owner = self.register("owner")
+        member = self.register("member")
+        owner_headers = {"X-Auth-Token": owner["token"]}
+        member_headers = {"X-Auth-Token": member["token"]}
+
+        self.assertEqual(
+            self.client.post("/api/feedback", json={"category": "bug", "content": "移动端按钮重叠"}).status_code,
+            401,
+        )
+        submitted = self.client.post(
+            "/api/feedback",
+            headers=member_headers,
+            json={"category": "suggestion", "content": "希望增加更多数字人形象", "contact": "member@example.com"},
+        )
+        self.assertEqual(submitted.status_code, 200)
+        feedback_id = submitted.json()["feedback_id"]
+
+        self.assertEqual(self.client.get("/api/admin/feedback", headers=member_headers).status_code, 403)
+        listing = self.client.get("/api/admin/feedback", headers=owner_headers)
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()["feedback"][0]["username"], "member")
+        self.assertEqual(listing.json()["feedback"][0]["status"], "new")
+
+        updated = self.client.patch(
+            f"/api/admin/feedback/{feedback_id}",
+            headers=owner_headers,
+            json={"status": "resolved"},
+        )
+        self.assertEqual(updated.status_code, 200)
+        filtered = self.client.get("/api/admin/feedback?status=resolved", headers=owner_headers).json()
+        self.assertEqual(filtered["count"], 1)
+        self.assertEqual(filtered["feedback"][0]["status"], "resolved")

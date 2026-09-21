@@ -38,6 +38,14 @@ assert(html.includes("(max-width:700px), (max-width:900px) and (max-height:500px
 assert(html.includes('@media(max-width:760px),(max-width:900px) and (max-height:500px)'),
        '手机横屏登录页也必须切换为单栏布局');
 assert(!html.includes('id="auth-guest"'),'登录页不得再提供游客体验入口');
+assert(html.includes('id="mobile-sidebar-close"'),'移动历史抽屉需要独立关闭按钮，不能覆盖新建按钮');
+assert(html.includes("if(isMobileLayout()&&_sidebarOpen)toggleSidebar();"),'选择历史与新建对话后必须收起手机抽屉');
+assert(html.includes('.topbar-secondary{display:block!important'),'手机端必须保留设置与工具入口');
+assert(html.includes('#camera-video{width:130px;aspect-ratio:1;object-fit:cover'),'手机摄像头预览必须固定为右上角小方窗');
+assert(html.includes('id="guide-dialog"')&&html.includes('📘 使用指南与反馈'),'桌面与手机必须共享使用指南入口');
+assert(html.includes('https://github.com/linyuchao123/digital-human-companion'),'使用指南必须包含项目仓库');
+assert(html.includes('https://x.com/xiaolinyx123'),'使用指南必须包含作者 X 链接');
+assert(html.includes("fetch('/api/feedback'"),'反馈信箱必须提交到服务端');
 assert(html.includes('if(sessionId!==_currentDbSession||epoch!==_sessionSwitchEpoch)return;')||
        html.includes("if(sessionId!==_currentDbSession)return;\n    if(epoch!==_sessionSwitchEpoch)return;"));
 assert(html.includes('async function loadOlderMessages()'));

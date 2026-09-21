@@ -8,5 +8,8 @@ assert.match(main,/window\.location\.href='\/admin'/,'入口必须进入服务�
 assert.match(admin,/仅管理员可见/);
 assert.match(admin,/对话轮次/);
 assert.match(admin,/估算费用/);
+assert.match(admin,/用户反馈信箱/);
+assert.match(admin,/\/api\/admin\/feedback/);
+assert.match(admin,/标记已解决/);
 assert.doesNotMatch(admin,/<th>聊天内容<\/th>/,'运营页不应设计聊天内容展示列');
-console.log('管理员入口隐藏、角色显隐与运营后台隐私边界测试通过');
+console.log('管理员入口隐藏、角色显隐、反馈信箱与运营后台隐私边界测试通过');

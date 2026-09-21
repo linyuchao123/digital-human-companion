@@ -52,6 +52,17 @@ def init_admin_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_model_usage_user ON model_usage(user_id,created_at);
         CREATE INDEX IF NOT EXISTS idx_model_usage_provider ON model_usage(provider,created_at);
+        CREATE TABLE IF NOT EXISTS user_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            content TEXT NOT NULL,
+            contact TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'new',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_created ON user_feedback(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_status ON user_feedback(status,created_at DESC);
         """
     )
     names = _admin_names()
@@ -152,21 +163,52 @@ def install_admin_routes(
     get_db: Callable[[], sqlite3.Connection],
     verify_token: Callable[[str], int | None],
 ) -> None:
-    def admin_id(request: Request) -> int | None:
+    def request_user_id(request: Request) -> int | None:
         token = request.headers.get("X-Auth-Token", "") or request.cookies.get("auth_token", "")
-        user_id = verify_token(token)
+        return verify_token(token)
+
+    def admin_id(request: Request) -> int | None:
+        user_id = request_user_id(request)
         if user_id is None:
             return None
         with get_db() as conn:
             return user_id if user_role(conn, user_id) == "admin" else None
 
     def forbidden(request: Request) -> JSONResponse | None:
-        token = request.headers.get("X-Auth-Token", "") or request.cookies.get("auth_token", "")
-        if verify_token(token) is None:
+        if request_user_id(request) is None:
             return JSONResponse({"error": "请先登录"}, status_code=401)
         if admin_id(request) is None:
             return JSONResponse({"error": "仅管理员可访问"}, status_code=403)
         return None
+
+    @app.post("/api/feedback")
+    async def submit_feedback(request: Request):
+        user_id = request_user_id(request)
+        if user_id is None:
+            return JSONResponse({"error": "请先登录后提交反馈"}, status_code=401)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "反馈格式无效"}, status_code=400)
+        category = str(payload.get("category", "suggestion")).strip().lower()
+        content = str(payload.get("content", "")).strip()
+        contact = str(payload.get("contact", "")).strip()
+        if category not in {"bug", "suggestion", "experience", "other"}:
+            return JSONResponse({"error": "请选择有效的反馈类型"}, status_code=400)
+        if len(content) < 5:
+            return JSONResponse({"error": "请至少填写 5 个字，让我们更好地理解你的想法"}, status_code=400)
+        if len(content) > 2000 or len(contact) > 160:
+            return JSONResponse({"error": "反馈内容或联系方式过长"}, status_code=400)
+        created_at = time.strftime("%Y-%m-%dT%H:%M:%S")
+        with get_db() as conn:
+            cursor = conn.execute(
+                """INSERT INTO user_feedback(user_id,category,content,contact,status,created_at)
+                   VALUES(?,?,?,?,?,?)""",
+                (user_id, category, content, contact, "new", created_at),
+            )
+            conn.commit()
+            feedback_id = cursor.lastrowid
+        return {"ok": True, "feedback_id": feedback_id, "message": "感谢你的反馈，我们会认真阅读。"}
 
     @app.get("/admin", include_in_schema=False)
     async def admin_page(request: Request):
@@ -257,3 +299,45 @@ def install_admin_routes(
                 item.update(dict(usage))
                 result.append(item)
         return {"users": result, "count": len(result)}
+
+    @app.get("/api/admin/feedback")
+    async def admin_feedback(
+        request: Request,
+        status: str = Query(default="", max_length=20),
+        limit: int = Query(default=100, ge=1, le=200),
+    ):
+        denied = forbidden(request)
+        if denied:
+            return denied
+        status = status.strip().lower()
+        if status and status not in {"new", "reviewed", "resolved"}:
+            return JSONResponse({"error": "反馈状态无效"}, status_code=400)
+        with get_db() as conn:
+            rows = conn.execute(
+                """SELECT f.id,f.category,f.content,f.contact,f.status,f.created_at,
+                          u.username,u.email
+                   FROM user_feedback f JOIN users u ON u.id=f.user_id
+                   WHERE (?='' OR f.status=?)
+                   ORDER BY f.id DESC LIMIT ?""",
+                (status, status, limit),
+            ).fetchall()
+        return {"feedback": [dict(row) for row in rows], "count": len(rows)}
+
+    @app.patch("/api/admin/feedback/{feedback_id}")
+    async def update_feedback_status(feedback_id: int, request: Request):
+        denied = forbidden(request)
+        if denied:
+            return denied
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "反馈状态格式无效"}, status_code=400)
+        status = str(payload.get("status", "")).strip().lower()
+        if status not in {"new", "reviewed", "resolved"}:
+            return JSONResponse({"error": "反馈状态无效"}, status_code=400)
+        with get_db() as conn:
+            cursor = conn.execute("UPDATE user_feedback SET status=? WHERE id=?", (status, feedback_id))
+            conn.commit()
+        if not cursor.rowcount:
+            return JSONResponse({"error": "反馈不存在"}, status_code=404)
+        return {"ok": True, "status": status}

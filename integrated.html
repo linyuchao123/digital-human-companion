@@ -366,6 +366,8 @@ body.emo-anxiety #bg{background:linear-gradient(180deg,#c8c0e8 0%,#d5cfee 30%,#e
   background:rgba(79,142,247,.1);color:var(--accent);cursor:pointer;font-size:18px;line-height:28px;text-align:center;
   transition:all .2s;flex-shrink:0}
 #sb-new-btn:hover{background:rgba(79,142,247,.2);transform:scale(1.08)}
+.sb-head-actions{display:flex;align-items:center;gap:8px}
+#mobile-sidebar-close{display:none;width:28px;height:28px;border:0;border-radius:50%;background:rgba(86,106,145,.1);color:var(--text2);font-size:19px;line-height:28px;cursor:pointer}
 #sb-sessions{flex:1;overflow-y:auto;padding:8px 0}
 #sb-sessions::-webkit-scrollbar{width:3px}
 #sb-sessions::-webkit-scrollbar-thumb{background:rgba(79,142,247,.3);border-radius:2px}
@@ -476,6 +478,13 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
 .social-login{display:flex;gap:10px;margin-top:16px}.social-login button{flex:1;height:42px;border:1px solid #dce5f2;background:#f8fbff;color:#334b69;border-radius:12px;cursor:pointer;font-size:13px}.social-login button:hover{border-color:#759adb;background:#eef5ff}.social-login button:disabled{opacity:.55;cursor:not-allowed}
 .social-divider{display:flex;align-items:center;gap:10px;font-size:11px;color:#8793a8;margin-top:20px}.social-divider::before,.social-divider::after{content:'';height:1px;background:#e5eaf3;flex:1}
 #auth-method-note{font-size:11px;color:#8793a8;line-height:1.7;margin-top:10px}.email-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+#guide-dialog{width:min(860px,calc(100vw - 32px));max-height:90vh;padding:0;border:1px solid rgba(255,255,255,.9);border-radius:26px;color:var(--text);background:rgba(247,251,255,.98);box-shadow:0 28px 90px rgba(34,54,92,.28);overflow:hidden}
+#guide-dialog::backdrop{background:rgba(26,43,72,.46);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.guide-shell{max-height:90vh;overflow:auto;padding:26px}.guide-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.guide-heading h2{margin:0;font-size:24px}.guide-heading p{margin:5px 0 0;color:var(--text2);font-size:13px}.guide-close{border:0;background:#edf2fa;color:var(--text2);width:34px;height:34px;border-radius:50%;font-size:21px;cursor:pointer;flex:none}
+.guide-intro{margin:20px 0;padding:18px;border-radius:18px;background:linear-gradient(135deg,#eaf4ff,#f1edff);line-height:1.8}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.guide-card{border:1px solid #dae5f3;border-radius:18px;background:#fff;padding:18px}.guide-card h3{font-size:15px;margin:0 0 10px}.guide-card p,.guide-card li{font-size:12px;line-height:1.75;color:#56657d}.guide-card ol,.guide-card ul{padding-left:20px;margin:8px 0}
+.creator-card{display:flex;align-items:center;gap:14px;text-decoration:none;color:var(--text);transition:transform .18s,border-color .18s}.creator-card:hover{transform:translateY(-2px);border-color:#93b5ec}.creator-avatar{width:62px;height:62px;border-radius:18px;object-fit:cover;flex:none}.creator-card strong{display:block;font-size:15px}.creator-card span{display:block;margin-top:4px;font-size:11px;color:var(--text2)}
+.guide-roadmap{margin-top:14px;padding:18px;border-radius:18px;background:linear-gradient(135deg,#203d72,#6e62ba);color:white}.guide-roadmap h3{margin:0 0 8px}.guide-roadmap p{margin:0;line-height:1.85;color:#edf2ff;font-size:13px}
+.feedback-card{margin-top:14px}.feedback-row{display:grid;grid-template-columns:160px 1fr;gap:10px;margin-bottom:10px}.feedback-card select,.feedback-card input,.feedback-card textarea{width:100%;border:1px solid #d9e4f2;border-radius:12px;background:#f9fbff;color:var(--text);font:13px inherit;padding:11px;outline:none}.feedback-card textarea{min-height:120px;resize:vertical}.feedback-card select:focus,.feedback-card input:focus,.feedback-card textarea:focus{border-color:#6792e2;box-shadow:0 0 0 3px rgba(79,142,247,.1)}.feedback-submit{border:0;border-radius:12px;padding:11px 18px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;cursor:pointer;font-weight:600}.feedback-submit:disabled{opacity:.55}.feedback-status{min-height:20px;margin:9px 0 0;font-size:12px;color:var(--text2)}
 @media(max-width:760px),(max-width:900px) and (max-height:500px){#auth-modal{padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));align-items:flex-start}#auth-box{grid-template-columns:1fr;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));border-radius:22px}.auth-brand{min-height:0;padding:18px 22px}.auth-brand h1{font-size:21px;margin:12px 0 2px}.auth-brand p,.auth-brand small,.auth-perks{display:none}.auth-form{padding:24px 22px;overflow:auto;justify-content:flex-start}.profile-grid{grid-template-columns:1fr}}
 @media(max-width:430px){.auth-code-row{grid-template-columns:1fr}.auth-code-send{margin-top:-5px}.auth-form{padding:22px 17px}#auth-title{font-size:23px}}
 @media(max-width:1100px){#sidebar{z-index:190;box-shadow:12px 0 40px rgba(45,70,120,.2)}#sb-resize{display:none}}
@@ -492,11 +501,11 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   html,body{width:100%;height:100%;height:100dvh;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:manipulation}
   #particles{display:none}
   #topbar{height:var(--mobile-top);padding:env(safe-area-inset-top) 10px 0;gap:7px;background:rgba(238,248,255,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-  .logo{max-width:34vw;font-size:13px;text-overflow:ellipsis;overflow:hidden}
-  #topbar>.spacer{display:none}#status-capsule{margin-left:auto;max-width:88px;padding:4px 8px}#status-txt{max-width:62px}
+  .logo{max-width:24vw;font-size:12px;text-overflow:ellipsis;overflow:hidden}
+  #topbar>.spacer{display:none}#status-capsule{margin-left:0;max-width:72px;padding:4px 7px}#status-txt{max-width:48px}
   #tts-btn,#camera-btn,#disconnect-btn{width:36px;height:36px;padding:0;justify-content:center;font-size:0;border-radius:18px;flex:none}
   #tts-btn::before{content:'🔊';font-size:16px}#camera-btn::before{content:'👁';font-size:16px}#disconnect-btn::before{content:'⏻';font-size:16px}
-  .topbar-secondary,#developer-btn,#drive-info{display:none!important}
+  #drive-info{display:none!important}.topbar-secondary{display:block!important;position:static;flex:none}.topbar-secondary>summary{width:36px;height:36px;padding:0;justify-content:center;font-size:0;border-radius:18px}.topbar-secondary>summary::before{content:'⚙';font-size:16px}.topbar-menu{position:fixed;top:calc(var(--mobile-top) + 7px);right:8px;width:min(290px,calc(100vw - 16px));max-height:calc(100vh - var(--mobile-top) - 18px);max-height:calc(100dvh - var(--mobile-top) - 18px);overflow:auto;z-index:265}.topbar-menu #developer-btn{width:100%;justify-content:flex-start}
   #scene{inset:var(--mobile-top) 0 0}
   body.app-connected #live2d-wrap{top:0;bottom:calc(var(--mobile-chat) + var(--mobile-input) - 8px)}
   #wav2lip-wrap{inset:0 0 calc(var(--mobile-chat) + var(--mobile-input) - 8px)}
@@ -511,13 +520,13 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   #text-input{min-width:0;height:42px;font-size:16px;padding:0 13px}.ctrl-btn,#send-btn{width:42px;height:42px}
   #speaking-indicator,#thinking-bar{bottom:calc(var(--mobile-chat) + var(--mobile-input) + 6px);max-width:calc(100vw - 32px)}
   #sidebar{left:8px;right:8px;top:calc(var(--mobile-top) + 8px);bottom:calc(8px + env(safe-area-inset-bottom));width:auto;max-width:none;min-width:0;height:auto;z-index:242;border-radius:22px;background:rgba(242,249,255,.98);transform:translateX(calc(-100% - 18px));box-shadow:0 20px 55px rgba(28,54,96,.25)}
-  #sidebar.open{transform:translateX(0)}#sidebar.open~#sidebar-toggle{left:auto;right:18px;top:calc(var(--mobile-top) + 28px)}
+  #sidebar.open{transform:translateX(0)}#sidebar.open~#sidebar-toggle{display:none}#mobile-sidebar-close{display:inline-block}
   #sidebar-toggle{left:10px;top:calc(var(--mobile-top) + 28px);transform:none;width:42px;height:42px;border:1px solid rgba(79,142,247,.22);border-radius:50%;background:rgba(247,251,255,.94);z-index:243;box-shadow:0 6px 20px rgba(45,76,128,.16)}
   #sidebar-toggle:hover,#sidebar-toggle:active{width:42px;transform:none}.sidebar-toggle-icon{font-size:0}.sidebar-toggle-icon::after{content:'☰';font-size:18px}#sidebar.open~#sidebar-toggle .sidebar-toggle-icon::after{content:'×';font-size:22px}
   #mobile-panel-backdrop{position:fixed;inset:0;z-index:241;border:0;background:rgba(24,41,68,.28);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}#mobile-panel-backdrop.show{display:block}
-  #camera-panel{left:10px;right:10px;top:calc(var(--mobile-top) + 8px);width:auto;max-height:calc(100vh - var(--mobile-top) - 18px);max-height:calc(100dvh - var(--mobile-top) - 18px);overflow:auto;z-index:250}
+  #camera-panel{left:auto;right:10px;top:calc(var(--mobile-top) + 10px);width:148px;max-width:148px;padding:9px;border-radius:16px;max-height:none;overflow:hidden;z-index:250}.camera-heading{font-size:11px;margin-bottom:6px}.camera-heading .camera-close{width:24px;height:24px;font-size:16px}#camera-status{font-size:9px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#camera-observation,.camera-actions,.camera-note{display:none!important}#camera-video{width:130px;aspect-ratio:1;object-fit:cover;border-radius:12px}
   #memory-panel,#activity-history-panel{top:calc(var(--mobile-top) + 8px);left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;max-height:none;transform:none;overflow:auto}
-  #profile-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);padding:20px 16px}.profile-avatar-row{align-items:flex-start;flex-wrap:wrap}
+  #profile-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);padding:20px 16px}.profile-avatar-row{align-items:flex-start;flex-wrap:wrap}#guide-dialog{width:calc(100vw - 16px);max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);border-radius:22px}.guide-shell{max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);padding:20px 14px}.guide-heading h2{font-size:21px}.guide-grid{grid-template-columns:1fr}.feedback-row{grid-template-columns:1fr}.creator-avatar{width:54px;height:54px}
 }
 @media(max-width:900px) and (max-height:500px) and (orientation:landscape){
   :root{--mobile-chat:calc(100vh - var(--mobile-top) - var(--mobile-input) - 12px);--mobile-chat:calc(100dvh - var(--mobile-top) - var(--mobile-input) - 12px)}
@@ -585,7 +594,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   <div id="sb-resize"></div>
   <div id="sb-head-title">
     <span id="sb-title-label">历史对话</span>
-    <button id="sb-new-btn" onclick="newSession()" title="新对话">＋</button>
+    <div class="sb-head-actions"><button id="sb-new-btn" onclick="newSession()" title="新对话">＋</button><button id="mobile-sidebar-close" onclick="closeMobilePanels()" aria-label="关闭历史对话">×</button></div>
   </div>
   <div id="sb-sessions">
     <div style="padding:20px 14px;font-size:12px;color:var(--text2);text-align:center">暂无历史对话</div>
@@ -621,6 +630,22 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
     <p id="account-delete-status" role="status" aria-live="polite"></p>
   </details>
 </dialog>
+<dialog id="guide-dialog" aria-labelledby="guide-title">
+  <div class="guide-shell">
+    <header class="guide-heading"><div><h2 id="guide-title">数字心屿使用指南</h2><p>从第一次连接，到一段真正连续的陪伴。</p></div><button class="guide-close" onclick="document.getElementById('guide-dialog').close()" aria-label="关闭使用指南">×</button></header>
+    <section class="guide-intro"><strong>欢迎来到数字心屿。</strong><br>这是一个由 AI、语音与数字人表情驱动的日常情绪陪伴空间。你可以打字，也可以用麦克风说话；小安会结合当前对话模式回应，并用语音与动作陪你继续聊下去。它适合日常交流和情绪梳理，但不能替代医疗诊断或专业心理治疗。</section>
+    <div class="guide-grid">
+      <section class="guide-card"><h3>💬 如何开始对话</h3><ol><li>点击“连接数字人”，等待模型与对话通道就绪。</li><li>在底部输入框发送文字，或点击麦克风进行语音输入。</li><li>通过左侧历史按钮切换旧对话；点击“＋”建立一段新的对话。</li><li>需要重新听一遍时，可使用“朗读”或设置菜单中的朗读工具。</li></ol></section>
+      <section class="guide-card"><h3>🌿 两种对话模式</h3><ul><li><strong>日常对话：</strong>适合问候、陪聊、学习生活分享与轻松交流。</li><li><strong>情感对话：</strong>适合倾诉、情绪梳理和被认真倾听；还可选择“知心”或“温柔亲昵”的回应风格。</li></ul><p>请放心表达真实感受。若你正处于紧急危险或严重心理危机，请优先联系身边可信任的人和当地专业援助服务。</p></section>
+      <section class="guide-card"><h3>✨ 你可以使用的功能</h3><ul><li>切换数字人形象与播报音色</li><li>管理长期记忆，并随时关闭授权</li><li>查看活动记录与历史会话</li><li>使用心理学知识库辅助回答</li><li>开启本机摄像头感知与语音朗读</li></ul></section>
+      <section class="guide-card"><h3>🔐 隐私与使用提示</h3><ul><li>摄像头画面仅在当前设备本地处理。</li><li>表情识别只是辅助观察，不等于真实情绪判断。</li><li>运营统计不会向管理员展示密码、验证码或 API Key。</li><li>长期记忆默认关闭，是否开启由你决定。</li></ul></section>
+      <a class="guide-card creator-card" href="https://github.com/linyuchao123/digital-human-companion" target="_blank" rel="noopener noreferrer"><img class="creator-avatar" src="/static/creator/github-avatar.jpg" alt="作者 GitHub 头像"><div><strong>GitHub · digital-human-companion</strong><span>觉得小安好用的话，可以去仓库给作者点一颗小 ⭐ 吗？你的 Star、Issue 和 PR 都会成为项目继续生长的动力。</span></div></a>
+      <a class="guide-card creator-card" href="https://x.com/xiaolinyx123" target="_blank" rel="noopener noreferrer"><img class="creator-avatar" src="/static/creator/x-avatar.jpg" alt="作者 X 头像"><div><strong>X · @xiaolinyx123</strong><span>关注项目动态、开发记录和下一阶段预告，也欢迎把你的使用感受分享给作者。</span></div></a>
+    </div>
+    <section class="guide-roadmap"><h3>🚀 数字心屿仍在持续进化</h3><p>下一步计划加入新的命令模式和 3D 数字人，并继续探索自定义数字人形象、更多动作与更自然的长期陪伴。现在的每一条建议，都可能成为下一次更新的一部分。谢谢你愿意和这个仍在成长的项目一起向前，也请期待小安变得更自然、更聪明、更懂得如何安静地陪在你身边。</p></section>
+    <section class="guide-card feedback-card"><h3>📮 用户反馈信箱</h3><p>遇到 Bug、使用不顺，或想到更好的功能，都可以写在这里。你也可以前往 GitHub 仓库提交 Issue 或 PR；认真、可行的想法都会被考虑和接纳。</p><div class="feedback-row"><select id="feedback-category" aria-label="反馈类型"><option value="bug">遇到了 Bug</option><option value="suggestion">功能建议</option><option value="experience">体验感受</option><option value="other">其他想法</option></select><input id="feedback-contact" maxlength="160" placeholder="联系方式（选填，如邮箱）"></div><textarea id="feedback-content" maxlength="2000" placeholder="请描述你遇到的问题、复现步骤，或希望增加的新功能……"></textarea><button class="feedback-submit" id="feedback-submit" onclick="submitUserFeedback(this)">发送给开发者</button><p class="feedback-status" id="feedback-status" role="status" aria-live="polite"></p></section>
+  </div>
+</dialog>
 <button type="button" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="展开历史对话" aria-expanded="false" title="展开历史对话"><span class="sidebar-toggle-icon" aria-hidden="true">›</span></button>
 <button type="button" id="mobile-panel-backdrop" onclick="closeMobilePanels()" aria-label="关闭历史对话"></button>
 
@@ -641,10 +666,11 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   <label class="topbar-voice-field"><span>🎙 播报音色</span><select class="tts-voice-select" id="topbar-tts-voice-select" data-tts-voice-select aria-label="顶栏播报音色" disabled><option value="">正在读取音色…</option></select></label>
   <button class="tb-chip" id="memory-btn" onclick="toggleMemoryPanel()">🧠 长期记忆</button>
   <button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
-  <button class="tb-chip" onclick="window.open('/rag','_blank')">📚 知识库</button>
+  <button class="tb-chip" onclick="window.open('/rag','_blank')">📚 心理学知识库</button>
   <button class="tb-chip" onclick="switchTab('read')">📖 朗读工具</button>
+  <button class="tb-chip" onclick="openGuide()">📘 使用指南与反馈</button>
+  <button class="tb-chip" id="developer-btn" style="display:none" onclick="window.location.href='/admin'">📊 运营后台</button>
 </div></details>
-<button class="tb-chip" id="developer-btn" style="display:none" onclick="window.location.href='/admin'">📊 运营后台</button>
 </div>
 
 <!-- ══ Live2D 场景 ══ -->
@@ -898,6 +924,30 @@ function switchTab(tab){
   document.getElementById('chat-panel-wrap').classList.toggle('hide',tab!=='chat');
   document.getElementById('read-panel').classList.toggle('show',tab==='read');
   document.getElementById('read-tool-button')?.classList.toggle('active',tab==='read');
+}
+
+function openGuide(){
+  document.querySelectorAll('.topbar-secondary[open]').forEach(item=>item.removeAttribute('open'));
+  const dialog=document.getElementById('guide-dialog');
+  if(!dialog.open)dialog.showModal();
+}
+
+async function submitUserFeedback(button){
+  const status=document.getElementById('feedback-status');
+  const content=document.getElementById('feedback-content').value.trim();
+  const category=document.getElementById('feedback-category').value;
+  const contact=document.getElementById('feedback-contact').value.trim();
+  if(!_authToken){status.textContent='请先登录账号，再把反馈发送给开发者。';return;}
+  if(content.length<5){status.textContent='请至少填写 5 个字，让我们更好地理解你的想法。';return;}
+  button.disabled=true;status.textContent='正在发送…';
+  try{
+    const response=await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},body:JSON.stringify({category,content,contact})});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'发送失败');
+    document.getElementById('feedback-content').value='';
+    status.textContent=data.message||'感谢你的反馈，我们会认真阅读。';
+  }catch(error){status.textContent=error.message;}
+  finally{button.disabled=false;}
 }
 
 function toggleDeveloperMode(){
@@ -3293,6 +3343,7 @@ async function newSession(){
   disableContinuousVoice();
   beginStreamReply(null);
   _stopAudio();_sessionSwitchEpoch++;
+  if(isMobileLayout()&&_sidebarOpen)toggleSidebar();
   if(!_authToken) return;
   try{
     const res=await fetch('/api/sessions',{method:'POST',headers:{'X-Auth-Token':_authToken}});
@@ -3306,6 +3357,7 @@ async function switchSession(sessionId,force=false){
   disableContinuousVoice();
   beginStreamReply(null);
   _stopAudio();const epoch=++_sessionSwitchEpoch;
+  if(isMobileLayout()&&_sidebarOpen)toggleSidebar();
   if(sessionId===_currentDbSession&&!force) return;
   _currentDbSession=sessionId;
   // 刷新侧边栏高亮

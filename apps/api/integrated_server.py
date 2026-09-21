@@ -729,6 +729,11 @@ if MEDIAPIPE_STATIC_DIR.exists():
     app.mount("/static/mediapipe", StaticFiles(directory=str(MEDIAPIPE_STATIC_DIR)), name="mediapipe-static")
     print(f"[IntegratedServer] MediaPipe 本地静态资源挂载: {MEDIAPIPE_STATIC_DIR}")
 
+# 项目介绍页使用的作者头像等轻量品牌资源。
+CREATOR_STATIC_DIR = ROOT / "static" / "creator"
+if CREATOR_STATIC_DIR.exists():
+    app.mount("/static/creator", StaticFiles(directory=str(CREATOR_STATIC_DIR)), name="creator-static")
+
 # 托管 Live2D SDK JS 文件（本地加载，无需CDN）
 LIVE2D_JS_DIR = ROOT / "digital_human_engine" / "live2d_web" / "js"
 if LIVE2D_JS_DIR.exists():
