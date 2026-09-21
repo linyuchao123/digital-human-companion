@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const html=fs.readFileSync('integrated.html','utf8');
 const code=html.slice(html.indexOf('function clearLocalAccount('),html.indexOf('function toggleSidebar('));
 const elements=new Map();
-const element=id=>{if(!elements.has(id))elements.set(id,{value:'private',textContent:'private',classList:{remove(){}},close(){},removeAttribute(){},focus(){}});return elements.get(id);};
+const element=id=>{if(!elements.has(id))elements.set(id,{value:'private',textContent:'private',style:{},classList:{remove(){}},close(){},removeAttribute(){},focus(){}});return elements.get(id);};
 let calls=0,stops=0,consent=false,ok=false;
 const ctx=vm.createContext({document:{getElementById:element},_authToken:'owner-token',_currentUser:'owner',_currentDbSession:'session',_profile:{},_profileAvatar:'private',_sidebarOpen:false,
   _sessions:[{}],_sessionCursor:'next',_messageCursor:3,_sessionSwitchEpoch:0,beginStreamReply(){},

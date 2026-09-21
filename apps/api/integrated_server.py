@@ -190,6 +190,8 @@ def _init_db():
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
         from apps.api.external_auth import init_auth_tables
         init_auth_tables(conn)
+        from apps.api.admin_dashboard import init_admin_tables
+        init_admin_tables(conn)
         from services.agent.session_notes import init_session_notes
         init_session_notes(conn)
         from apps.api.account_lifecycle import install_owner_guards
@@ -960,16 +962,27 @@ def _get_agent_workflow():
 
 
 @app.post("/api/agent/chat")
-async def agent_chat(payload: AgentChatRequest):
+async def agent_chat(payload: AgentChatRequest, request: Request):
     """使用离线 Provider 运行一次可观测的智能体工作流。"""
+    from services.agent.usage import begin_usage_collection, finish_usage_collection
+    usage_token = begin_usage_collection()
+    usage_saved = False
+    trace_id = str(uuid.uuid4())
+    session_id = payload.session_id or str(uuid.uuid4())
+    user_id = _get_user_id_from_request(request)
     try:
-        trace_id = str(uuid.uuid4())
-        session_id = payload.session_id or str(uuid.uuid4())
         result = await _get_agent_workflow().run(
             user_text=payload.text,
             trace_id=trace_id,
             session_id=session_id,
         )
+        usage_rows = finish_usage_collection(usage_token)
+        usage_token = None
+        if user_id is not None:
+            from apps.api.admin_dashboard import save_model_usage
+            save_model_usage(_get_db, usage_rows, user_id=user_id,
+                             session_id=session_id, trace_id=trace_id)
+        usage_saved = True
         return JSONResponse({
             "trace_id": trace_id,
             "session_id": session_id,
@@ -989,6 +1002,13 @@ async def agent_chat(payload: AgentChatRequest):
             {"error": "agent_dependencies_unavailable", "detail": str(exc)},
             status_code=503,
         )
+    finally:
+        if usage_token is not None and not usage_saved:
+            usage_rows = finish_usage_collection(usage_token)
+            if user_id is not None:
+                from apps.api.admin_dashboard import save_model_usage
+                save_model_usage(_get_db, usage_rows, user_id=user_id,
+                                 session_id=session_id, trace_id=trace_id)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1045,15 +1065,17 @@ async def auth_register(request: Request):
                 conn.commit()
                 return JSONResponse({"error":"验证码不正确或已失效，请重新发送"},status_code=400)
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        from apps.api.admin_dashboard import configured_role
+        role = configured_role(username)
         if address:
             cursor=conn.execute(
-                "INSERT INTO users(username,password_hash,created_at,email,email_verified_at) VALUES(?,?,?,?,?)",
-                (username,_hash_password(password),now,address,now))
+                "INSERT INTO users(username,password_hash,created_at,email,email_verified_at,role) VALUES(?,?,?,?,?,?)",
+                (username,_hash_password(password),now,address,now,role))
             conn.execute('DELETE FROM registration_email_codes WHERE email=?',(address,))
         else:
             cursor=conn.execute(
-                "INSERT INTO users(username,password_hash,created_at) VALUES(?,?,?)",
-                (username, _hash_password(password), now))
+                "INSERT INTO users(username,password_hash,created_at,role) VALUES(?,?,?,?)",
+                (username, _hash_password(password), now, role))
         user_id = cursor.lastrowid
         token = str(uuid.uuid4())
         expires = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + 7*86400))
@@ -1154,8 +1176,11 @@ async def get_profile(request: Request):
     if user_id is None:
         return JSONResponse({"error":"请先登录"},status_code=401)
     with _get_db() as conn:
-        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at,email,email_verified_at,password_set FROM users WHERE id=?",(user_id,)).fetchone()
-    return JSONResponse(dict(row))
+        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at,email,email_verified_at,password_set,role FROM users WHERE id=?",(user_id,)).fetchone()
+        profile=dict(row)
+        from apps.api.admin_dashboard import user_role
+        profile["role"]=user_role(conn,user_id)
+    return JSONResponse(profile)
 
 
 @app.patch("/api/profile")
@@ -1214,6 +1239,8 @@ async def update_password(payload: PasswordUpdate,request: Request):
 
 from apps.api.external_auth import install_external_auth
 install_external_auth(app,_get_db,_verify_auth_token,_hash_password,_check_password)
+from apps.api.admin_dashboard import install_admin_routes
+install_admin_routes(app,_get_db,_verify_auth_token)
 
 
 def _session_belongs_to_user(session_id: str, user_id: int) -> bool:
@@ -2347,6 +2374,9 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket, request_id
     state.llm_running = True
     trace_id = str(uuid.uuid4())
     slow_notice = None
+    from services.agent.usage import begin_usage_collection, finish_usage_collection
+    usage_token = begin_usage_collection()
+    usage_saved = False
     try:
         await _send(ws, {"type": "llm_thinking", "trace_id": trace_id, "request_id": request_id, "text": "小安正在思考..."})
         from services.agent import ChatMessage
@@ -2394,6 +2424,13 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket, request_id
             event_sink=send_agent_event,
             text_delta_sink=send_delta,
         ), timeout=60)
+        usage_rows = finish_usage_collection(usage_token)
+        usage_token = None
+        if state.user_id is not None:
+            from apps.api.admin_dashboard import save_model_usage
+            save_model_usage(_get_db, usage_rows, user_id=state.user_id,
+                session_id=session_id, trace_id=trace_id)
+        usage_saved = True
         result["trace_id"] = trace_id
         result["session_id"] = session_id
         state.agent_messages = [
@@ -2493,6 +2530,12 @@ async def _trigger_llm(text: str, state: SessionState, ws: WebSocket, request_id
                          "emotion": "Neutral", "valence": 0, "arousal": 0,
                          "risk_level": "low", "emotion_label": "平静"})
     finally:
+        if usage_token is not None and not usage_saved:
+            usage_rows = finish_usage_collection(usage_token)
+            if state.user_id is not None:
+                from apps.api.admin_dashboard import save_model_usage
+                save_model_usage(_get_db, usage_rows, user_id=state.user_id,
+                    session_id=state.db_session_id or state.session_id, trace_id=trace_id)
         if slow_notice:
             slow_notice.cancel()
         state.llm_running = False
@@ -2502,7 +2545,7 @@ async def _auto_generate_title(db_session_id: str, ws: WebSocket):
     """后台自动为会话生成标题，并通过 WebSocket 推送更新"""
     try:
         conn = _get_db()
-        session = conn.execute("SELECT title_manual FROM chat_sessions WHERE id=?", (db_session_id,)).fetchone()
+        session = conn.execute("SELECT title_manual,user_id FROM chat_sessions WHERE id=?", (db_session_id,)).fetchone()
         if not session or session["title_manual"]:
             conn.close()
             return
@@ -2529,6 +2572,19 @@ async def _auto_generate_title(db_session_id: str, ws: WebSocket):
                     )
                     data = resp.json()
                     title = _normalize_session_title(data["choices"][0]["message"]["content"])
+                    from services.agent.usage import estimate_tokens, usage_from_payload
+                    usage = usage_from_payload(data)
+                    estimated = usage is None
+                    if usage is None:
+                        usage = (estimate_tokens([summary]), estimate_tokens([title]), 0)
+                    from apps.api.admin_dashboard import save_model_usage
+                    save_model_usage(_get_db, [{
+                        "provider": "qwen", "model": QWEN_MODEL,
+                        "request_kind": "title", "input_tokens": usage[0],
+                        "output_tokens": usage[1], "cached_input_tokens": usage[2],
+                        "estimated": estimated, "status": "success",
+                    }], user_id=session["user_id"], session_id=db_session_id,
+                        trace_id=f"title-{uuid.uuid4()}")
             except Exception:
                 pass
         conn2 = _get_db()

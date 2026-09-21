@@ -11,6 +11,7 @@ import httpx
 
 from .state import ChatMessage
 from .planning import ROUTING_PROMPT
+from .usage import estimate_tokens, record_usage, usage_from_payload
 
 
 DAILY_SYSTEM_PROMPT = """你是“数字心屿”中的 AI 情绪陪伴助手小安，当前是日常对话模式。
@@ -60,6 +61,7 @@ class CompanionProviderError(RuntimeError):
 @dataclass(frozen=True)
 class OpenAICompatibleConfig:
     api_key: str
+    provider_name: str = "cloud"
     base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     model: str = "qwen-plus"
     temperature: float = 0.75
@@ -115,10 +117,12 @@ class OpenAICompatibleCompanionProvider:
             {"role": "system", "content": prompt},
             *(message.model_dump() for message in messages)],
             "temperature": temperature, "max_tokens": max_tokens,
-            **self.config.extra_body, "stream": True}
+            **self.config.extra_body, "stream": True,
+            "stream_options": {"include_usage": True}}
         client = self._client or httpx.AsyncClient(base_url=self.config.base_url.rstrip('/'),
             timeout=self.config.timeout_seconds)
-        seen = False
+        seen = False; recorded = False; exact_usage = None; chunks = []
+        input_estimate = estimate_tokens([prompt, *(message.content for message in messages)])
         try:
             async with asyncio.timeout(self.config.timeout_seconds):
                 async with client.stream('POST', '/chat/completions', json=payload,
@@ -133,8 +137,15 @@ class OpenAICompatibleCompanionProvider:
                         if data == '[DONE]':
                             if not seen:
                                 raise CompanionProviderError('模型返回空回复')
+                            usage = exact_usage or (input_estimate, estimate_tokens(chunks), 0)
+                            record_usage(provider=self.config.provider_name, model=self.config.model,
+                                request_kind="chat", input_tokens=usage[0], output_tokens=usage[1],
+                                cached_input_tokens=usage[2], estimated=exact_usage is None)
+                            recorded = True
                             return
                         event = json.loads(data)
+                        if usage_from_payload(event) is not None:
+                            exact_usage = usage_from_payload(event)
                         choices = event.get('choices', [])
                         if not choices:
                             continue
@@ -144,9 +155,15 @@ class OpenAICompatibleCompanionProvider:
                         if not isinstance(content, str):
                             raise CompanionProviderError('模型增量格式错误')
                         seen = True
+                        chunks.append(content)
                         yield content
                     raise CompanionProviderError('模型回复流未正常结束')
-        except (httpx.HTTPError, TimeoutError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+        except (httpx.HTTPError, TimeoutError, ValueError, KeyError, IndexError, TypeError,
+                AttributeError, CompanionProviderError) as exc:
+            if not recorded:
+                record_usage(provider=self.config.provider_name, model=self.config.model,
+                    request_kind="chat", input_tokens=input_estimate, output_tokens=0,
+                    estimated=True, status="failed")
             raise CompanionProviderError('模型流式请求失败或超时') from exc
         finally:
             if self._client is None:
@@ -170,6 +187,7 @@ class OpenAICompatibleCompanionProvider:
         if routing:
             payload.update(temperature=0, max_tokens=80)
         headers = {"Authorization": f"Bearer {self.config.api_key}"}
+        input_estimate = estimate_tokens([system_prompt, *(message.content for message in messages)])
         try:
             if self._client is not None:
                 response = await self._client.post(
@@ -183,11 +201,23 @@ class OpenAICompatibleCompanionProvider:
                 ) as client:
                     response = await client.post("/chat/completions", json=payload)
             response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"].strip()
+            body = response.json()
+            content = body["choices"][0]["message"]["content"].strip()
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+            record_usage(provider=self.config.provider_name, model=self.config.model,
+                request_kind="routing" if routing else "chat", input_tokens=input_estimate,
+                output_tokens=0, estimated=True, status="failed")
             raise CompanionProviderError("云端陪伴模型调用失败") from exc
         if not content:
+            record_usage(provider=self.config.provider_name, model=self.config.model,
+                request_kind="routing" if routing else "chat", input_tokens=input_estimate,
+                output_tokens=0, estimated=True, status="failed")
             raise CompanionProviderError("云端陪伴模型返回了空内容")
+        usage = usage_from_payload(body) or (input_estimate, estimate_tokens([content]), 0)
+        record_usage(provider=self.config.provider_name, model=self.config.model,
+            request_kind="routing" if routing else "chat", input_tokens=usage[0],
+            output_tokens=usage[1], cached_input_tokens=usage[2],
+            estimated=usage_from_payload(body) is None)
         return content
 
 
@@ -253,6 +283,7 @@ def create_companion_provider(
         fallback_cloud = OpenAICompatibleCompanionProvider(
             OpenAICompatibleConfig(
                 api_key=fallback_api_key,
+                provider_name=fallback_name,
                 base_url=fallback_base_url,
                 model=fallback_model,
             )
@@ -264,6 +295,7 @@ def create_companion_provider(
     primary_cloud = OpenAICompatibleCompanionProvider(
         OpenAICompatibleConfig(
             api_key=api_key,
+            provider_name=provider_name,
             base_url=base_url,
             model=model,
             extra_body=extra_body or {},
@@ -277,6 +309,7 @@ def create_companion_provider(
     fallback_cloud = OpenAICompatibleCompanionProvider(
         OpenAICompatibleConfig(
             api_key=fallback_api_key,
+            provider_name=fallback_name,
             base_url=fallback_base_url,
             model=fallback_model,
         )

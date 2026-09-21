@@ -79,6 +79,7 @@ jobs:
           node tests/continuous_voice_lifecycle.cjs
           node tests/password_recovery_ui.cjs
           node tests/account_deletion_ui.cjs
+          node tests/admin_visibility_ui.cjs
           node tests/session_notes_ui.cjs
           node tests/knowledge_references.cjs
           node tests/knowledge_followup_ui.cjs

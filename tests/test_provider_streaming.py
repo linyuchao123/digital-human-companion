@@ -10,6 +10,7 @@ from services.agent.providers import (
 )
 from services.agent.state import ChatMessage
 from services.agent.workflow import DigitalXinyuWorkflow
+from services.agent.usage import begin_usage_collection, finish_usage_collection
 
 
 def event(content=None, reasoning=None):
@@ -35,6 +36,23 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
         async with httpx.AsyncClient(base_url='https://test.invalid', transport=httpx.MockTransport(handle)) as client:
             provider=OpenAICompatibleCompanionProvider(OpenAICompatibleConfig(api_key='test'),client)
             self.assertEqual([d async for d in provider.generate_stream([])],['你好','，我在。'])
+
+    async def test_stream_usage_is_collected_without_prompts_or_keys(self):
+        usage_event='data: '+json.dumps({'choices': [], 'usage': {
+            'prompt_tokens': 12, 'completion_tokens': 4,
+            'prompt_tokens_details': {'cached_tokens': 3}}})+'\n\n'
+        body=event('你好')+usage_event+'data: [DONE]\n\n'
+        async with httpx.AsyncClient(base_url='https://test.invalid',
+            transport=httpx.MockTransport(lambda r:httpx.Response(200,text=body))) as client:
+            provider=OpenAICompatibleCompanionProvider(OpenAICompatibleConfig(
+                api_key='secret-key',provider_name='qwen',model='qwen-test'),client)
+            token=begin_usage_collection()
+            self.assertEqual([d async for d in provider.generate_stream([])],['你好'])
+            rows=finish_usage_collection(token)
+        self.assertEqual(rows,[{'provider':'qwen','model':'qwen-test','request_kind':'chat',
+            'input_tokens':12,'output_tokens':4,'cached_input_tokens':3,
+            'estimated':False,'status':'success'}])
+        self.assertNotIn('secret-key',str(rows))
 
     async def test_failure_before_first_token_uses_fallback(self):
         async with httpx.AsyncClient(base_url='https://test.invalid',

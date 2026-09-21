@@ -603,7 +603,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   <button class="tb-chip" onclick="window.open('/rag','_blank')">📚 知识库</button>
   <button class="tb-chip" onclick="switchTab('read')">📖 朗读工具</button>
 </div></details>
-<button class="tb-chip" id="developer-btn" onclick="toggleDeveloperMode()">🧭 开发者</button>
+<button class="tb-chip" id="developer-btn" style="display:none" onclick="window.location.href='/admin'">📊 运营后台</button>
 </div>
 
 <!-- ══ Live2D 场景 ══ -->
@@ -3035,6 +3035,7 @@ async function _onLoginSuccess(token,username,silent){
   const initial=username.charAt(0).toUpperCase();
   document.getElementById('sb-avatar').textContent=initial;
   document.getElementById('sb-name').textContent=username;
+  document.getElementById('developer-btn').style.display=_profile?.role==='admin'?'inline-flex':'none';
   renderProfileIdentity();
   document.getElementById('sb-logout-btn').textContent='退出';
   // 自动打开侧边栏
@@ -3057,6 +3058,7 @@ function continueAsGuest(){
   document.getElementById('sb-avatar').textContent='游';
   document.getElementById('sb-name').textContent='游客模式';
   document.getElementById('sb-logout-btn').textContent='登录';
+  document.getElementById('developer-btn').style.display='none';
   document.getElementById('memory-btn').classList.remove('authenticated','on');
   toggleMemoryPanel(false);
 }
@@ -3081,6 +3083,7 @@ function clearLocalAccount(){
   _sessions=[];_sessionCursor=null;_messageCursor=null;_sessionSwitchEpoch++;
   beginStreamReply(null);
   _profile=null;document.getElementById('profile-dialog').close();
+  document.getElementById('developer-btn').style.display='none';
   _profileAvatar='';
   document.getElementById('chat-area').textContent='';
   for(const id of ['profile-current-password','profile-new-password','profile-confirm-password','account-delete-confirm',

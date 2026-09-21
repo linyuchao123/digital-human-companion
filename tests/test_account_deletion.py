@@ -30,7 +30,7 @@ class AccountDeletionTests(AccountSecurityTests):
             for table in OWNED_TABLES:
                 if table in ('auth_tokens','chat_sessions'):continue
                 columns=list(conn.execute(f'PRAGMA table_info({table})'))
-                values=[user_id if r['name']=='user_id' else f's{user_id}' if r['name']=='session_id' else (1 if r['type'] in ('INTEGER','REAL') else f'{user_id}-{r["name"]}') for r in columns]
+                values=[user_id if r['name']=='user_id' else None if r['pk'] and r['type']=='INTEGER' else f's{user_id}' if r['name']=='session_id' else (1 if r['type'] in ('INTEGER','REAL') else f'{user_id}-{r["name"]}') for r in columns]
                 conn.execute(f'INSERT INTO {table} VALUES({",".join("?" for _ in values)})',values)
             conn.commit()
 
