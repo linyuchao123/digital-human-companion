@@ -28,7 +28,7 @@ class VoiceFrontendTests(unittest.TestCase):
     def test_interrupted_pending_tts_does_not_resume(self):
         function = re.search(r"async function speakText\(.*?(?=async function _loadTtsVoices)", self.html, re.S).group()
         script = """
-        let ttsEnabled=true,_isListening=false,_voiceMode='',_ttsGeneration=0;
+        let ttsEnabled=true,_isListening=false,_voiceMode='',_ttsGeneration=0,_authToken='token',_currentUser='user';
         let release,played=0;
         function _stopAudio(){_ttsGeneration++;}
         function _canUseServerTTS(){return new Promise(resolve=>release=resolve);}
@@ -42,6 +42,26 @@ class VoiceFrontendTests(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "0")
         self.assertIn("if(generation!==_ttsGeneration||_audioSrc!==source) return", self.html)
         self.assertIn("if(!ttsEnabled) _stopAudio()", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js 未安装，跳过游客语音运行测试")
+    def test_guest_tts_uses_browser_without_calling_paid_server(self):
+        function = re.search(r"async function speakText\(.*?(?=async function _loadTtsVoices)", self.html, re.S).group()
+        script = """
+        let ttsEnabled=true,_isListening=false,_voiceMode='',_ttsGeneration=0,_authToken='',_currentUser='游客';
+        let serverChecks=0,serverCalls=0,browserCalls=0;
+        function _stopAudio(){_ttsGeneration++;}
+        async function _canUseServerTTS(){serverChecks++;return true;}
+        async function _speakViaServerTTS(){serverCalls++;return true;}
+        function _speakViaBrowser(){browserCalls++;}
+        """ + function + """
+        (async()=>{await speakText('游客你好');
+          console.log(JSON.stringify({serverChecks,serverCalls,browserCalls}));})();
+        """
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload, {"serverChecks": 0, "serverCalls": 0, "browserCalls": 1})
+        self.assertIn("if(_isGuestMode())return false", self.html)
+        self.assertIn("游客模式 · 浏览器本地音色", self.html)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js 未安装，跳过 WAV 编码运行测试")
     def test_resampler_rejects_above_nyquist_noise(self):

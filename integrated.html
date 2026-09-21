@@ -2141,6 +2141,13 @@ async function speakText(text,onSpeechStart=null,replyTiming=null){
   _stopAudio();
   _speechStartAction=()=>{if(onSpeechStart) onSpeechStart();startSpeechChoreography(text,_ttsGeneration);};
   const generation=_ttsGeneration;
+  // 游客不持有登录令牌，也不应消耗站长的付费云端 TTS 额度。
+  // 直接使用浏览器本地语音，同时保留 Live2D 的文字时序口型。
+  if(_isGuestMode()){
+    console.info('[TTS] 游客模式使用浏览器本地语音');
+    _speakViaBrowser(text,generation);
+    return;
+  }
   const useServerTTS=await _canUseServerTTS();
   if(generation!==_ttsGeneration) return;
   const ok=useServerTTS?await _speakViaServerTTS(text,generation,replyTiming):false;
@@ -2159,6 +2166,26 @@ async function speakText(text,onSpeechStart=null,replyTiming=null){
 
 function _ttsVoiceSelects(){
   return Array.from(document.querySelectorAll('[data-tts-voice-select]'));
+}
+
+function _isGuestMode(){
+  return !_authToken&&_currentUser==='游客';
+}
+
+function _showGuestTtsMode(){
+  for(const select of _ttsVoiceSelects()){
+    select.textContent='';
+    select.appendChild(new Option('游客模式 · 浏览器本地音色',''));
+    select.disabled=true;
+    select.title='游客使用设备自带的中文语音，不消耗云端语音额度';
+  }
+  const button=document.getElementById('tts-btn');
+  if(button)button.title='游客模式使用浏览器本地中文语音';
+}
+
+function _restoreAccountTtsMode(){
+  _ttsVoicesPromise=null;
+  _loadTtsVoices();
 }
 
 function _selectedTtsVoice(fallback=''){
@@ -2184,6 +2211,10 @@ async function _loadTtsVoices(){
         if(!resp.ok) throw new Error(`voices ${resp.status}`);
         const payload=await resp.json();
         const voices=Array.isArray(payload.voices)?payload.voices:[];
+        if(_isGuestMode()){
+          _showGuestTtsMode();
+          return payload;
+        }
         if(!voices.length){
           for(const select of selects){
             select.textContent='';select.appendChild(new Option('浏览器默认音色',''));select.disabled=true;
@@ -2205,6 +2236,10 @@ async function _loadTtsVoices(){
         return payload;
       }catch(error){
         console.warn('[TTS] 音色目录读取失败',error);
+        if(_isGuestMode()){
+          _showGuestTtsMode();
+          return {available:false,voices:[]};
+        }
         for(const select of selects){
           select.textContent='';select.appendChild(new Option('浏览器默认音色',''));select.disabled=true;
         }
@@ -2279,6 +2314,7 @@ async function _speakViaLiveTalkingAudio(arrayBuf,mediaType,generation){
 }
 
 async function _speakViaServerTTS(text,generation,replyTiming=null){
+  if(_isGuestMode())return false;
   try{
     const controller=new AbortController();
     _ttsAbort=controller;
@@ -2469,7 +2505,13 @@ function _speakViaBrowser(text,generation){
     window.speechSynthesis.speak(utt);
   };
   if(window.speechSynthesis.getVoices().length>0) doSpeak();
-  else{window.speechSynthesis.onvoiceschanged=()=>{window.speechSynthesis.onvoiceschanged=null;doSpeak();};}
+  else{
+    let started=false;
+    const start=()=>{if(started)return;started=true;window.speechSynthesis.onvoiceschanged=null;doSpeak();};
+    window.speechSynthesis.onvoiceschanged=start;
+    // 部分浏览器不会触发 voiceschanged；未加载音色时仍可使用系统默认音色。
+    setTimeout(start,250);
+  }
 }
 
 // 每帧口型目标值
@@ -3038,6 +3080,7 @@ async function _onLoginSuccess(token,username,silent){
   document.getElementById('developer-btn').style.display=_profile?.role==='admin'?'inline-flex':'none';
   renderProfileIdentity();
   document.getElementById('sb-logout-btn').textContent='退出';
+  _restoreAccountTtsMode();
   // 自动打开侧边栏
   if(!_sidebarOpen) toggleSidebar();
   const mainResponse=await fetch('/api/sessions/main',{method:'POST',headers:{'X-Auth-Token':_authToken}});
@@ -3060,6 +3103,7 @@ function continueAsGuest(){
   document.getElementById('sb-logout-btn').textContent='登录';
   document.getElementById('developer-btn').style.display='none';
   document.getElementById('memory-btn').classList.remove('authenticated','on');
+  _showGuestTtsMode();
   toggleMemoryPanel(false);
 }
 
