@@ -26,6 +26,10 @@ services:
     image: shuzhixinban:latest
     container_name: shuzhixinban-main
     restart: unless-stopped
+    # Compose 文件位于 infra/docker，显式加载项目根目录配置。
+    # 否则直接在本目录执行 `docker compose up` 时会静默使用空密钥。
+    env_file:
+      - ../../.env
     ports:
       - "127.0.0.1:8800:8800"  # 仅本机发布，由HTTPS反向代理对外服务
     read_only: true
@@ -37,46 +41,8 @@ services:
       - ALL
     environment:
       - PUBLIC_DEPLOYMENT=true
-      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
-      - OAUTH_PUBLIC_BASE_URL=${OAUTH_PUBLIC_BASE_URL:-}
-      - WECHAT_APP_ID=${WECHAT_APP_ID:-}
-      - WECHAT_APP_SECRET=${WECHAT_APP_SECRET:-}
-      - QQ_APP_ID=${QQ_APP_ID:-}
-      - QQ_APP_SECRET=${QQ_APP_SECRET:-}
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_PORT=${SMTP_PORT:-465}
-      - SMTP_SECURITY=${SMTP_SECURITY:-ssl}
-      - SMTP_USERNAME=${SMTP_USERNAME:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_FROM=${SMTP_FROM:-}
-      - EMAIL_VERIFICATION_SECRET=${EMAIL_VERIFICATION_SECRET:-}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://127.0.0.1:8800,http://localhost:8800}
-      # 对话模型：DeepSeek 主模型 → 千问备用模型 → 离线兜底
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-v4-flash}
-      - QWEN_API_KEY=${QWEN_API_KEY:-}
-      - QWEN_BASE_URL=${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
-      - QWEN_MODEL=${QWEN_MODEL:-qwen-plus}
-      - ASR_MODEL=${ASR_MODEL:-paraformer-zh}
-      - ASR_DEVICE=${ASR_DEVICE:-cpu}
-      - ASR_PROVIDER=${ASR_PROVIDER:-funasr}
-      - ASR_API_KEY=${ASR_API_KEY:-}
-      - ASR_CLOUD_MODEL=${ASR_CLOUD_MODEL:-qwen-audio-3.0-asr-flash}
-      - ASR_CLOUD_URL=${ASR_CLOUD_URL:-https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
-      - ASR_FALLBACK_LOCAL=${ASR_FALLBACK_LOCAL:-true}
-      - ASR_HOTWORDS=${ASR_HOTWORDS:-小安 数字心屿}
-      # 语音模型使用独立密钥；共用 DashScope 密钥仍作为兼容回退项
-      - TTS_API_KEY=${TTS_API_KEY:-}
-      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
-      - TTS_PROVIDER=${TTS_PROVIDER:-auto}
-      - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-qwen3_tts:Chelsie}
-      - TTS_QWEN3_MODEL=${TTS_QWEN3_MODEL:-qwen3-tts-instruct-flash}
-      - TTS_RATE=${TTS_RATE:-185}
       # 模型和受保护知识库管理
       - RAG_EMBEDDING_MODEL_PATH=/app/models/embedding/bge-small-zh-v1.5
-      - RAG_ADMIN_TOKEN=${RAG_ADMIN_TOKEN:-}
-      - DEVICE=${DEVICE:-cpu}
       - PYTHONUNBUFFERED=1
       - MODELSCOPE_CACHE=/app/cache/modelscope
     volumes:
