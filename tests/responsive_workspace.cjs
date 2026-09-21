@@ -25,6 +25,19 @@ assert.equal((html.match(/Math\.min\(scW,scH\)\*LIVE2D_VIEW_SCALE/g)||[]).length
        '首次加载和窗口变化必须共用标准桌面比例');
 assert(html.includes("if(live2dModel){resizeLive2D();return;}"),'再次连接也必须恢复默认数字人比例');
 assert(html.includes('new ResizeObserver(()=>resizeLive2D())'));
+assert(html.includes('viewport-fit=cover'),'iOS 刘海屏必须启用安全区视口');
+assert(html.includes('--mobile-chat:clamp(250px,40dvh,380px)'),'手机端必须为数字人与聊天分配独立纵向区域');
+assert(html.includes('#mobile-panel-backdrop.show{display:block}'),'手机历史会话必须使用带遮罩的独立抽屉');
+assert(html.includes("if(_authToken&&!isMobileLayout()&&!_sidebarOpen) toggleSidebar()"),'连接后不得在手机上自动遮挡主界面');
+assert(html.includes("if(!isMobileLayout()&&!_sidebarOpen) toggleSidebar()"),'手机登录后不得自动展开历史栏');
+assert(html.includes('@supports not ((backdrop-filter:blur(1px))'),'不支持毛玻璃的安卓浏览器必须使用不透明背景回退');
+assert(html.includes('@media(max-width:900px) and (max-height:500px) and (orientation:landscape)'),
+       '手机横屏必须按短屏设备识别，不能只依赖竖屏宽度');
+assert(html.includes("(max-width:700px), (max-width:900px) and (max-height:500px)"),
+       '脚本必须与 CSS 使用一致的手机断点');
+assert(html.includes('@media(max-width:760px),(max-width:900px) and (max-height:500px)'),
+       '手机横屏登录页也必须切换为单栏布局');
+assert(!html.includes('id="auth-guest"'),'登录页不得再提供游客体验入口');
 assert(html.includes('if(sessionId!==_currentDbSession||epoch!==_sessionSwitchEpoch)return;')||
        html.includes("if(sessionId!==_currentDbSession)return;\n    if(epoch!==_sessionSwitchEpoch)return;"));
 assert(html.includes('async function loadOlderMessages()'));

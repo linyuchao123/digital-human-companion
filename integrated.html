@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
 <title>数字心屿 · AI情绪陪伴数字人</title>
 <style>
 :root{
@@ -433,9 +433,6 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   font-weight:600;cursor:pointer;transition:opacity .2s;letter-spacing:.04em}
 #auth-submit:hover{opacity:.88}
 #auth-submit:disabled{opacity:.5;cursor:not-allowed}
-#auth-guest{width:100%;height:34px;border:none;background:transparent;color:var(--accent);
-  font-size:12px;font-family:inherit;cursor:pointer;transition:color .2s}
-#auth-guest:hover{color:var(--accent2);text-decoration:underline}
 #auth-err{font-size:11px;color:var(--danger);text-align:center;min-height:16px;margin-top:8px}
 .activity-card{margin-top:10px;padding:12px;border:1px solid #c4ddfa;border-radius:14px;background:#f7fbff;color:#263455}
 .activity-card p{margin:8px 0;font-size:13px;line-height:1.6}
@@ -462,7 +459,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
 .auth-email-help{font-size:11px;color:#8c98ab;margin:-5px 0 13px;line-height:1.5}
 #auth-register-email[hidden]{display:none}.auth-password-wrap{position:relative}.auth-password-wrap input{padding-right:58px}.auth-password-toggle{position:absolute;right:8px;top:7px;height:34px;padding:0 10px;border:0;border-radius:9px;background:transparent;color:#71809a;cursor:pointer;font-size:12px}.auth-password-toggle:hover{background:#edf3fd;color:#3e67ac}
 #auth-submit{height:49px;border-radius:13px;margin-top:5px;background:linear-gradient(135deg,#4f89ed 0%,#6878df 52%,#805fc9 100%);box-shadow:0 10px 24px rgba(91,109,211,.24);font-size:14px;transition:transform .18s,box-shadow .18s,opacity .2s}#auth-submit:hover:not(:disabled){opacity:1;transform:translateY(-1px);box-shadow:0 13px 28px rgba(91,109,211,.3)}
-#auth-guest{margin-top:5px}.auth-footnote{font-size:11px;color:#8d96aa;line-height:1.7;margin-top:16px}.auth-trust{display:flex;align-items:center;gap:6px;color:#8995a9;font-size:11px;margin-top:12px}.auth-trust::before{content:'✓';display:grid;place-items:center;width:17px;height:17px;border-radius:50%;background:#e8f7ef;color:#3c9667;font-weight:700}
+.auth-footnote{font-size:11px;color:#8d96aa;line-height:1.7;margin-top:16px}.auth-trust{display:flex;align-items:center;gap:6px;color:#8995a9;font-size:11px;margin-top:12px}.auth-trust::before{content:'✓';display:grid;place-items:center;width:17px;height:17px;border-radius:50%;background:#e8f7ef;color:#3c9667;font-weight:700}
 #password-recovery{border-top:1px solid #edf0f6;padding-top:12px}#password-recovery summary{color:#68758b;font-weight:500}#auth-err{text-align:left;border-radius:10px;min-height:0;margin-top:10px}#auth-err:not(:empty){padding:9px 11px;background:#fff1f3;border:1px solid #ffd9df}
 #sb-user-row{cursor:pointer}#sb-avatar{overflow:hidden;flex-shrink:0}#sb-avatar img{width:100%;height:100%;object-fit:cover}
 #profile-dialog{border:1px solid #e0e7f4;border-radius:24px;width:min(560px,calc(100vw - 32px));max-height:88vh;padding:28px;color:var(--text);box-shadow:0 24px 80px #26395533}
@@ -479,11 +476,55 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
 .social-login{display:flex;gap:10px;margin-top:16px}.social-login button{flex:1;height:42px;border:1px solid #dce5f2;background:#f8fbff;color:#334b69;border-radius:12px;cursor:pointer;font-size:13px}.social-login button:hover{border-color:#759adb;background:#eef5ff}.social-login button:disabled{opacity:.55;cursor:not-allowed}
 .social-divider{display:flex;align-items:center;gap:10px;font-size:11px;color:#8793a8;margin-top:20px}.social-divider::before,.social-divider::after{content:'';height:1px;background:#e5eaf3;flex:1}
 #auth-method-note{font-size:11px;color:#8793a8;line-height:1.7;margin-top:10px}.email-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-@media(max-width:760px){#auth-modal{padding:12px;align-items:flex-start}#auth-box{grid-template-columns:1fr;max-height:none;border-radius:22px}.auth-brand{min-height:0;padding:22px 26px}.auth-brand h1{font-size:24px;margin:18px 0 6px}.auth-brand p,.auth-brand small,.auth-perks{display:none}.auth-form{padding:28px 24px;overflow:visible}.profile-grid{grid-template-columns:1fr}}
-@media(max-width:430px){.auth-code-row{grid-template-columns:1fr}.auth-code-send{margin-top:-5px}.auth-form{padding:24px 18px}#auth-title{font-size:23px}}
+@media(max-width:760px),(max-width:900px) and (max-height:500px){#auth-modal{padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));align-items:flex-start}#auth-box{grid-template-columns:1fr;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));border-radius:22px}.auth-brand{min-height:0;padding:18px 22px}.auth-brand h1{font-size:21px;margin:12px 0 2px}.auth-brand p,.auth-brand small,.auth-perks{display:none}.auth-form{padding:24px 22px;overflow:auto;justify-content:flex-start}.profile-grid{grid-template-columns:1fr}}
+@media(max-width:430px){.auth-code-row{grid-template-columns:1fr}.auth-code-send{margin-top:-5px}.auth-form{padding:22px 17px}#auth-title{font-size:23px}}
 @media(max-width:1100px){#sidebar{z-index:190;box-shadow:12px 0 40px rgba(45,70,120,.2)}#sb-resize{display:none}}
 @media(max-width:700px){#sidebar{width:calc(100vw - 32px)}#sidebar.open ~ #sidebar-toggle{left:calc(100vw - 17px)}#chat-panel{left:16px;right:16px;width:auto;bottom:78px}.logo{max-width:130px;overflow:hidden}.cp-head{align-items:stretch}#bottom-bar{width:calc(100vw - 32px);min-width:0}.topbar-secondary{display:none!important}#drive-info{display:none!important}}
 @media(prefers-reduced-motion:reduce){#auth-modal *{transition:none}}
+
+/* ══ 手机专用工作区：数字人主视图 + 对话底部抽屉 + 历史独立抽屉 ══ */
+#mobile-panel-backdrop{display:none}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  #topbar,#chat-panel,#sidebar,#bottom-bar{background:rgba(239,248,255,.96)}
+}
+@media(max-width:700px),(max-width:900px) and (max-height:500px){
+  :root{--mobile-top:calc(52px + env(safe-area-inset-top));--mobile-input:calc(72px + env(safe-area-inset-bottom));--mobile-chat:clamp(250px,40vh,380px);--mobile-chat:clamp(250px,40dvh,380px)}
+  html,body{width:100%;height:100%;height:100dvh;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:manipulation}
+  #particles{display:none}
+  #topbar{height:var(--mobile-top);padding:env(safe-area-inset-top) 10px 0;gap:7px;background:rgba(238,248,255,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .logo{max-width:34vw;font-size:13px;text-overflow:ellipsis;overflow:hidden}
+  #topbar>.spacer{display:none}#status-capsule{margin-left:auto;max-width:88px;padding:4px 8px}#status-txt{max-width:62px}
+  #tts-btn,#camera-btn,#disconnect-btn{width:36px;height:36px;padding:0;justify-content:center;font-size:0;border-radius:18px;flex:none}
+  #tts-btn::before{content:'🔊';font-size:16px}#camera-btn::before{content:'👁';font-size:16px}#disconnect-btn::before{content:'⏻';font-size:16px}
+  .topbar-secondary,#developer-btn,#drive-info{display:none!important}
+  #scene{inset:var(--mobile-top) 0 0}
+  body.app-connected #live2d-wrap{top:0;bottom:calc(var(--mobile-chat) + var(--mobile-input) - 8px)}
+  #wav2lip-wrap{inset:0 0 calc(var(--mobile-chat) + var(--mobile-input) - 8px)}
+  #connect-screen{padding:calc(var(--mobile-top) + 24px) 24px calc(24px + env(safe-area-inset-bottom));gap:16px;text-align:center}
+  .cs-title{font-size:20px;line-height:1.45}.cs-sub{font-size:12px}.cs-ws-row{width:min(100%,320px);justify-content:space-between}.cs-avatar-select{min-width:0;flex:1}.cs-channel-row{display:none}
+  #connect-btn{width:min(220px,80vw);height:50px}
+  #chat-panel{top:auto;left:8px;right:8px;bottom:var(--mobile-input);width:auto;height:var(--mobile-chat);border-radius:22px 22px 14px 14px;background:rgba(239,248,255,.9);box-shadow:0 -8px 30px rgba(46,81,139,.14);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+  .cp-head{padding:9px 11px 8px;gap:7px}.cp-session-summary{display:flex;align-items:center;gap:8px}.cp-title{font-size:12px}.cp-subtitle{margin:0;font-size:9px;flex:1;text-align:right}
+  .cp-controls{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}.cp-controls::-webkit-scrollbar{display:none}.cp-controls select,.cp-controls button{height:30px;min-width:max-content;flex:none;padding:0 10px}.cp-controls select{width:auto;max-width:120px}
+  #welcome-card{display:none}#chat-area{padding:8px 10px 12px;gap:7px}.bubble{max-width:92%;font-size:13px;padding:8px 11px}.bubble-meta{font-size:9px}
+  #bottom-bar{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));transform:none;width:auto;min-width:0;max-width:none;height:56px;padding:6px 8px;gap:7px;border-radius:22px;background:rgba(247,251,255,.96);box-shadow:0 8px 28px rgba(47,75,122,.18)}
+  #text-input{min-width:0;height:42px;font-size:16px;padding:0 13px}.ctrl-btn,#send-btn{width:42px;height:42px}
+  #speaking-indicator,#thinking-bar{bottom:calc(var(--mobile-chat) + var(--mobile-input) + 6px);max-width:calc(100vw - 32px)}
+  #sidebar{left:8px;right:8px;top:calc(var(--mobile-top) + 8px);bottom:calc(8px + env(safe-area-inset-bottom));width:auto;max-width:none;min-width:0;height:auto;z-index:242;border-radius:22px;background:rgba(242,249,255,.98);transform:translateX(calc(-100% - 18px));box-shadow:0 20px 55px rgba(28,54,96,.25)}
+  #sidebar.open{transform:translateX(0)}#sidebar.open~#sidebar-toggle{left:auto;right:18px;top:calc(var(--mobile-top) + 28px)}
+  #sidebar-toggle{left:10px;top:calc(var(--mobile-top) + 28px);transform:none;width:42px;height:42px;border:1px solid rgba(79,142,247,.22);border-radius:50%;background:rgba(247,251,255,.94);z-index:243;box-shadow:0 6px 20px rgba(45,76,128,.16)}
+  #sidebar-toggle:hover,#sidebar-toggle:active{width:42px;transform:none}.sidebar-toggle-icon{font-size:0}.sidebar-toggle-icon::after{content:'☰';font-size:18px}#sidebar.open~#sidebar-toggle .sidebar-toggle-icon::after{content:'×';font-size:22px}
+  #mobile-panel-backdrop{position:fixed;inset:0;z-index:241;border:0;background:rgba(24,41,68,.28);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}#mobile-panel-backdrop.show{display:block}
+  #camera-panel{left:10px;right:10px;top:calc(var(--mobile-top) + 8px);width:auto;max-height:calc(100vh - var(--mobile-top) - 18px);max-height:calc(100dvh - var(--mobile-top) - 18px);overflow:auto;z-index:250}
+  #memory-panel,#activity-history-panel{top:calc(var(--mobile-top) + 8px);left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;max-height:none;transform:none;overflow:auto}
+  #profile-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);padding:20px 16px}.profile-avatar-row{align-items:flex-start;flex-wrap:wrap}
+}
+@media(max-width:900px) and (max-height:500px) and (orientation:landscape){
+  :root{--mobile-chat:calc(100vh - var(--mobile-top) - var(--mobile-input) - 12px);--mobile-chat:calc(100dvh - var(--mobile-top) - var(--mobile-input) - 12px)}
+  body.app-connected #live2d-wrap{right:48vw;bottom:0}#wav2lip-wrap{right:48vw;bottom:0}
+  #chat-panel{left:52vw;right:8px;top:calc(var(--mobile-top) + 6px);bottom:var(--mobile-input);height:auto}
+  #sidebar{right:auto;width:min(360px,56vw)}
+}
 </style>
 </head>
 <body>
@@ -519,7 +560,6 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
     </div>
     <div class="auth-field" id="auth-confirm-field" hidden><label for="auth-confirm">确认密码</label><input type="password" id="auth-confirm" autocomplete="new-password" maxlength="64" placeholder="再次输入密码" onkeydown="if(event.key==='Enter')doAuth()"/></div>
     <button id="auth-submit" onclick="doAuth()">进 入</button>
-    <button id="auth-guest" onclick="continueAsGuest()">先体验，稍后登录</button>
     <details id="password-recovery" style="margin-top:12px;font-size:13px;color:var(--text2)">
       <summary style="cursor:pointer">忘记密码？</summary>
       <p id="recovery-note">仅支持已绑定并验证的邮箱。未绑定邮箱请使用原密码或已绑定的第三方登录。</p>
@@ -582,6 +622,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   </details>
 </dialog>
 <button type="button" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="展开历史对话" aria-expanded="false" title="展开历史对话"><span class="sidebar-toggle-icon" aria-hidden="true">›</span></button>
+<button type="button" id="mobile-panel-backdrop" onclick="closeMobilePanels()" aria-label="关闭历史对话"></button>
 
 <!-- ══ 顶栏 ══ -->
 <div id="topbar">
@@ -620,7 +661,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
     <label for="connect-avatar-select">数字人形象：</label>
     <select class="cs-avatar-select" id="connect-avatar-select" data-avatar-select aria-label="连接数字人形象"><option value="live2d">小安 · Live2D</option><option value="wav2lip">播报员 · Wav2Lip（需服务）</option></select>
   </div>
-  <div class="cs-ws-row">
+  <div class="cs-ws-row cs-channel-row">
     <label>会话通道：</label>
     <input type="text" id="drive-ws-input" readonly title="驱动与对话共用当前用户的会话连接" />
   </div>
@@ -1270,8 +1311,8 @@ async function connectAll(){
       _setAvatarSelectorsDisabled(true);
       document.body.classList.add('app-connected');
       resizeLive2D();
-      // 若已登录则自动展开侧边栏
-      if(_authToken && !_sidebarOpen) toggleSidebar();
+      // 桌面端保留历史栏快捷展开；手机端由用户按需打开独立抽屉。
+      if(_authToken&&!isMobileLayout()&&!_sidebarOpen) toggleSidebar();
     },900);
 
     // 睁眼后才招呼，避免睡着的表情直接开始说话。
@@ -1315,6 +1356,7 @@ function disconnectAll(){
     _sidebarOpen=false;
     document.getElementById('sidebar').classList.remove('open');
     const toggle=document.getElementById('sidebar-toggle');
+    document.getElementById('mobile-panel-backdrop').classList.remove('show');
     toggle.querySelector('.sidebar-toggle-icon').textContent='›';
     toggle.setAttribute('aria-expanded','false');
     toggle.setAttribute('aria-label','展开历史对话');
@@ -2141,13 +2183,6 @@ async function speakText(text,onSpeechStart=null,replyTiming=null){
   _stopAudio();
   _speechStartAction=()=>{if(onSpeechStart) onSpeechStart();startSpeechChoreography(text,_ttsGeneration);};
   const generation=_ttsGeneration;
-  // 游客不持有登录令牌，也不应消耗站长的付费云端 TTS 额度。
-  // 直接使用浏览器本地语音，同时保留 Live2D 的文字时序口型。
-  if(_isGuestMode()){
-    console.info('[TTS] 游客模式使用浏览器本地语音');
-    _speakViaBrowser(text,generation);
-    return;
-  }
   const useServerTTS=await _canUseServerTTS();
   if(generation!==_ttsGeneration) return;
   const ok=useServerTTS?await _speakViaServerTTS(text,generation,replyTiming):false;
@@ -2166,21 +2201,6 @@ async function speakText(text,onSpeechStart=null,replyTiming=null){
 
 function _ttsVoiceSelects(){
   return Array.from(document.querySelectorAll('[data-tts-voice-select]'));
-}
-
-function _isGuestMode(){
-  return !_authToken&&_currentUser==='游客';
-}
-
-function _showGuestTtsMode(){
-  for(const select of _ttsVoiceSelects()){
-    select.textContent='';
-    select.appendChild(new Option('游客模式 · 浏览器本地音色',''));
-    select.disabled=true;
-    select.title='游客使用设备自带的中文语音，不消耗云端语音额度';
-  }
-  const button=document.getElementById('tts-btn');
-  if(button)button.title='游客模式使用浏览器本地中文语音';
 }
 
 function _restoreAccountTtsMode(){
@@ -2211,10 +2231,6 @@ async function _loadTtsVoices(){
         if(!resp.ok) throw new Error(`voices ${resp.status}`);
         const payload=await resp.json();
         const voices=Array.isArray(payload.voices)?payload.voices:[];
-        if(_isGuestMode()){
-          _showGuestTtsMode();
-          return payload;
-        }
         if(!voices.length){
           for(const select of selects){
             select.textContent='';select.appendChild(new Option('浏览器默认音色',''));select.disabled=true;
@@ -2236,10 +2252,6 @@ async function _loadTtsVoices(){
         return payload;
       }catch(error){
         console.warn('[TTS] 音色目录读取失败',error);
-        if(_isGuestMode()){
-          _showGuestTtsMode();
-          return {available:false,voices:[]};
-        }
         for(const select of selects){
           select.textContent='';select.appendChild(new Option('浏览器默认音色',''));select.disabled=true;
         }
@@ -2314,7 +2326,6 @@ async function _speakViaLiveTalkingAudio(arrayBuf,mediaType,generation){
 }
 
 async function _speakViaServerTTS(text,generation,replyTiming=null){
-  if(_isGuestMode())return false;
   try{
     const controller=new AbortController();
     _ttsAbort=controller;
@@ -3081,8 +3092,8 @@ async function _onLoginSuccess(token,username,silent){
   renderProfileIdentity();
   document.getElementById('sb-logout-btn').textContent='退出';
   _restoreAccountTtsMode();
-  // 自动打开侧边栏
-  if(!_sidebarOpen) toggleSidebar();
+  // 手机首屏优先展示数字人与对话，不用历史栏遮住整个工作区。
+  if(!isMobileLayout()&&!_sidebarOpen) toggleSidebar();
   const mainResponse=await fetch('/api/sessions/main',{method:'POST',headers:{'X-Auth-Token':_authToken}});
   if(!mainResponse.ok) throw new Error('主对话恢复失败');
   const main=await mainResponse.json();
@@ -3091,20 +3102,6 @@ async function _onLoginSuccess(token,username,silent){
   document.getElementById('memory-btn').classList.add('authenticated');
   await loadMemorySettings();
   if(!silent) console.log('[Auth] 登录成功:',username);
-}
-
-function continueAsGuest(){
-  if(connected) disconnectAll();
-  delCookie('auth_token');delCookie('auth_user');_profile=null;
-  _authToken=''; _currentUser='游客'; _currentDbSession='';
-  document.getElementById('auth-modal').classList.add('hidden');
-  document.getElementById('sb-avatar').textContent='游';
-  document.getElementById('sb-name').textContent='游客模式';
-  document.getElementById('sb-logout-btn').textContent='登录';
-  document.getElementById('developer-btn').style.display='none';
-  document.getElementById('memory-btn').classList.remove('authenticated','on');
-  _showGuestTtsMode();
-  toggleMemoryPanel(false);
 }
 
 async function doLogout(){
@@ -3174,15 +3171,33 @@ async function deleteMyAccount(button){
   finally{clearTimeout(timeout);button.disabled=false;}
 }
 
+function isMobileLayout(){
+  return window.matchMedia('(max-width:700px), (max-width:900px) and (max-height:500px)').matches;
+}
+
+function closeMobilePanels(){
+  if(_sidebarOpen)toggleSidebar();
+}
+
 function toggleSidebar(){
   _sidebarOpen=!_sidebarOpen;
   document.getElementById('sidebar').classList.toggle('open',_sidebarOpen);
+  document.getElementById('mobile-panel-backdrop').classList.toggle('show',_sidebarOpen&&isMobileLayout());
   const toggle=document.getElementById('sidebar-toggle');
   toggle.querySelector('.sidebar-toggle-icon').textContent=_sidebarOpen?'‹':'›';
   toggle.setAttribute('aria-expanded',String(_sidebarOpen));
   toggle.setAttribute('aria-label',_sidebarOpen?'收起历史对话':'展开历史对话');
   toggle.title=_sidebarOpen?'收起历史对话':'展开历史对话';
 }
+
+const mobileLayoutQuery=window.matchMedia('(max-width:700px), (max-width:900px) and (max-height:500px)');
+const handleMobileLayoutChange=event=>{
+  document.getElementById('mobile-panel-backdrop').classList.toggle('show',_sidebarOpen&&event.matches);
+  if(event.matches&&_sidebarOpen)toggleSidebar();
+  resizeLive2D();
+};
+if(mobileLayoutQuery.addEventListener)mobileLayoutQuery.addEventListener('change',handleMobileLayoutChange);
+else mobileLayoutQuery.addListener(handleMobileLayoutChange);
 
 /* ══ 侧边栏宽度拖拽 ══ */
 (function(){
