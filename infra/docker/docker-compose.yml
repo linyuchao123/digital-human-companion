@@ -84,8 +84,8 @@ services:
       - app-data:/app/data
       # 数字人面部行为驱动模型（体积大，挂载不打包）
       - ../../digital_human_engine/checkpoints_v2:/app/digital_human_engine/checkpoints_v2:ro
-      # MediaPipe 人脸特征点模型
-      - ../../models:/app/models:ro
+      # MediaPipe 人脸特征点模型（仅挂载单文件，避免与下方 ASR 可写缓存嵌套冲突）
+      - ../../models/face_landmarker.task:/app/models/face_landmarker.task:ro
       # ModelScope 模型缓存（FunASR 首次下载后复用）
       - modelscope-cache:/app/cache
       - asr-cache:/app/models/asr
