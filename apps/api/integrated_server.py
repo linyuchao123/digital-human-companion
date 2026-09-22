@@ -188,6 +188,10 @@ def _init_db():
         for name in ("display_name", "birthday", "avatar"):
             if name not in user_columns:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+        if "guide_seen_at" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN guide_seen_at TEXT NOT NULL DEFAULT ''")
+            # 老账号已经使用过旧版页面，不在升级后突然弹出新手引导；新注册账号保持空值。
+            conn.execute("UPDATE users SET guide_seen_at='legacy' WHERE guide_seen_at=''")
         from apps.api.external_auth import init_auth_tables
         init_auth_tables(conn)
         from apps.api.admin_dashboard import init_admin_tables
@@ -1093,7 +1097,7 @@ async def auth_register(request: Request):
         expires = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + 7*86400))
         conn.execute("INSERT INTO auth_tokens(token,user_id,expires_at) VALUES(?,?,?)", (token, user_id, expires))
         conn.commit()
-        return JSONResponse({"token": token, "username": username, "user_id": user_id})
+        return JSONResponse({"token": token, "username": username, "user_id": user_id, "is_new_user": True})
     except sqlite3.IntegrityError:
         conn.rollback()
         return JSONResponse({"error":"用户名或邮箱已被使用"},status_code=409)
@@ -1190,11 +1194,26 @@ async def get_profile(request: Request):
     if user_id is None:
         return JSONResponse({"error":"请先登录"},status_code=401)
     with _get_db() as conn:
-        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at,email,email_verified_at,password_set,role FROM users WHERE id=?",(user_id,)).fetchone()
+        row=conn.execute("SELECT id,username,display_name,birthday,avatar,created_at,email,email_verified_at,password_set,role,guide_seen_at FROM users WHERE id=?",(user_id,)).fetchone()
         profile=dict(row)
+        profile["guide_seen"]=bool(profile.pop("guide_seen_at", ""))
         from apps.api.admin_dashboard import user_role
         profile["role"]=user_role(conn,user_id)
     return JSONResponse(profile)
+
+
+@app.post("/api/profile/guide/seen")
+async def mark_profile_guide_seen(request: Request):
+    user_id=_get_user_id_from_request(request)
+    if user_id is None:
+        return JSONResponse({"error":"请先登录"},status_code=401)
+    with _get_db() as conn:
+        conn.execute(
+            "UPDATE users SET guide_seen_at=CASE WHEN guide_seen_at='' THEN ? ELSE guide_seen_at END WHERE id=?",
+            (time.strftime("%Y-%m-%dT%H:%M:%S"),user_id),
+        )
+        conn.commit()
+    return JSONResponse({"ok":True,"guide_seen":True})
 
 
 @app.patch("/api/profile")

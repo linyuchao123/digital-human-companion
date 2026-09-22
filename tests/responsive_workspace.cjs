@@ -46,8 +46,10 @@ assert(!settingsMenu.includes('使用指南与反馈'),'使用指南不能继续
 assert(!settingsMenu.includes('运营后台'),'运营后台不能继续挤在设置菜单中');
 assert(html.includes('id="guide-btn"')&&html.includes('class="tb-chip topbar-primary"'),'顶栏必须提供醒目的独立使用指南入口');
 assert(html.includes('id="developer-btn" style="display:none"'),'运营后台必须是默认隐藏的独立顶栏入口');
-assert(html.includes("openFirstConnectionGuide(generation)"),'第一次连接数字人后必须自动打开使用指南');
-assert(html.includes("localStorage.setItem(storageKey,'1')"),'首次连接引导必须只对当前账号展示一次');
+assert(html.includes("if(!_profile?.guide_seen)setTimeout(openFirstUseGuide,120)"),'未完成引导的新账号登录后必须自动打开使用指南');
+assert(html.includes("fetch('/api/profile/guide/seen'"),'首次引导关闭状态必须保存到账号而不是当前浏览器');
+assert(!html.includes('first-connection-guide'),'使用指南不能继续依赖首次连接或本机存储判断');
+assert(html.includes('#guide-dialog{position:fixed;inset:0;margin:auto'),'使用指南必须稳定居中显示');
 assert(html.includes('#camera-video{width:130px;aspect-ratio:1;object-fit:cover'),'手机摄像头预览必须固定为右上角小方窗');
 assert(html.includes('id="guide-dialog"')&&html.includes('📘 使用指南与反馈'),'桌面与手机必须共享使用指南入口');
 assert(html.includes('https://github.com/linyuchao123/digital-human-companion'),'使用指南必须包含项目仓库');

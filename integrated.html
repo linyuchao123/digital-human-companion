@@ -484,9 +484,9 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
 .social-login{display:flex;gap:10px;margin-top:16px}.social-login button{flex:1;height:42px;border:1px solid #dce5f2;background:#f8fbff;color:#334b69;border-radius:12px;cursor:pointer;font-size:13px}.social-login button:hover{border-color:#759adb;background:#eef5ff}.social-login button:disabled{opacity:.55;cursor:not-allowed}
 .social-divider{display:flex;align-items:center;gap:10px;font-size:11px;color:#8793a8;margin-top:20px}.social-divider::before,.social-divider::after{content:'';height:1px;background:#e5eaf3;flex:1}
 #auth-method-note{font-size:11px;color:#8793a8;line-height:1.7;margin-top:10px}.email-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-#guide-dialog{width:min(860px,calc(100vw - 32px));max-height:90vh;padding:0;border:1px solid rgba(255,255,255,.9);border-radius:26px;color:var(--text);background:rgba(247,251,255,.98);box-shadow:0 28px 90px rgba(34,54,92,.28);overflow:hidden}
+#guide-dialog{position:fixed;inset:0;margin:auto;width:min(920px,calc(100vw - 32px));max-height:86vh;max-height:86dvh;padding:0;border:1px solid rgba(255,255,255,.9);border-radius:26px;color:var(--text);background:rgba(247,251,255,.98);box-shadow:0 28px 90px rgba(34,54,92,.28);overflow:hidden}
 #guide-dialog::backdrop{background:rgba(26,43,72,.46);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
-.guide-shell{max-height:90vh;overflow:auto;padding:26px}.guide-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.guide-heading h2{margin:0;font-size:24px}.guide-heading p{margin:5px 0 0;color:var(--text2);font-size:13px}.guide-close{border:0;background:#edf2fa;color:var(--text2);width:34px;height:34px;border-radius:50%;font-size:21px;cursor:pointer;flex:none}
+.guide-shell{max-height:86vh;max-height:86dvh;overflow:auto;padding:26px}.guide-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.guide-heading h2{margin:0;font-size:24px}.guide-heading p{margin:5px 0 0;color:var(--text2);font-size:13px}.guide-close{border:0;background:#edf2fa;color:var(--text2);width:34px;height:34px;border-radius:50%;font-size:21px;cursor:pointer;flex:none}
 .guide-intro{margin:20px 0;padding:18px;border-radius:18px;background:linear-gradient(135deg,#eaf4ff,#f1edff);line-height:1.8}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.guide-card{border:1px solid #dae5f3;border-radius:18px;background:#fff;padding:18px}.guide-card h3{font-size:15px;margin:0 0 10px}.guide-card p,.guide-card li{font-size:12px;line-height:1.75;color:#56657d}.guide-card ol,.guide-card ul{padding-left:20px;margin:8px 0}
 .creator-card{display:flex;align-items:center;gap:14px;text-decoration:none;color:var(--text);transition:transform .18s,border-color .18s}.creator-card:hover{transform:translateY(-2px);border-color:#93b5ec}.creator-avatar{width:62px;height:62px;border-radius:18px;object-fit:cover;flex:none}.creator-card strong{display:block;font-size:15px}.creator-card span{display:block;margin-top:4px;font-size:11px;color:var(--text2)}
 .guide-roadmap{margin-top:14px;padding:18px;border-radius:18px;background:linear-gradient(135deg,#203d72,#6e62ba);color:white}.guide-roadmap h3{margin:0 0 8px}.guide-roadmap p{margin:0;line-height:1.85;color:#edf2ff;font-size:13px}
@@ -644,7 +644,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
     <header class="guide-heading"><div><h2 id="guide-title">数字心屿使用指南</h2><p>从第一次连接，到一段真正连续的陪伴。</p></div><button class="guide-close" onclick="document.getElementById('guide-dialog').close()" aria-label="关闭使用指南">×</button></header>
     <section class="guide-intro"><strong>欢迎来到数字心屿。</strong><br>这是一个由 AI、语音与数字人表情驱动的日常情绪陪伴空间。你可以打字，也可以用麦克风说话；小安会结合当前对话模式回应，并用语音与动作陪你继续聊下去。它适合日常交流和情绪梳理，但不能替代医疗诊断或专业心理治疗。</section>
     <div class="guide-grid">
-      <section class="guide-card"><h3>💬 如何开始对话</h3><ol><li>点击“连接数字人”，第一次连接会先打开本指南；关闭后即可开始聊天。</li><li>电脑端可输入文字或点击麦克风；手机端点击麦克风切换语音模式，按住说话、松开即发送。</li><li>通过左侧历史按钮切换旧对话；点击“＋”建立一段新的对话。</li><li>需要重新听一遍时，可使用“朗读”或设置菜单中的朗读工具。</li></ol></section>
+      <section class="guide-card"><h3>💬 如何开始对话</h3><ol><li>完成注册后，本指南只会自动出现一次；以后可随时从顶部“使用指南与反馈”重新打开。</li><li>点击“连接数字人”进入陪伴空间。电脑端可输入文字或点击麦克风；手机端点击麦克风切换语音模式，按住说话、松开即发送。</li><li>通过左侧历史按钮切换旧对话；点击“＋”建立一段新的对话。</li><li>需要重新听一遍时，可使用“朗读”或设置菜单中的朗读工具。</li></ol></section>
       <section class="guide-card"><h3>🌿 两种对话模式</h3><ul><li><strong>日常对话：</strong>适合问候、陪聊、学习生活分享与轻松交流。</li><li><strong>情感对话：</strong>适合倾诉、情绪梳理和被认真倾听；还可选择“知心”或“温柔亲昵”的回应风格。</li></ul><p>请放心表达真实感受。若你正处于紧急危险或严重心理危机，请优先联系身边可信任的人和当地专业援助服务。</p></section>
       <section class="guide-card"><h3>✨ 你可以使用的功能</h3><ul><li>切换数字人形象与播报音色</li><li>管理长期记忆，并随时关闭授权</li><li>查看活动记录与历史会话</li><li>使用心理学知识库辅助回答</li><li>开启本机摄像头感知与语音朗读</li></ul></section>
       <section class="guide-card"><h3>🔐 隐私与使用提示</h3><ul><li>摄像头画面仅在当前设备本地处理。</li><li>表情识别只是辅助观察，不等于真实情绪判断。</li><li>运营统计不会向管理员展示密码、验证码或 API Key。</li><li>长期记忆默认关闭，是否开启由你决定。</li></ul></section>
@@ -942,27 +942,16 @@ function openGuide(){
   if(!dialog.open)dialog.showModal();
 }
 
-let _firstConnectionGuideShown='';
-function firstConnectionGuideKey(){
-  const identity=_profile?.username||_currentUser||'current-user';
-  return `digital-xinyu:first-connection-guide:v1:${identity}`;
-}
-function openFirstConnectionGuide(generation){
-  const storageKey=firstConnectionGuideKey();
-  if(_firstConnectionGuideShown===storageKey)return false;
-  let seen=false;
-  try{seen=localStorage.getItem(storageKey)==='1';}catch(error){}
-  if(seen)return false;
-  _firstConnectionGuideShown=storageKey;
-  try{localStorage.setItem(storageKey,'1');}catch(error){}
+let _firstUseGuideOpened=false;
+function openFirstUseGuide(){
+  if(_firstUseGuideOpened||_profile?.guide_seen)return false;
+  _firstUseGuideOpened=true;
   openGuide();
-  const dialog=document.getElementById('guide-dialog');
-  dialog.addEventListener('close',()=>{
-    if(generation===_connectionGeneration&&connected&&ttsEnabled){
-      setTimeout(()=>{
-        if(generation===_connectionGeneration&&connected&&ttsEnabled)speakText('唔，你来啦！我是小安，很高兴见到你。');
-      },260);
-    }
+  document.getElementById('guide-dialog').addEventListener('close',async()=>{
+    try{
+      const response=await fetch('/api/profile/guide/seen',{method:'POST',headers:{'X-Auth-Token':_authToken}});
+      if(response.ok&&_profile)_profile.guide_seen=true;
+    }catch(error){console.warn('[Guide] 首次引导状态保存失败',error);}
   },{once:true});
   return true;
 }
@@ -1360,7 +1349,6 @@ function stopLiveTalking(interrupt=true){
 let _connectionGeneration=0;
 async function connectAll(){
   const generation=++_connectionGeneration;
-  let welcomeAfterGuide=false;
   const btn=document.getElementById('connect-btn');
   const st=document.getElementById('cs-status');
   btn.classList.add('loading');
@@ -1399,12 +1387,11 @@ async function connectAll(){
       resizeLive2D();
       // 桌面端保留历史栏快捷展开；手机端由用户按需打开独立抽屉。
       if(_authToken&&!isMobileLayout()&&!_sidebarOpen) toggleSidebar();
-      welcomeAfterGuide=openFirstConnectionGuide(generation);
     },900);
 
     // 睁眼后才招呼，避免睡着的表情直接开始说话。
     setTimeout(()=>{
-      if(!welcomeAfterGuide&&generation===_connectionGeneration&&connected&&ttsEnabled) speakText('唔，你来啦！我是小安，很高兴见到你。');
+      if(generation===_connectionGeneration&&connected&&ttsEnabled) speakText('唔，你来啦！我是小安，很高兴见到你。');
     },3400);
 
   }catch(e){
@@ -3284,6 +3271,7 @@ async function _onLoginSuccess(token,username,silent){
   await switchSession(main.session_id,true);
   document.getElementById('memory-btn').classList.add('authenticated');
   await loadMemorySettings();
+  if(!_profile?.guide_seen)setTimeout(openFirstUseGuide,120);
   if(!silent) console.log('[Auth] 登录成功:',username);
 }
 

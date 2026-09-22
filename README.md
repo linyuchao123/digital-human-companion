@@ -1,850 +1,371 @@
-# 基于AI大语言模型的情感陪护虚拟数字人系统
+# 数字心屿 · AI 情绪陪伴数字人
 
-> 【A22】江苏大学 | 智能计算方向 | 计算类赛题
+> 一个融合数字人、语音交互、智能体工作流、心理学知识检索与长期记忆的开源 Web 应用。
 
-## 项目简介
+[![项目质量检查](https://github.com/linyuchao123/digital-human-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/linyuchao123/digital-human-companion/actions)
+[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-WebSocket-009688?logo=fastapi&logoColor=white)](apps/api/integrated_server.py)
+[![Live2D](https://img.shields.io/badge/Avatar-Live2D-7B68EE)](integrated.html)
 
-本项目面向老龄化社会情感陪护需求，构建以数字人为核心的"感知-认知-干预"主动闭环系统。系统基于大语言模型（LLM）与心理学知识库，通过多模态数据采集与融合，实现对用户心理状态的评估、引导/干预、再评估的完整业务流程，为老年群体提供"可陪伴、可引导、可持续"的心理健康与情感支持服务。
+🌐 **在线体验：** [https://xiaolinyx.cloud](https://xiaolinyx.cloud)
 
-### 核心能力
+⭐ **如果这个项目对你有帮助，欢迎点一个 Star。Issue、建议和 PR 都会成为它继续成长的动力。**
 
-当前账号、安全及部署整改的实现与验收限制见 [账号与部署说明](docs/account-security-deployment.md)。
-新版登录注册及个人资料入口已接入：新注册密码至少8位；生日、姓名和头像可选填，密码仅能验证修改，不展示。
-Docker已改用当前 `pyproject.toml` 依赖及独立数据卷；下方旧版赛题部署说明仅作历史参考，实际以该说明和 `infra/docker/` 配置为准。
+---
 
-- **表现力丰富的数字人形象**：支持2D/3D数字人，具备自然流畅的语音对话（TTS）、精准的口型同步（Lip-sync）、丰富的面部表情和适度的肢体动作
-- **多模态情感感知**：集成摄像头、麦克风等设备，实时采集并分析用户语音、文本、视觉特征，形成统一、稳健的心理状态理解
-- **智能情感对话**：基于大语言模型与心理学知识库，针对焦虑倾向、抑郁倾向、双向情感障碍风险等生成富有共情力和专业性的对话内容
-- **长期记忆与连续性**：支持10轮以上连续对话，具备上下文感知能力，实现个性化、可持续的情感陪护
+## 项目是什么
 
-### 赛题技术指标
+数字心屿围绕“小安”构建一个可持续的日常陪伴空间。用户可以通过文字、麦克风和摄像头与数字人交流；服务端智能体结合当前对话、用户授权的长期记忆和心理学知识库生成回复，再通过语音、口型、表情与动作呈现。
 
-| 指标 | 要求 |
-|------|------|
-| 语音识别词错率（WER） | ≤ 10% |
-| 语音识别句错率（SER） | ≤ 40% |
-| 连续对话轮次 | ≥ 10轮 |
-| LLM上下文窗口 | ≥ 8K tokens |
-| 端到端响应时间 | ≤ 60秒 |
+项目当前定位是：
 
-### 相关文档
+- 日常问候、陪聊和生活分享；
+- 非诊断性的情绪倾听与梳理；
+- 带来源的心理学知识辅助回答；
+- 可由用户控制的长期记忆和连续对话；
+- 可观察、可测试、可部署的完整数字人应用工程。
 
-- [赛题手册](https://www.fwwb.org.cn/news/show/598)
-- 模块需求说明书：
-  - [视觉模块](./需求说明书/视觉模块需求说明书.md)
-  - [听觉模块](./需求说明书/听觉模块需求说明书.md)
-  - [多模态融合与心理状态理解](./需求说明书/多模态融合与心理状态理解模块需求分析说明书.md)
-  - [情感对话与心理评估引擎](./需求说明书/情感对话与心理评估引擎模块需求分析说明书.md)
-  - [数字人面部行为驱动模型](./需求说明书/数字人面部行为驱动模型需求分析说明书.md)
-- 通信协议：[protocols.md](./protocols.md)
+> [!IMPORTANT]
+> 数字心屿不是医疗器械，也不能替代医生、心理咨询师或紧急援助服务。摄像头与模型输出只能作为辅助交互信号，不应被理解为真实情绪诊断。若存在紧急危险或严重心理危机，请优先联系身边可信任的人和当地专业援助服务。
 
-### 智能体 RAG 质量门禁
+## 当前能力
 
-心理知识存放在 `data/knowledge/psychology.json`，每条记录都包含稳定文档 ID、来源名称和来源链接。智能体使用本地 BM25 检索，并在语料不可用或没有命中时回退到最小内置知识集。
+| 能力 | 当前实现 | 状态 |
+| --- | --- | --- |
+| 数字人交互 | Live2D 小安、口型、眨眼、表情与轻量动作 | 可用 |
+| LLM 大脑 | DeepSeek 主模型、千问备用、离线安全降级 | 可用 |
+| 智能体工作流 | 意图路由、受限工具、运行轨迹、超时和失败恢复 | 可用 |
+| 心理知识 RAG | 30 条内置语料、BM25、来源引用、可选 BGE 混合检索 | V1 可用 |
+| 长期记忆 | 用户主动授权、账号隔离、查看、遗忘和全部清除 | 可用 |
+| 对话记录 | 主对话、多会话、分页历史、模式、标题和删除 | 可用 |
+| 活动记录 | 活动选择、完成、移除、统计和幂等写入 | 可用 |
+| ASR | 千问云端录音识别，可选 FunASR 本地降级 | 已接通，需真机验收 |
+| TTS | Qwen3/CosyVoice 多音色、流式播放、取消与口型联动 | 可用 |
+| 摄像头视觉 | 浏览器本地 MediaPipe 单人脸观察和移动端小窗 | 已接通，需真机验收 |
+| 注册与安全 | 邮箱验证码注册、登录、找回密码、注销和 HTTPS | 可用 |
+| 运营后台 | 用户、对话轮次、模型调用、Token、费用估算和反馈 | 管理员可用 |
+| 微信 / QQ 登录 | OAuth 接口已预留 | 待开放平台凭证 |
+| 3D / 自定义数字人 | 路线图项目 | 尚未实现 |
 
-运行固定检索评测：
+更细的证据、限制和人工验收项见 [系统完成度审计](docs/system-completion-audit-2026-09-22.md)。
 
-```bash
-.venv-model/bin/python scripts/evaluate_agent_rag.py
+## 使用方式
+
+1. 注册账号并完成邮箱验证码验证。
+2. 新用户第一次进入会看到居中的使用指南；关闭后不再自动打扰，也可以随时从顶部重新打开。
+3. 点击“连接数字人”。
+4. 选择文字输入，或在手机端切换到“按住说话，松开发送”。
+5. 根据场景选择“日常对话”或“情感对话”。
+6. 在“设置与工具”中管理音色、长期记忆、活动记录和心理学知识库。
+
+桌面端与移动端共用同一套账号和对话记录。摄像头必须在 `localhost` 或 HTTPS 页面使用。
+
+## 系统架构
+
+```mermaid
+flowchart LR
+    U[浏览器 / 移动端] -->|文字、语音、摄像头| API[FastAPI + WebSocket]
+    U -->|本地画面处理| V[MediaPipe Face Landmarker]
+    API --> ASR[Qwen ASR / FunASR]
+    API --> AGENT[LangGraph 智能体]
+    AGENT --> LLM[DeepSeek / Qwen]
+    AGENT --> RAG[心理知识库 RAG]
+    AGENT --> MEM[长期记忆与会话摘要]
+    AGENT --> TOOLS[时间、天气、搜索、活动工具]
+    API --> TTS[Qwen3 TTS / CosyVoice]
+    TTS --> U
+    API --> DB[(SQLite 用户与运营数据)]
+    API --> ADMIN[管理员运营后台]
 ```
 
-评测集位于 `eval/rag/cases.json`，当前门槛为 `Hit@3 ≥ 0.85`、`MRR@3 ≥ 0.70`。更换分词、向量模型或知识语料后应先通过该门禁，再合并到主开发分支。
+一次对话的主要路径：
 
-如需评测混合检索，可显式指定已经下载到本机或服务器的语义模型目录：
-
-```bash
-.venv-model/bin/python scripts/download_rag_embedding_model.py
-.venv-model/bin/python scripts/evaluate_agent_rag.py \
-  --embedding-model models/embedding/bge-small-zh-v1.5
+```text
+输入 → 身份与会话校验 → ASR（语音时）→ 意图/风险路由
+    → 记忆读取 + RAG/工具 → LLM 流式生成
+    → 对话与用量落库 → TTS → 数字人口型/动作
 ```
 
-评测报告中的 `provider` 会标明实际使用的是 `hybrid_with_fallback` 还是
-`bm25_with_fallback`，避免把模型缺失后的降级结果误认为语义检索结果。运行服务时使用同一
-目录设置 `RAG_EMBEDDING_MODEL_PATH` 即可启用混合检索；服务不会隐式联网下载模型。
+高风险表达优先进入安全响应，不会被普通活动推荐或工具调用覆盖。
 
-针对“脑内小剧场”“被世界遗忘”等低词面重合的真实口语表达，项目另设语义挑战集。评测
-本地模型时必须同时要求混合提供者，模型加载失败会直接让命令失败：
+## 技术栈
+
+- **前端：** 原生 HTML/CSS/JavaScript、Web Audio、MediaRecorder、WebSocket、Live2D/PixiJS
+- **后端：** Python 3.11/3.12、FastAPI、Pydantic、Uvicorn
+- **智能体：** LangGraph、DeepSeek/OpenAI 兼容接口、千问兼容接口
+- **语音：** Qwen ASR、FunASR、Qwen3 TTS、CosyVoice
+- **视觉：** MediaPipe Face Landmarker；画面默认在浏览器本地处理
+- **知识与记忆：** BM25、可选 Sentence Transformers、SQLite
+- **部署：** Docker Compose、Nginx、Let's Encrypt、只读容器文件系统
+
+## 快速开始
+
+### 1. 环境要求
+
+- Python `>=3.11,<3.13`
+- Node.js 20+（仅运行前端测试时需要）
+- 推荐使用支持 WebSocket、MediaRecorder 和 Web Audio 的现代浏览器
+
+### 2. 安装
 
 ```bash
-.venv-model/bin/python scripts/evaluate_agent_rag.py \
-  --cases eval/rag/semantic_challenge_cases.json \
-  --embedding-model /absolute/path/to/sentence-transformers-model \
-  --require-provider hybrid_with_fallback
+git clone https://github.com/linyuchao123/digital-human-companion.git
+cd digital-human-companion
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[cloud,rag,vision,dev]'
+cp .env.example .env
 ```
 
-项目当前验证模型为 `BAAI/bge-small-zh-v1.5`，下载脚本固定远端 revision 以保证复现。
-在 11 条口语化挑战样本上，纯 BM25 的 `Hit@3 / MRR@3` 为 `0.818 / 0.621`，混合
-检索提升至 `1.000 / 0.894`；原有 8 条标准集仍保持 `1.000 / 1.000`。模型权重目录
-已被 Git 忽略，仓库只保存下载和评测方法。
-
-知识库浏览和检索测试页面位于 `/rag`。页面默认只读；确需在线维护自定义条目时，
-在服务端环境变量中设置高强度随机 `RAG_ADMIN_TOKEN`，并在管理页面临时输入。令牌不会写入
-浏览器存储，内置权威条目也不能通过接口删除。公网部署时还应在反向代理层限制 `/rag` 和
-知识库写接口的访问来源，真实令牌不得写入 `.env.example` 或提交到 Git。
-
-### 陪伴活动卡片
-
-问“有点无聊，推荐几个小活动”或“无聊怎么办”，工作流会调用
-`companion_activity_plan`，提供三个自愿选择的日常任务：整理小角落、写一句心情、听歌。
-卡片可以点击选择并标记完成，开发者模式显示 `activity_planner` 节点和工具耗时。
-本阶段使用固定活动模板，不承诺治疗效果；高风险表达优先走安全响应，不提供活动卡片。
-登录后选择的活动和完成状态保存到 SQLite，可通过顶部“活动记录”查看最近50条，
-刷新或重启服务后仍保留。记录归当前账号所有，不与长期记忆授权混用；重复保存请求
-不会产生重复任务，完成标记不会重复改变完成时间。游客仅在当前页面体验。
-活动历史不恢复到原聊天气泡；不会自动播放音乐或存储心情文字。
-活动记录面板展示全部未移除任务的已选择、已完成、进行中数量（不限于列表最近50条）。
-“移除记录”是可恢复的软移除：从列表与统计排除，但数据库仍保留，不等同永久删除。
-已移除记录不能继续标记完成；旧重复保存请求也不会悄悄恢复记录。
-个性化活动推荐、恢复界面和永久清理隐私数据仍待开发。统计不代表心理状态或治疗效果。
-
-### 智能体时钟工具
-
-直接询问“现在几点”“今天星期几”“明天几号”时，工作流路由到 `clock_tool`，
-读取真实系统时钟，不调用大模型猜时间。默认明确回答北京时间；支持显式询问纽约、
-伦敦、东京当地时间，并按时区处理日期和夏令时。在开发者模式可查看节点、耗时和
-`current_datetime` 工具记录。高风险表达仍优先走安全响应；提醒设置、日程管理和
-复杂时间推算尚未实现，不会把工具回答伪装成已创建提醒。
-
-### 服务端录音识别
-
-云端识别已支持百炼 `qwen-audio-3.0-asr-flash` 句级 HTTP 接口（非实时流式）。
-在后端 `.env` 设置：
+编辑 `.env`，至少提供一个可用的 LLM Key。需要语音时再配置 DashScope/TTS/ASR。
 
 ```env
-ASR_PROVIDER=qwen
-ASR_API_KEY=
-ASR_CLOUD_MODEL=qwen-audio-3.0-asr-flash
-ASR_CLOUD_URL=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
-ASR_FALLBACK_LOCAL=true
-```
-
-独立密钥为空时依次复用 `DASHSCOPE_API_KEY`、`TTS_API_KEY`、`QWEN_API_KEY`，
-不会使用 DeepSeek 密钥。需保证密钥的地域和模型权限匹配；新工作空间域名也可配置。
-密钥只在后端使用。录音以 Base64 发送到阿里云，会涉及云端数据处理和音频时长计费，
-项目不会长期保存录音。界面显示本次“百炼云端”或“本地备用”；悬浮可查看降级原因。
-设置 `ASR_FALLBACK_LOCAL=false` 可以关闭自动降级，便于单独验收云端质量。
-设置 `ASR_PROVIDER=funasr` 可完全关闭云端上传。配置修改后需重启后端。
-接口字段参考[百炼 ASR 官方文档](https://help.aliyun.com/en/model-studio/fun-asr-flash-recorded-speech-recognition-http-api)。
-
-原界面的麦克风现支持句级语音对话：点击开始录音，再次点击结束并发送（最长 30 秒）。
-浏览器将录音转换为 16 kHz 单声道 PCM WAV，后端识别完成后自动进入智能体回复流程。
-录音开始会停止当前播报；断开连接会释放麦克风并丢弃未发送录音。
-
-安装项目的 speech 可选依赖后，首次使用前可显式准备模型：
-
-```bash
-.venv-model/bin/python scripts/prepare_asr_models.py
-```
-
-模型默认缓存到被 Git 忽略的 `models/asr/`，不提交权重。`.env` 可设置
-`ASR_MODEL=paraformer-zh`、`ASR_DEVICE=cpu`；Docker 使用独立持久缓存卷。
-`/api/status` 的 `asr` 区分依赖已安装与模型已就绪。模型不可用时可回退到浏览器识别。
-这仍是录音完成后识别，不是流式 ASR。主界面可主动开启“连续对话”：本机音量端点检测在停顿约1.2秒后自动发送，回复和播报期间释放麦克风，结束后重新聆听；无声等待30秒、后台、断线或切换会话会关闭。默认点击录音方式保留。该模式是半双工，不支持边播报边语音打断，能量检测仍需真实麦克风验收，详见 `docs/continuous-voice.md`。
-
-录音使用低通重采样减少高频混叠，识别合并短停顿片段以保留句内上下文。
-可在 `.env` 添加 `ASR_HOTWORDS=小安 数字心屿`，用空格或逗号分隔少量常用专有词；
-设置为空可关闭热词。热词过多可能产生误偏置，不建议加入整句对话或自动收录聊天内容。
-重启后端后生效。转录不经过大模型改写，以保留否定词和用户真实表达。
-这些是音频链路优化，实际准确率需用同一组人工标注录音对比，不能仅凭合成语音推断。
-真实录音可按 `docs/asr-real-recording-evaluation.md` 建立私有清单，再运行 `scripts/manual_asr_smoke.py`；该工具调用主聊天的实际识别路径，缺录音或识别失败不会误报通过。
-
-### 多提供者 TTS 与语音降级策略
-
-前端通过 `/api/tts/voices` 读取服务端音色目录，可在原界面顶部选择音色并记住选择。
-默认 `TTS_PROVIDER=auto`，按以下方式提供语音：
-
-1. 配置 DashScope 时优先提供 Qwen3 角色音色：`Chelsie`（二次元少女）、
-   `Momo`（活泼俏皮）、`Cherry`（阳光自然）；
-2. 如已安装对应 SDK，也可继续使用 CosyVoice；
-3. macOS 开发机同时提供系统安装的中文音色，并由后端生成 24kHz WAV；
-4. 没有可用服务端提供者或合成失败时，最终降级为浏览器中文语音。
-
-Qwen3 默认使用 `qwen3-tts-instruct-flash`，服务端会根据角色音色附加表达指令，
-让 Chelsie 更可爱灵动、Momo 更活泼元气、Cherry 更温柔自然。模型与音色兼容范围见
-[阿里云 Qwen-TTS 官方音色列表](https://help.aliyun.com/en/model-studio/qwen-tts-voice-list)。
-
-macOS 本地开发无需 API Key 即可使用服务端系统语音。部署到 Linux 服务器时没有 `say`
-命令，应配置 CosyVoice，并安装 cloud 可选依赖：
-
-```bash
-.venv-model/bin/pip install -e '.[cloud]'
-```
-
-本地开发时复制 `.env.example` 为 `.env`，后端启动时会自动加载。对话模型按
-`DeepSeek → 千问 → 离线回复` 的顺序降级；TTS 独立使用千问语音密钥。`.env` 已被 Git
-忽略，不能删除对应忽略规则。
-
-```env
-DASHSCOPE_API_KEY=                     # 可选：千问对话与 TTS 共用密钥
-DEEPSEEK_API_KEY=                      # 主对话模型密钥
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-flash
-QWEN_API_KEY=                          # 可选：千问备用对话模型专用密钥
-QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-plus
-TTS_API_KEY=                           # 可选：TTS 专用密钥
+DEEPSEEK_API_KEY=
+DASHSCOPE_API_KEY=
+QWEN_API_KEY=
 TTS_PROVIDER=auto
-TTS_DEFAULT_VOICE=qwen3_tts:Chelsie
-TTS_QWEN3_MODEL=qwen3-tts-instruct-flash
-TTS_RATE=185
+ASR_PROVIDER=qwen
+PUBLIC_DEPLOYMENT=false
+ALLOWED_ORIGINS=http://127.0.0.1:8800,http://localhost:8800
 ```
 
-生产服务器不应依赖磁盘 `.env`，应由部署平台的 Secret/环境变量功能注入；系统环境变量的
-优先级高于 `.env`，因此不会被本地文件覆盖。
+不要把真实密钥提交到 Git。`.env.example` 只保存字段和安全默认值。
 
-TTS 文本通过 `POST /api/tts` 的 JSON 请求体传输，不进入 URL、浏览器历史或默认访问日志；
-接口限制单次 500 字。音色必须来自服务端白名单目录，音频及错误响应均设置
-`Cache-Control: no-store`。公网部署时密钥只能由服务端密钥管理注入，不能放进前端或提交到仓库。
+### 3. 启动
 
-### 第二数字人：LiveTalking / Wav2Lip
-
-连接页和“设置与工具”支持在 Live2D 小安与 LiveTalking Wav2Lip 写实视频数字人之间切换。
-Wav2Lip 作为独立 NVIDIA GPU 服务运行，本项目复用现有对话和 Qwen3/CosyVoice 音色，通过
-WebRTC 显示画面并上传合成音频驱动口型。具体部署、素材授权和验收步骤见
-[LiveTalking / Wav2Lip 第二数字人接入](./docs/livetalking-wav2lip.md)。
-
----
-
-## 1. 背景与意义
-
-随着我国60岁以上人口突破3亿大关，空巢老人占比超50%，老年群体面临"物质保障充足但精神孤独突出"的显著矛盾。传统家庭养老模式因代际分离、子女异地工作等现实因素逐渐式微，而现有养老服务体系在情感陪伴维度存在显著缺口：医疗机构日均接待陪诊需求超3000人次，养老机构中98.3%的失能老人存在持续性情感支持需求，传统陪护服务因标准化不足、专业人才短缺等问题难以满足深层情感诉求。
-
-本项目旨在通过AI技术构建智能化、个性化心理健康完全自主数字人干预体系，实现"可陪伴、可引导、可持续"的心理健康、情感支持服务模式的新升级。
-
----
-
-## 2. 总体架构
-
-本系统按"采集-感知-融合-生成-表达-评测"的闭环组织，构建数据驱动、智能决策、人机协同的主动式闭环业务流程：
-
-### 2.1 系统总体架构（五层）
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        用户交互层                                │
-│         摄像头(视频) + 麦克风(音频) + 屏幕/扬声器(数字人)         │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                    数据处理与感知层（多模态采集）                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ 视觉感知(A) │  │ 听觉感知(B) │  │      多模态特征         │  │
-│  │ 面部关键点  │  │ ASR语音识别 │  │      时空对齐           │  │
-│  │ 表情系数    │  │ 声学特征    │  │      语义融合           │  │
-│  │ 头部姿态    │  │ VAD检测     │  │                         │  │
-│  │ 视线估计    │  │ 语音情绪    │  │                         │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                    认知与决策层（核心大脑）                       │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │              多模态融合与心理状态分析引擎                │    │
-│  │     情绪识别 + 风险评估(焦虑/抑郁/双向情感障碍)          │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │              情感对话与心理疏导引擎(LLM)                 │    │
-│  │     共情对话 + 引导策略 + 心理知识库(RAG)                │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │              上下文记忆系统(10轮+)                       │    │
-│  │     会话摘要 + 记忆检索 + 结构化事实/偏好写入            │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                    表达与驱动层（数字人控制）                     │
-│  ┌─────────────┐  ┌─────────────────────────────────────────┐   │
-│  │  TTS语音合成 │  │         数字人面部行为驱动模型           │   │
-│  │ 音色韵律控制 │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐   │   │
-│  │ 流式首包优化 │  │  │ 口型同步 │ │ 表情生成 │ │ 动作驱动 │   │   │
-│  └─────────────┘  │  └─────────┘ └─────────┘ └─────────┘   │   │
-│                   │         渲染引擎(Unity/UE/WebGL)         │   │
-│                   └─────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                          数据层                                  │
-│    PostgreSQL + Redis + Milvus/Chroma + 数字人资产库            │
-└─────────────────────────────────────────────────────────────────┘
+```bash
+python -m uvicorn apps.api.integrated_server:app \
+  --host 127.0.0.1 --port 8800 --ws-max-size 3145728
 ```
 
-**五层架构说明：**
+打开 [http://127.0.0.1:8800](http://127.0.0.1:8800)。
 
-1. **用户交互层**：摄像头（视频）+ 麦克风（音频）+ 屏幕/扬声器（数字人呈现）
-2. **数据处理与感知层**（多模态采集）
-   - 视觉感知模块（A）：面部关键点、表情系数（blendshape/AU）、头部姿态、视线估计
-   - 听觉感知模块（B）：ASR 语音转文字、声学特征提取、VAD 语音活动检测
-3. **认知与决策层**（核心大脑）（C）
-   - 多模态融合引擎：时间对齐 + 特征融合（文本/语音/视觉），心理状态分析（情绪 + 风险评估）
-   - 情感对话与心理疏导引擎：基础 LLM + RAG 心理知识库 + 共情与引导话术策略
-   - 上下文记忆（10 轮+）：会话摘要 + 记忆检索 + 结构化事实/偏好写入
-4. **表达与驱动层**（数字人控制）（D）
-   - TTS 语音合成：音色与韵律控制，支持流式首包
-   - 面部/动作驱动：口型同步、表情/动作生成（blendshape/gesture）
-   - 渲染引擎：Unity / Unreal（或 WebGL/Live2D），2D/3D 数字人实时渲染
-5. **数据层**：用户档案、对话缓存、向量库、数字人资产库
+检查服务状态：
 
-结构图（文本化）：
-
-```
-用户交互层
-  摄像头(视频) + 麦克风(音频) + 屏幕/扬声器(数字人)
-            |
-数据处理与感知层（多模态采集）
-  A 视觉：面部关键点/表情系数/头姿/视线
-  B 听觉：ASR/声学特征/VAD
-            |
-认知与决策层（核心大脑）
-  多模态融合（对齐+融合） + 心理状态分析（情绪+风险）
-  LLM + RAG(心理知识库) + 共情/引导策略
-  10+轮记忆（摘要+检索+写入）
-            |
-表达与驱动层（数字人控制）
-  TTS(流式) + 口型/表情/动作驱动 + Unity/UE(或Web)渲染
-            |
-数据层
-  PostgreSQL + Redis + Milvus/Chroma + 资产库
+```bash
+curl --fail http://127.0.0.1:8800/api/health/ready
+curl --fail http://127.0.0.1:8800/api/status
 ```
 
-仓库目录映射（建议）：
+`ready=true` 只表示数据库和核心运行时就绪，不代表第三方云模型一定可调用。真实上线前仍应完成一次文字、录音、TTS 和摄像头人工验收。
 
-- 用户交互层：`apps/web`
-- 数据处理与感知层：`services/asr`、`services/avatar`（Perception）
-- 认知与决策层：`services/llm`、`services/memory`
-- 表达与驱动层：`apps/api`（编排/Driver）、`services/tts`、`services/avatar`（Render/Drive）
-- 数据层：由 `services/memory` 连接外部数据库/向量库/资产服务，配置放 `configs`，部署放 `infra`
+## Docker 部署
 
-### 2.2 单轮对话流程（端到端时序）
-
-系统按"采集-感知-理解-生成-驱动-评测"闭环组织：
-
-```
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-│  采集层  │ → │  感知层  │ → │  记忆层  │ → │  生成层  │ → │  驱动层  │ → │  评测层  │
-│ (Client)│    │(ASR/   │    │(Memory) │    │  (LLM)  │    │(TTS/   │    │  (Eval) │
-│         │    │Emotion)│    │         │    │         │    │Avatar) │    │         │
-└─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘
-     ↓              ↓              ↓              ↓              ↓              ↓
- 音频/视频      文本/情绪      记忆检索       回复生成       语音/动画       指标采集
- 采集输入       特征提取       摘要补齐       驱动指令       流式输出       回归分析
+```bash
+cp .env.example .env
+# 编辑 .env 后执行
+docker compose --env-file .env -f infra/docker/docker-compose.yml config --quiet
+docker compose --env-file .env -f infra/docker/docker-compose.yml build
+docker compose --env-file .env -f infra/docker/docker-compose.yml up -d
+curl --fail http://127.0.0.1:8800/api/health/ready
 ```
 
-**流程说明：**
+生产 Compose 只把 `8800` 绑定到宿主机回环地址，应由 Nginx 或其他反向代理提供 HTTPS。参考配置：[infra/nginx/digital-xinyu.conf](infra/nginx/digital-xinyu.conf)。
 
-1. **采集层**（Client）：Web/移动端采集麦克风音频与可选视频帧，并提供打断（barge-in）与 VAD 信息
-2. **感知层**（Perception）：ASR 输出文本；多模态情绪识别输出情绪向量；构造 `PerceptionToLLM` 输入
-3. **记忆层**（Memory）：基于会话与检索结果补齐长期/会话记忆（10+轮）；提供摘要压缩与事实槽位
-4. **生成层**（LLM）：结合用户输入、情绪、记忆与安全策略生成回复文本与驱动指令 `LLMToDriver`
-5. **驱动层**（Driver）：执行 TTS、数字人表情/动作、UI 卡片、工具调用编排；向客户端推送流式音频/动画
-6. **评测层**（Eval）：对 WER、记忆一致性与响应延迟进行离线/在线回归，形成可追踪的 `trace_id` 指标链路
+重要部署约束：
 
-端到端时序（简化）：
+- 正式环境设置 `PUBLIC_DEPLOYMENT=true`；
+- `ALLOWED_ORIGINS` 必须精确包含正式 HTTPS 域名；
+- 使用平台 Secret 或权限受限的 `.env` 注入密钥；
+- `app-data` 卷保存用户、会话、记忆和运营数据；
+- 不要执行 `docker compose down -v`，除非你明确要删除持久数据；
+- 更新前备份数据库卷，并验证回滚镜像；
+- 80 端口只做 HTTPS 跳转，业务和登录不应通过明文 HTTP 提供。
 
-```
-Client
-  └─ audio/video ─> services/asr + services/avatar(perception)
-                    └─ perception json ─> services/memory(read)
-                                           └─ enriched json ─> services/llm
-                                                                └─ llm_to_driver ─> apps/api(Orchestrator/Driver)
-                                                                                     ├─ services/tts
-                                                                                     ├─ services/avatar(render)
-                                                                                     └─ client stream
-```
+详细安全边界见 [账号、安全与部署验收](docs/account-security-deployment.md)。
 
-**关键约束（对齐赛题指标）：**
+## 配置说明
 
-| 指标 | 实现策略 | 评测方式 |
-|------|----------|----------|
-| WER ≤ 10% | VAD + 热词 + 领域数据优化 | `eval/wer` 持续回归 |
-| SER ≤ 40% | 语音识别后处理与纠错 | `eval/wer` 持续回归 |
-| 10轮+对话记忆 | 最近窗口 + 会话摘要 + 长期记忆检索/写入 | `eval/memory` 回归 |
-| LLM响应<60s | 流式LLM + 流式TTS + 分段预算治理 | `eval/latency` 回归 |
+### 模型与语音
 
----
+| 变量 | 用途 |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | 主对话模型 |
+| `DEEPSEEK_MODEL` | DeepSeek 模型名 |
+| `QWEN_API_KEY` | 千问备用对话模型 |
+| `DASHSCOPE_API_KEY` | 千问、ASR、TTS 可复用的 DashScope Key |
+| `TTS_API_KEY` | 可选的独立 TTS Key |
+| `TTS_PROVIDER` | `auto`、`qwen3_tts`、`cosyvoice`、`macos_say` 或 `browser` |
+| `ASR_PROVIDER` | `qwen` 或 `funasr` |
+| `ASR_FALLBACK_LOCAL` | 云端 ASR 失败时是否尝试本地识别 |
 
-## 3. 仓库结构
+### 账号与运营
 
-```
-apps/
-  api/                     # 编排网关：统一入口、会话态、调用链路、流式输出
-  web/                     # 前端：采集/展示/打断/字幕/卡片/数字人播放
-services/
-  asr/                     # 语音识别：VAD、热词、分段与 WER 评测对齐
-  tts/                     # 语音合成：音色/语速/情感韵律/流式合成
-  llm/                     # 大模型推理：提示词、工具调用、安全策略、流式生成
-  memory/                  # 记忆系统：短期上下文、摘要、向量检索、写入与合并
-  avatar/                  # 数字人：表情/动作/口型/驱动协议适配
-packages/
-  common/                  # 通用结构：协议类型、DTO、校验、trace 工具
-  observability/           # 可观测：日志、指标、链路追踪（trace_id贯穿）
-eval/
-  wer/                     # ASR WER 评测与回归
-  memory/                  # 10+轮记忆一致性与事实保持评测
-  latency/                 # 端到端与分段延迟评测（<60s治理）
-infra/
-  docker/                  # 容器化与本地一键联调
-  k8s/                     # 集群部署（可选）
-data/
-  raw/                     # 原始音频/文本/对话记录（注意脱敏与权限）
-  processed/               # 切分/标注/清洗后的数据
-  eval/                    # 评测集、黄金标注、回归快照
-models/                    # 模型权重（建议用外部存储/不直接提交仓库）
-scripts/                   # 启动/评测/数据处理脚本
-tests/
-  unit/
-  integration/
+| 变量 | 用途 |
+| --- | --- |
+| `ADMIN_USERNAMES` | 逗号分隔的管理员用户名 |
+| `SMTP_*` | 邮箱验证码注册、绑定和密码找回 |
+| `EMAIL_VERIFICATION_SECRET` | 验证码摘要密钥，至少 32 字符 |
+| `OAUTH_PUBLIC_BASE_URL` | 微信/QQ OAuth 的 HTTPS 公网根地址 |
+| `WECHAT_APP_ID/SECRET` | 微信网站应用凭证 |
+| `QQ_APP_ID/SECRET` | QQ 互联应用凭证 |
+| `*_PRICE_CNY_PER_MILLION` | 运营后台费用估算单价 |
+
+完整字段与注释见 [.env.example](.env.example)。
+
+## RAG 心理知识库
+
+内置知识位于 [data/knowledge/psychology.json](data/knowledge/psychology.json)。每条内容包含稳定 ID、来源名称和来源链接。
+
+- 默认使用本地 BM25，不会在服务启动时静默联网下载模型；
+- 设置 `RAG_EMBEDDING_MODEL_PATH` 后可启用 BGE 等本地语义模型的混合检索；
+- `/rag` 页面默认只读；写操作需要服务端 `RAG_ADMIN_TOKEN`；
+- 回答会保留本轮知识来源，历史记录可以恢复引用；
+- 语料或检索算法变更后应重新运行固定评测。
+
+```bash
+.venv/bin/python scripts/evaluate_agent_rag.py
 ```
 
----
+相关说明：[心理知识语料](docs/psychology-corpus.md) · [RAG V3 验收](docs/rag-v3-acceptance.md) · [自然语言评测](docs/rag-natural-language-evaluation.md)
+
+## 隐私与安全
+
+- 密码使用 bcrypt，不保存或回传明文；
+- 注册密码执行长度、常见弱密码和字符类别检查；
+- 邮箱验证码仅保存 HMAC 摘要，有有效期、尝试次数和发送频率限制；
+- 登录失败统一返回“用户名或密码错误”，未知账号也执行密码哈希校验；
+- 会话、记忆、活动、反馈和模型用量按账号隔离；
+- 长期记忆默认关闭，用户可以查看、删除或撤销授权；
+- 摄像头帧在浏览器本地处理，服务端只接收经过约束的观察摘要；
+- TTS 文本使用 POST 请求体，不放入 URL；
+- 公网业务端点要求登录并限制请求体与请求频率；
+- 管理员可以查看运营统计，但不应看到密码、验证码或 API Key；
+- 账号注销会删除该账号拥有的会话、消息、记忆、活动和认证数据。
+
+当前认证令牌仍由前端可读 Cookie 保存；更高安全等级的部署应继续迁移到 HttpOnly 会话，并使用 Redis/网关实现多实例共享限流。
+
+## 运营后台
+
+在 `.env` 配置：
+
+```env
+ADMIN_USERNAMES=your-admin-username
+DEEPSEEK_INPUT_PRICE_CNY_PER_MILLION=0
+DEEPSEEK_CACHED_INPUT_PRICE_CNY_PER_MILLION=0
+DEEPSEEK_OUTPUT_PRICE_CNY_PER_MILLION=0
+QWEN_INPUT_PRICE_CNY_PER_MILLION=0
+QWEN_CACHED_INPUT_PRICE_CNY_PER_MILLION=0
+QWEN_OUTPUT_PRICE_CNY_PER_MILLION=0
+```
+
+管理员登录后，顶部会出现独立的“运营后台”入口。后台包含：
+
+- 注册用户与最近活跃；
+- 模型调用次数、输入/输出 Token；
+- 按配置单价计算的费用估算；
+- 对话轮次和智能体运行统计；
+- 用户反馈信箱与处理状态。
+
+费用是估算值，应定期与模型供应商账单核对。普通用户看不到入口，服务端接口也会再次校验管理员角色。
+
+## 测试与质量门禁
+
+安装开发依赖后：
+
+```bash
+python -m pytest -q tests \
+  --ignore=tests/test_asr_module.py \
+  --ignore=tests/test_vision_module.py \
+  --ignore=tests/test_multimodal_fusion.py
+
+for test_file in tests/*.cjs; do node "$test_file"; done
+docker compose --env-file .env -f infra/docker/docker-compose.yml config --quiet
+```
+
+三个被排除的脚本属于早期离线实验：本地 FunASR 模型下载、Windows 视觉模型路径和旧版多模态协议。它们不对应当前浏览器视觉 + 云 ASR 的生产入口，后续会迁移或移出默认测试集。
+
+提交前还应检查：
+
+```bash
+python -m compileall -q apps packages services tests
+git diff --check
+```
+
+## 主要目录
+
+```text
+apps/api/                 FastAPI、认证、运营后台和 WebSocket
+services/agent/           智能体工作流、工具、记忆和知识路由
+services/asr/             云端与本地语音识别
+services/tts/             TTS 提供者与音色目录
+services/vision/          MediaPipe 与视觉协议
+services/avatar/          数字人驱动服务
+digital_human_engine/     面部行为驱动模型与推理代码
+data/knowledge/           心理学知识语料
+eval/                     RAG、ASR、数字人和对话评测集
+infra/docker/             Dockerfile 与 Compose
+infra/nginx/              HTTPS 反向代理示例
+docs/                     功能设计、验收证据与部署说明
+tests/                    后端、前端和配置回归测试
+integrated.html           当前主界面
+admin.html                管理员运营后台
+```
+
+## API 入口
+
+| 入口 | 用途 |
+| --- | --- |
+| `/` | 数字人主界面 |
+| `/admin` | 运营后台，管理员鉴权 |
+| `/rag` | 知识库浏览与管理 |
+| `/api/health/ready` | 容器就绪检查 |
+| `/api/status` | ASR、TTS、模型和提供者状态 |
+| `/ws/main` | 主对话 WebSocket |
+| `/api/sessions` | 会话与历史记录 |
+| `/api/memories` | 长期记忆管理 |
+| `/api/activities` | 活动记录 |
+| `/api/tts/stream` | 流式语音合成 |
+
+完整数据协议见 [protocols.md](protocols.md)。
 
-## 4. 模块方案（逐模块详细）
+## 已知限制
 
-### 4.1 apps/api（编排网关 / Driver）
+- 云模型、ASR 与 TTS 受供应商权限、地域、余额和网络状态影响；
+- 真实 ASR 准确率、TTS 首音和摄像头体验必须使用目标设备验收；
+- 浏览器 WebView 对麦克风、摄像头和自动播放策略存在差异；
+- 默认 SQLite 和进程内限流适合单机部署，不等于多副本生产架构；
+- RAG 默认 BM25 是可工作的基线，但不等于完整语义检索；
+- 表情观察不是心理诊断；
+- 3D 数字人、自定义数字人形象、微信/QQ 正式登录尚未完成。
 
-职责：
+## 路线图
 
-- 统一对外 API：WebSocket/HTTP（建议 WebSocket 用于语音流与流式返回）
-- 会话管理：`session_id/turn_id` 分配；打断与状态机（speaking/listening/thinking）
-- 调用编排：ASR → Memory → LLM → Driver(TTS/Avatar/UI)
-- 超时与降级：通过 `constraints.deadline_ms/time_budget_ms` 控制每段预算
-- 追踪与评测打点：强制注入 `trace_id`，记录各阶段耗时与结果摘要
+- [ ] 微信、QQ 开放平台登录与账号绑定验收
+- [ ] 3D 数字人和可授权的自定义形象
+- [ ] 新的命令模式与更丰富的安全工具
+- [ ] HttpOnly 会话、Redis 共享限流和多实例部署
+- [ ] 更大规模的心理知识语料与混合检索评测
+- [ ] iOS、安卓真机自动化与弱网语音验收
+- [ ] 可观测性、成本预算和供应商账单对账
 
-关键数据结构：
+## 贡献
 
-- 输入：`PerceptionToLLM`（来自 services/asr、services/avatar/perception、services/memory）
-- 输出：`LLMToDriver`（来自 services/llm），并拆解成具体执行动作（TTS/Avatar/UI/MemoryWrite）
+欢迎提交 Issue 和 PR：
 
-推荐技术栈（可替换）：
+1. 先描述问题、复现方式或预期体验；
+2. 不要提交真实 API Key、邮箱授权码、用户数据或无授权的数字人素材；
+3. 功能修改应补充相应 Python 或 `.cjs` 回归测试；
+4. 涉及心理健康内容时，避免诊断承诺、治疗暗示和不可靠的危机建议；
+5. 提交前运行测试、语法检查和 `git diff --check`。
 
-- Python：FastAPI + Uvicorn（易做流式接口与中间件）
-- 或 Node.js：NestJS/Fastify（同样适合 WebSocket）
-- 可观测：OpenTelemetry（Trace + Metrics + Logs）
+项目反馈也可以直接通过站内“使用指南与反馈”发送给开发者。
 
-延迟治理建议（满足 <60s）：
+## 项目背景
 
-- 分段预算：ASR（≤3s）+ Memory（≤1s）+ LLM（≤40s）+ TTS 首包（≤2s）+ Avatar 合成（≤2s）+ 余量
-- LLM 采用流式输出：先出共情短句，再补充建议与追问
-- TTS 采用流式/分块：优先播报前 1～2 句
+项目最初来源于江苏大学智能计算方向计算类赛题实践，随后持续演进为可部署的开源数字人陪伴项目。仓库保留部分赛题需求、评测和研究脚本，用于复现设计过程；当前产品能力与部署方式以本 README、`docs/` 和 `infra/` 为准。
 
-### 4.2 services/asr（语音识别）
+## 作者与链接
 
-职责：
+- GitHub：[@linyuchao123](https://github.com/linyuchao123)
+- X：[@xiaolinyx123](https://x.com/xiaolinyx123)
+- 在线站点：[数字心屿](https://xiaolinyx.cloud)
 
-- 音频接入：PCM/Opus；分段处理（chunk）
-- VAD：检测语音起止，减少无效推理与端到端延迟
-- 热词/领域词表：降低 WER，尤其是人名、地名、医学/心理相关术语
-- 输出对齐：返回 words 级时间戳用于字幕与回放；支持 WER 对齐评测
+如果你愿意体验、反馈、提交 Issue、贡献代码，或者只是点一颗 ⭐，都非常感谢。
 
-推荐模型路线（按资源选择）：
+## 许可证与使用边界
 
-- 高精度离线/在线：FunASR Paraformer（中文效果好，延迟可控）
-- 通用多语：Whisper 系列（需关注中文与实时性）
-- 端侧/轻量：一些流式 ASR（取决于部署目标）
+仓库当前未提供独立的标准开源许可证文件。未经作者明确授权，不应假定获得商用、再分发或模型素材授权；第三方模型、Live2D/图像素材和云服务分别受其原始许可与服务条款约束。
 
-工程要点（针对 WER ≤ 10%）：
-
-- 统一采样率（16k/mono）与前处理（增益、降噪可选）
-- 语料与评测集对齐：按目标场景制作 `data/eval`，持续回归
-- 词表策略：自定义热词与拼写纠错（结合 LLM/规则做二次修正需谨慎评估）
-
-### 4.3 services/avatar（感知 + 渲染）
-
-本模块通常分两部分：
-
-- 感知（Perception）：从视频帧/音频特征估计情绪、注意力、表情倾向
-- 渲染（Render/Drive）：把 `LLMToDriver.render.avatar` 转成具体动画/参数（表情 blendshape、动作、口型）
-
-职责（感知侧）：
-
-- 视觉情绪/表情：可选（若仅语音/文本也可关闭）
-- 语音情绪特征：可由音频特征提取（pitch/energy）或情绪识别模型输出
-- 输出归一化：统一到 `valence/arousal` 与离散 `primary` 标签
-
-职责（驱动侧）：
-
-- 表情：`expression.name/intensity/duration_ms`
-- 动作：`gesture.name/intensity/duration_ms`
-- 口型：来自 TTS phoneme/viseme（或用音频驱动）
-
-推荐技术栈（按实现方式选）：
-
-- Web 数字人：Three.js / WebGL / Live2D（实现快）
-- 引擎型：Unity/UE（效果强，集成复杂）
-
-#### 4.3.1 视觉：面部特征提取（建议实现）
-
-目标：从摄像头视频帧实时提取“面部关键点 + 表情系数 + 姿态 + 视线”等特征，供情绪识别与数字人驱动使用。
-
-子任务与输出（建议基线）：
-
-- 面部关键点检测：MediaPipe Face Landmarker（带 blendshape 的 `.task` 模型）
-  - 输出：`478` 个关键点 + `52` 维 blendshape
-  - 备注：优先使用带 blendshape 的模型，便于与数字人口型/表情参数对齐
-- AU 强度估计：blendshape → AU 映射
-  - 方法：基于映射表（例如 `NAME2AUWEIGHT`）将 `52` 维 blendshape 聚合为 `15` 维 AU（AU1~AU26 的子集）
-  - 备注：可参考 PyLips 的开源映射思路
-- 头部姿态：MediaPipe + solvePnP
-  - 方法：基于关键点解算欧拉角
-  - 输出：`pitch/yaw/roll`
-- 视线估计：MediaPipe Face Landmarker
-  - 输出：视线方向向量 `(x, y, z)`（可选，用于增强交互）
-- 输出帧率：实时 `15~30 fps`
-  - 建议：为节省 CPU，可将下游使用帧率限制到 `15 fps`
-
-实现要点（工程约束）：
-
-- 使用 MediaPipe FaceLandmarker 异步模式（`LIVE_STREAM`）降低延迟
-- AU 映射后做对称化（左右 AU 取平均）并做平滑滤波（例如一阶 IIR）
-- 最终输出可选两种形式：
-  - 直接输出 `52` 维 blendshape 供驱动端使用
-  - 输出每帧 `25` 维情感特征：`15 AU + 2 VA + 8 表情类别`（用于情绪/策略输入）
-
-### 4.4 services/memory（10+ 轮对话记忆）
-
-目标：在不让上下文无限膨胀的前提下，稳定支撑 10 轮以上“事实一致 + 偏好一致 + 情绪连续性”。
-
-核心组成：
-
-- 短期记忆（Short-term）：最近 N 轮对话片段（原文）
-- 会话摘要（Session summary）：滚动摘要，用于压缩上下文
-- 长期记忆（Long-term）：结构化事实（facts）+ 偏好（preference）+ 事件（episode）
-- 检索模块（RAG）：向量检索 top_k 相关记忆 + 规则过滤（时间/置信度/隐私）
-- 写入与合并：LLM 提供 `memory_write` 候选，记忆服务做去重、合并与 TTL 管理
-
-推荐技术栈（可替换）：
-
-- 向量库：Milvus / FAISS / Chroma（按规模与部署环境选择）
-- Embedding：BGE 系列（中文强），或其他中文向量模型
-- 存储：PostgreSQL（结构化 facts）、Redis（会话态/短期缓存）、对象存储（原始对话日志）
-
-评测建议（对应 eval/memory）：
-
-- 事实保持：同一事实在第 12 轮仍能正确复述
-- 偏好一致：用户偏好（称呼、语气、禁忌）在多轮不漂移
-- 摘要稳定：滚动摘要不丢关键事实、不引入幻觉
-
-### 4.5 services/llm（大模型生成）
-
-职责：
-
-- 输入组装：消费 `PerceptionToLLM`，把 ASR 文本、情绪、记忆、对话摘要组织成提示
-- 安全与风控：情绪陪护场景的风险识别（自伤他伤/危机），触发 `handoff`
-- 输出结构化：生成 `LLMToDriver`，包含文本 + 驱动指令（TTS/表情/动作/卡片/记忆写入）
-- 流式输出：在延迟约束下优先输出可播报内容
-
-推荐模型路线（按资源选择）：
-
-- 中文对话与工具调用：Qwen / GLM 等开源指令模型
-- 轻量低延迟：较小参数量模型 + 合理的 system prompt 与 RAG
-- 线上托管：可选用 API（需注意成本、合规与网络延迟）
-
-#### 4.5.1 多模态融合与风险评估（C 层关键能力）
-
-多模态融合与决策建议在 LLM 服务内实现为“结构化前处理 + 策略层”，把来自视觉/听觉/文本的信号转成稳定的决策输入：
-
-- 时间对齐：将 ASR 文本片段与音频情绪特征、视觉 AU/姿态按时间窗对齐（例如 1s 滑窗）
-- 特征融合：输出统一的 `emotion.primary/valence/arousal/confidence`，并保留 `signals.*` 作为可解释依据
-- 风险评估：对自伤他伤、严重抑郁、极端冲动等做风险分级，作为 `policy.safety.risk_level` 与 `actions.handoff` 的触发条件
-- 话术策略：在风险/情绪强度较高时优先共情与安抚，避免激烈建议；在低风险时推进问题澄清与可执行小步骤
-
-提示词结构建议：
-
-- System：角色与边界（情感陪护、非医疗诊断、危机应对策略）
-- Developer：协议输出约束（必须输出 JSON，字段遵循 protocols）
-- Memory：摘要 + 检索记忆条目
-- User：ASR 文本 + 情绪信号（可作为“语气引导”）
-
-输出约束建议：
-
-- 永远输出合法 JSON（不得混入额外文本）
-- `assistant.text` 面向朗读：短句、可分段、避免长段落堆砌
-- `actions` 明确可执行：至少包含 `tts_speak`，可选 `memory_write`
-
-### 4.6 services/tts（语音合成）
-
-职责：
-
-- 把 `assistant.text`（或 SSML）转换为自然语音
-- 支持情感韵律：速度/音高/能量/停顿（与陪护场景匹配）
-- 首包/流式：尽快输出第一段音频，配合 LLM 流式降低感知延迟
-
-推荐模型路线（按效果与部署选择）：
-
-- 开源神经 TTS：VITS/HiFi-GAN 系列（需训练/适配音色）
-- 对话风格 TTS：一些对话型 TTS（需关注授权与资源）
-- 工程落地：可先用现成 TTS 服务打通链路，再逐步替换为自研模型
-
-### 4.7 packages/common 与 packages/observability
-
-common：
-
-- 协议 DTO：`PerceptionToLLM` / `LLMToDriver` 的类型定义与校验
-- Trace 工具：生成/透传 `trace_id`，统一日志字段
-- 通用错误码：超时、解析失败、模型不可用、降级等
-
-observability：
-
-- 指标：ASR/LLM/TTS 各阶段延迟、成功率、超时率
-- 日志：按 `trace_id/session_id/turn_id` 可回放
-- 追踪：端到端链路可视化，定位 <60s 的瓶颈
-
----
-
-## 5. 评测与回归（eval/*）
-
-### 5.1 WER（eval/wer）
-
-- 数据：`data/eval` 保存带黄金转写的音频与文本
-- 计算：基于 Levenshtein 距离（字符级/词级二选一，需固定口径）
-- 分析：按场景/噪声/说话人分桶输出 WER；记录热词命中率
-
-### 5.2 记忆（eval/memory）
-
-- 多轮脚本：构造 12～20 轮对话场景（个人信息、偏好、事件）
-- 检查点：第 5/10/15 轮插入回忆问题，验证一致性
-- 评分：事实正确率 + 偏好一致性 + 幻觉率
-
-### 5.3 延迟（eval/latency）
-
-- 端到端：用户结束说话到 TTS 首包/首字出现的时间
-- 分段：ASR/VAD、Memory 检索、LLM 首 token、LLM 完成、TTS 首包
-- 治理：超时降级策略是否生效（例如简短回复 + 追问）
-
----
-
-## 6. 协议与模块联调（必须遵循）
-
-- 感知 → LLM：`protocol = perception_to_llm`
-- LLM → 驱动：`protocol = llm_to_driver`
-- 每轮必须携带：`trace_id/session_id/turn_id/constraints.deadline_ms`
-
-协议详见：[protocols.md](./protocols.md)
-
----
-
-## 7. 安全与合规（陪护场景建议）
-
-- 明确边界：不做医疗诊断、不提供处方类建议
-- 危机识别：自伤他伤/急性心理危机触发升级策略（`handoff`/热线提示）
-- 隐私保护：`data/raw` 与会话日志必须脱敏；记忆分级 `privacy`
-
----
-
-## 8. 任务清单（对齐赛题要求）
-
-### 功能实现清单
-
-- [ ] **数字人形象**：不少于2个表现力丰富的2D/3D数字人形象
-  - [ ] 自然流畅的语音对话（TTS）
-  - [ ] 精准的口型同步（Lip-sync）
-  - [ ] 丰富的面部表情
-  - [ ] 适度的肢体动作
-  - [ ] 低延迟交互响应
-
-- [ ] **多模态数据采集与融合**
-  - [ ] 语音识别模型（WER ≤ 10%，SER ≤ 40%）
-  - [ ] 视觉情绪识别
-  - [ ] 语音情绪特征提取
-  - [ ] 时空对齐与语义融合
-  - [ ] 心理状态理解（情绪 + 风险评估）
-
-- [ ] **情感对话与心理评估引擎**
-  - [ ] 大语言模型（LLM）集成
-  - [x] 心理学知识库（本地 BM25 RAG 基线、来源引用与检索评测）
-  - [ ] 焦虑倾向识别与应对
-  - [ ] 抑郁倾向识别与应对
-  - [ ] 双向情感障碍风险识别
-  - [ ] 共情对话生成
-  - [ ] 引导性话术策略
-  - [ ] 10轮以上连续对话能力
-
-- [ ] **数字人面部行为驱动模型**
-  - [ ] 表情驱动
-  - [ ] 口型同步驱动
-  - [ ] 动作驱动
-  - [ ] 音画同步保证
-
-### 提交材料清单
-
-- [ ] 项目概要介绍
-- [ ] 项目简介PPT
-- [ ] 项目详细方案
-- [ ] 项目演示视频
-- [ ] 可执行的参赛作品docker镜像或软件安装包
-- [ ] 可执行的数字人面部行为驱动模型工程文件
-- [ ] 可执行的语音识别模型工程文件
-- [ ] 团队自愿提交的其他补充材料
-
----
-
-## 9. 下一步落地建议（从 0 到可用）
-
-1. 先跑通 MVP：文本输入 → LLM → TTS → Avatar 播放（关闭视觉感知）
-2. 接入 ASR：加入 VAD 与热词，建立 `eval/wer` 回归
-3. 上线记忆：摘要 + 向量检索 + 结构化 facts，建立 `eval/memory`
-4. 做延迟治理：LLM 流式 + TTS 首包优化，建立 `eval/latency`
-5. 逐步增强：情绪识别、多模态感知、表情/动作更细粒度控制
-
----
-
-## 10. 技术栈与模型清单（推荐默认）
-
-本节给出一套“可落地、可替换”的默认组合。后续实现时可按算力/授权/效果替换，但建议先固定一套基线，便于评测回归。
-
-### 10.1 推理与服务框架
-
-- 编排网关：FastAPI（Python）或 NestJS（Node.js）
-- 通信：WebSocket（音频上行 + 多事件下行），HTTP（管理/评测/健康检查）
-- LLM 推理：
-  - GPU 优先：vLLM（高吞吐、易流式）
-  - 资源受限：Transformers + 量化（如 8bit/4bit），或 llama.cpp（CPU/小模型）
-- 向量检索：Milvus（服务化）或 FAISS（嵌入式）
-- 结构化存储与缓存：PostgreSQL（用户档案/事实槽）+ Redis（会话态/限流/短期记忆缓存）
-- 观测：OpenTelemetry + Prometheus 指标 + Loki/ELK 日志（任选其一）
-
-### 10.2 ASR（语音识别）候选
-
-- 中文优先基线：Paraformer 系列（支持流式/实时，适合 WER 治理）
-- 通用基线：Whisper 系列（注意实时性与中文场景调优）
-- 配套组件：
-  - VAD：webrtcvad 或深度 VAD（噪声场景可提升稳定性）
-  - 热词：自定义词表（心理陪护、校园生活、地名/人名等）
-
-### 10.3 LLM（对话生成）候选
-
-- 中文对话指令模型：Qwen2.5 / GLM 等开源指令模型（建议选择支持工具调用/结构化输出的版本）
-- 典型配比（按算力选择）：
-  - 高配质量优先：Qwen2.5-72B（或同级别模型），配合 vLLM 流式输出
-  - 中低配低延迟：Qwen2.5-14B / 7B（或同级别），通过更强的记忆/RAG 与更严格的输出约束补足效果
-- 关键能力对齐：
-  - 稳定 JSON 输出（协议驱动）
-  - 多轮一致性（配合 memory）
-  - 风险识别与升级策略（陪护场景）
-
-### 10.4 Embedding（记忆检索）候选
-
-- 中文向量：BGE 系列（适合中文语义检索）
-- 记忆检索推荐：
-  - `top_k = 4~8`，结合规则过滤（privacy/ttl/置信度）
-  - 对“偏好/禁忌/重要事实”设置更高权重，避免被近期闲聊淹没
-
-### 10.5 TTS（语音合成）候选
-
-- 通用神经 TTS：VITS 系列（可训练音色，工程可控）
-- 质量优先：高质量中文 TTS（按实际可用模型/服务选择）
-- 工程关键点：
-  - 流式合成（边生成边播报）
-  - 音频首包优化（减少用户等待感）
-  - 情绪韵律：通过速度/停顿/能量曲线与情绪标签联动
-
-### 10.6 情绪识别（可选增强）
-
-- 文本情绪：中文 RoBERTa/ERNIE 类分类器微调（七情/二元 valence）
-- 语音情绪：基于 wav2vec2/Hubert 的情绪分类或回归（valence/arousal）
-- 视觉表情：
-  - 特征提取：MediaPipe Face Landmarker（478 landmarks + 52 blendshape）+ solvePnP（pitch/yaw/roll）+ 可选 gaze 向量
-  - 表情/AU：52 blendshape → 15 AU（映射表聚合）+ 平滑滤波
-  - 分类器：轻量 FER（MobileNetV3/ResNet18/mini-Xception）或直接基于 AU/VA 做规则融合
-
-### 10.7 数据层（与流程图一致）
-
-- PostgreSQL：用户档案、结构化事实槽（facts）、重要事件索引
-- Redis：对话上下文缓存、会话状态机、短期记忆窗口、限流与去抖
-- Milvus / Chroma：心理学知识库向量检索、长期记忆向量索引
-- 数字人资产库：模型、贴图、动画、表情/动作预设（建议外部存储，不直接入仓库）
-
----
-
-## 11. API 与事件协议（建议落地形态）
-
-### 11.1 WebSocket 事件（Client ↔ apps/api）
-
-上行（Client → Server）建议事件：
-
-- `audio_chunk`：音频分块（含采样率、编码、序号）
-- `text_input`：纯文本输入（调试与无麦场景）
-- `control`：`start_turn/stop_turn/barge_in/cancel`
-
-下行（Server → Client）建议事件：
-
-- `asr_partial`：ASR 增量文本（字幕）
-- `asr_final`：ASR 最终文本（进入 LLM）
-- `llm_partial`：LLM 增量文本（可选展示）
-- `driver`：`LLMToDriver`（表情/动作/卡片/tts 指令）
-- `tts_audio_chunk`：TTS 音频流（首包尽快）
-- `metrics`：本轮耗时分解（用于延迟回归）
-- `error`：错误码与可读信息（可回放定位）
-
-`driver` 的结构化内容必须符合 [protocols.md](./protocols.md) 的 `LLMToDriver`。
-
-### 11.2 HTTP（管理与评测）
-
-- `GET /healthz`：健康检查
-- `GET /readyz`：依赖就绪检查（模型加载/向量库连接）
-- `GET /metrics`：Prometheus 指标
-- `POST /eval/wer`：触发 WER 回归（离线）
-- `POST /eval/memory`：触发多轮记忆回归（离线）
-- `POST /eval/latency`：触发延迟回归（离线）
-
----
-
-## 12. 记忆策略（推荐实现细节）
-
-### 12.1 记忆分层
-
-- 最近对话窗口：保留最近 `N=6~10` 轮原文（可直接给 LLM）
-- 会话摘要：每轮更新一次，长度控制在固定 token 预算
-- 长期记忆：
-  - `facts`：结构化事实槽（如作息、家庭、学习压力）
-  - `preference`：偏好/禁忌/称呼方式
-  - `episode`：近期重要事件（带 TTL）
-
-### 12.2 读路径（read）
-
-1. 以 `asr.text + emotion + 当前主题标签` 形成 query
-2. 向量检索 top_k
-3. 规则过滤：
-   - `privacy` 不匹配的剔除
-   - 过期（TTL）剔除
-   - 低置信度/低重要性降权
-4. 返回 `memory.read.results` 给 LLM
-
-### 12.3 写路径（write）
-
-1. LLM 产出 `actions: memory_write`（候选写入）
-2. 记忆服务进行：
-   - 去重（语义相似 + key 维度）
-   - 合并（同 key 更新置信度与时间）
-   - TTL 与隐私策略落地
-3. 写入后更新 `memory.state.summary` 与 `facts`
-
----
-
-## 13. 延迟与降级策略（满足 <60s 的工程手段）
-
-- 超时硬约束：以 `constraints.deadline_ms` 贯穿所有服务
-- 生成优先级：
-  - 先输出共情短句（可直接 TTS）
-  - 再输出追问或 1～2 条可执行小建议
-- 降级路径（按优先级）：
-  - 关闭视觉感知 → 仅文本/语音情绪
-  - 缩短记忆检索 top_k / 仅用摘要
-  - 切换更小 LLM 或降低最大输出 token
-  - 输出短回复 + 追问并结束本轮（保证响应）
-
----
-
-## 14. 关于我们
-
-**江苏大学计算机科学与通信工程学院**
-
-江苏大学是2001年8月经教育部批准，由原江苏理工大学、镇江医学院、镇江师范专科学校合并组建的重点综合性大学，是江苏省人民政府和教育部、农业农村部共建高校，以及首批江苏省高水平大学建设高校、全国本科教学工作水平优秀高校、首批全国50所毕业生就业典型经验高校、全国创新创业典型经验高校、首批全国来华留学质量认证高校、全国"三全育人"综合改革试点高校。
-
-江苏大学计算机科学与通信工程学院有控制科学与工程（模式识别与智能系统）一级博士点建设方向及硕士点，计算机科学与技术、网络空间安全、信息与通信工程、集成电路科学与工程（通信与信息处理集成电路方向）4个一级学科硕士点，另有电子信息（计算机技术、软件工程、人工智能、通信工程4个专业领域）全日制专业学位硕士点和工程硕士授予权。近5年先后承担并完成了国家自然科学基金重点及其它各类项目、国家重点研发计划、国防重大项目等一批国家及省部级高新技术课题，获省部级科技进步奖20余项，出版学术著作、教材30余部，发表高质量学术论文1000余篇。
-
----
-
-## 许可证
-
-本项目为江苏大学参赛作品，遵循相关竞赛规定与学术规范。
+计划开放协作或发布正式版本前，应补充明确的 `LICENSE`、素材来源清单和第三方许可证说明。

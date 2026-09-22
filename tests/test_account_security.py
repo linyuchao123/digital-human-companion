@@ -38,6 +38,18 @@ class AccountSecurityTests(unittest.TestCase):
         payload['birthday']='';payload['avatar']='data:image/svg+xml;base64,AAA'
         self.assertEqual(self.client.patch('/api/profile',headers=headers,json=payload).status_code,400)
 
+    def test_first_use_guide_state_is_account_scoped_and_persistent(self):
+        registration=self.client.post('/api/auth/register',json={'username':'guide-user','password':'test-password'})
+        self.assertEqual(registration.status_code,200)
+        self.assertTrue(registration.json()['is_new_user'])
+        headers={'X-Auth-Token':registration.json()['token']}
+        self.assertFalse(self.client.get('/api/profile',headers=headers).json()['guide_seen'])
+        self.assertEqual(self.client.post('/api/profile/guide/seen',headers=headers).status_code,200)
+        self.assertTrue(self.client.get('/api/profile',headers=headers).json()['guide_seen'])
+        login=self.client.post('/api/auth/login',json={'username':'guide-user','password':'test-password'})
+        self.assertNotIn('is_new_user',login.json())
+        self.assertTrue(self.client.get('/api/profile',headers={'X-Auth-Token':login.json()['token']}).json()['guide_seen'])
+
     def test_password_change_revokes_tokens_and_username_needs_password(self):
         headers=self.register()
         payload={'username':'new-profile'}
