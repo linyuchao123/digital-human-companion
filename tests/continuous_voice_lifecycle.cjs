@@ -11,7 +11,7 @@ const ctx=vm.createContext({chatWsReady:true,ttsSpeaking:false,console:{log(){},
   fetch:async()=>({ok:true,json:async()=>({asr:{available:true,provider:'qwen_cloud'}})}),
   navigator:{mediaDevices:{getUserMedia:()=>new Promise(resolve=>resolveMic=resolve)}},
   setTimeout:()=>1,clearTimeout(){},alert(){},confirm:()=>true,_stopAudio(){},
-  _ensureAudioCtx:()=>({sampleRate:48000,createMediaStreamSource:()=>({connect(){},disconnect(){}}),
+  _resumeAudioPlayback:async()=>({sampleRate:48000,createMediaStreamSource:()=>({connect(){},disconnect(){}}),
     createScriptProcessor:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{},connect(){},disconnect(){}})}),
   chatSend:()=>sent++,Float32Array,Math});
 vm.runInContext(html.slice(begin,end)+html.slice(stop,stopEnd),ctx);

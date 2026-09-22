@@ -166,6 +166,8 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 #send-btn:hover{transform:scale(1.08)}
 #hold-to-talk{display:none;flex:1;height:42px;border-radius:19px;border:1px solid rgba(160,190,235,.72);background:rgba(255,255,255,.78);color:var(--text);font-family:inherit;font-size:14px;font-weight:600;letter-spacing:.04em;align-items:center;justify-content:center;box-shadow:inset 0 1px 4px rgba(100,150,220,.08);touch-action:none;-webkit-user-select:none;user-select:none}
 #hold-to-talk.recording{color:#315f9f;background:rgba(204,226,255,.94);border-color:rgba(79,142,247,.55);box-shadow:inset 0 2px 7px rgba(79,142,247,.14)}
+#hold-to-talk.canceling{color:#b84343;background:rgba(255,225,225,.96);border-color:rgba(221,91,91,.55)}
+#hold-to-talk:disabled{opacity:.72;cursor:wait}
 
 /* ══ 右侧聊天面板 ══ */
 #chat-panel{position:fixed;top:56px;right:var(--panel-gap);bottom:72px;z-index:150;width:var(--panel-width);
@@ -1319,7 +1321,11 @@ async function initLiveTalking(){
   pc.addTransceiver('video',{direction:'recvonly'});pc.addTransceiver('audio',{direction:'recvonly'});
   pc.addEventListener('track',event=>{
     const stream=event.streams[0]||new MediaStream([event.track]);
-    if(event.track.kind==='video')video.srcObject=stream;else audio.srcObject=stream;
+    if(event.track.kind==='video')video.srcObject=stream;
+    else{
+      audio.srcObject=stream;
+      audio.play().catch(error=>console.warn('[Avatar] 移动端远端音频等待再次点击后播放',error));
+    }
   });
   const offer=await pc.createOffer();await pc.setLocalDescription(offer);await _waitForIceGathering(pc);
   const response=await fetch('/api/avatar/livetalking/offer',{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':_authToken},
@@ -1348,6 +1354,9 @@ function stopLiveTalking(interrupt=true){
 
 let _connectionGeneration=0;
 async function connectAll(){
+  // iOS / 微信 WebView 只允许在用户手势栈内解锁音频；不能等欢迎语定时器触发后再创建。
+  _unlockAudioPlayback();
+  refreshAsrStatus();
   const generation=++_connectionGeneration;
   const btn=document.getElementById('connect-btn');
   const st=document.getElementById('cs-status');
@@ -1939,7 +1948,9 @@ let _voiceStarting=false, _voiceMode='browser', _preferBrowserVoice=false;
 let _micStream=null, _micSource=null, _micProcessor=null, _micMute=null;
 let _voiceChunks=[], _voiceTimer=null, _voiceSampleRate=48000;
 let _voiceGeneration=0,_continuousVoice=false,_continuousWaiting=false,_continuousEpoch=0,_continuousTimer=null,_continuousWaitTimer=null;
+let _asrStatusCache=null,_asrStatusPromise=null;
 let _mobileInputMode='text',_holdToTalkActive=false,_holdReleasePending=false,_holdTranscript='',_holdFlushTimer=null;
+let _holdPointerId=null,_holdStartY=0,_holdCancelPending=false,_holdStartedAt=0;
 function createVoiceEndpoint(){
   let elapsed=0,voiced=0,silence=0,onset=0,noise=0.006,started=false;
   return {feed(rms,seconds){
@@ -2005,6 +2016,10 @@ function setMobileInputMode(mode){
   button.textContent=next==='voice'?'⌨':'🎤';
   button.title=next==='voice'?'切换到文字输入':'切换到语音输入';
   button.setAttribute('aria-label',button.title);
+  if(next==='voice'){
+    _unlockAudioPlayback();
+    refreshAsrStatus();
+  }
   if(next==='text')setTimeout(()=>document.getElementById('text-input').focus(),0);
 }
 function handleMicButton(){
@@ -2013,7 +2028,8 @@ function handleMicButton(){
 }
 function resetHoldToTalkButton(){
   const button=document.getElementById('hold-to-talk');
-  button.classList.remove('recording');button.textContent='按住说话';
+  button.classList.remove('recording','canceling');button.disabled=false;button.textContent='按住说话';
+  button.setAttribute('aria-label','按住说话，松开发送，上滑取消');
 }
 function flushHoldTranscript(){
   if(_holdFlushTimer!==null){clearTimeout(_holdFlushTimer);_holdFlushTimer=null;}
@@ -2025,40 +2041,73 @@ function startHoldToTalk(event){
   if(!isMobileLayout()||_mobileInputMode!=='voice'||_holdToTalkActive||_voiceStarting||_isListening)return;
   event.preventDefault();
   if(!chatWsReady){alert('请先连接数字人再录音');return;}
+  _unlockAudioPlayback();
+  // 按住即“打断”：清空仍在排队的播报，避免数字人的声音被麦克风重新采集。
+  if(ttsSpeaking||_replySpeech.running||_replySpeech.queued.length||_streamReply.trace)beginStreamReply(null);
+  else _stopAudio();
   _holdToTalkActive=true;_holdReleasePending=false;_holdTranscript='';
+  _holdPointerId=event.pointerId??null;_holdStartY=Number(event.clientY)||0;_holdCancelPending=false;_holdStartedAt=Date.now();
   const button=document.getElementById('hold-to-talk');
   if(event.pointerId!==undefined)try{button.setPointerCapture(event.pointerId);}catch(error){}
-  button.classList.add('recording');button.textContent='松开发送';
+  button.classList.add('recording');button.textContent='松开发送 · 上滑取消';
   startVoiceInput();
+}
+function moveHoldToTalk(event){
+  if(!_holdToTalkActive||(_holdPointerId!==null&&event.pointerId!==_holdPointerId))return;
+  event.preventDefault();
+  _holdCancelPending=(Number(event.clientY)||0)<_holdStartY-56;
+  const button=document.getElementById('hold-to-talk');
+  button.classList.toggle('canceling',_holdCancelPending);
+  button.textContent=_holdCancelPending?'松开取消':'松开发送 · 上滑取消';
 }
 function finishHoldToTalk(event,send=true){
   if(!_holdToTalkActive&&!_voiceStarting&&!_isListening)return;
+  if(event&&_holdPointerId!==null&&event.pointerId!==undefined&&event.pointerId!==_holdPointerId)return;
   event?.preventDefault?.();
   const button=document.getElementById('hold-to-talk');
   if(event?.pointerId!==undefined)try{button.releasePointerCapture(event.pointerId);}catch(error){}
+  const shouldSend=send&&!_holdCancelPending;
+  const heldMs=Date.now()-_holdStartedAt;
   _holdToTalkActive=false;
-  if(_voiceMode==='browser'&&send){
+  _holdPointerId=null;_holdCancelPending=false;_holdStartedAt=0;
+  if(_voiceMode==='browser'&&shouldSend){
     _holdReleasePending=true;
     stopVoiceInput(false);
     _holdFlushTimer=setTimeout(flushHoldTranscript,650);
   }else{
     _holdReleasePending=false;
-    stopVoiceInput(send);
-    resetHoldToTalkButton();
+    const pending=stopVoiceInput(shouldSend);
+    if(pending){button.classList.remove('recording','canceling');button.disabled=true;button.textContent='正在发送…';}
+    else if(shouldSend&&heldMs<260){button.classList.remove('recording','canceling');button.textContent='请按住后再说';setTimeout(resetHoldToTalkButton,850);}
+    else resetHoldToTalkButton();
   }
+}
+async function refreshAsrStatus(force=false){
+  if(_asrStatusPromise&&!force)return _asrStatusPromise;
+  _asrStatusPromise=(async()=>{
+    try{
+      const response=await fetch('/api/status',{cache:'no-store'}),payload=response.ok?await response.json():{};
+      _asrStatusCache=payload.asr||null;
+      const label=document.getElementById('asr-provider-label');
+      if(label&&_asrStatusCache){
+        label.textContent=_asrStatusCache.provider==='qwen_cloud'?'🎤 百炼云端':'🎤 本地识别';
+        label.title=_asrStatusCache.message||'识别状态未知';
+      }
+      return _asrStatusCache;
+    }catch(error){console.warn('[语音] ASR状态刷新失败，将直接尝试录音',error);return _asrStatusCache;}
+    finally{_asrStatusPromise=null;}
+  })();
+  return _asrStatusPromise;
 }
 async function startVoiceInput(){
   if(!chatWsReady){alert('请先连接数字人再录音');return;}
   _voiceStarting=true;
   const generation=++_voiceGeneration;
   try{
-    const resp=await fetch('/api/status',{cache:'no-store'});
-    const status=resp.ok?await resp.json():{};
-    document.getElementById('asr-provider-label').textContent=status.asr?.provider==='qwen_cloud'?'🎤 百炼云端':'🎤 本地识别';
-    document.getElementById('asr-provider-label').title=status.asr?.message||'识别状态未知';
-    if(!chatWsReady||generation!==_voiceGeneration) return;
-    if(!_preferBrowserVoice&&status.asr?.available&&!status.asr?.reason
-        &&navigator.mediaDevices?.getUserMedia){
+    // 先在当前触摸手势中申请麦克风，状态接口放到后台刷新，避免网络延迟吞掉一次短按。
+    refreshAsrStatus();
+    const knownUnavailable=_asrStatusCache&&(!_asrStatusCache.available||_asrStatusCache.reason);
+    if(!_preferBrowserVoice&&!knownUnavailable&&navigator.mediaDevices?.getUserMedia){
       await _startServerVoiceInput(generation);
     }else if(_continuousVoice){disableContinuousVoice();alert('连续模式需要服务端ASR可用；仍可点击麦克风使用备用识别。');}
     else _startBrowserVoiceInput();
@@ -2081,7 +2130,7 @@ async function _startServerVoiceInput(generation=_voiceGeneration){
     return;
   }
   _micStream=stream;
-  const ctx=_ensureAudioCtx();
+  const ctx=await _resumeAudioPlayback();
   _voiceSampleRate=ctx.sampleRate; _voiceChunks=[]; _voiceMode='server';
   _micSource=ctx.createMediaStreamSource(_micStream);
   _micProcessor=ctx.createScriptProcessor(4096,1,1);
@@ -2192,8 +2241,10 @@ function _startBrowserVoiceInput(){
   }catch(e){console.error('[语音识别] 启动失败',e);}
 }
 function stopVoiceInput(sendRecording=true){
-  const generation=++_voiceGeneration,epoch=_continuousEpoch;
+  ++_voiceGeneration;
+  const epoch=_continuousEpoch;
   const wasRecording=_isListening&&_voiceMode==='server';
+  let uploadPending=false;
   _isListening=false;
   if(_voiceTimer){clearTimeout(_voiceTimer);_voiceTimer=null;}
   for(const node of [_micSource,_micProcessor,_micMute]){if(node){try{node.disconnect();}catch(error){}}}
@@ -2201,17 +2252,21 @@ function stopVoiceInput(sendRecording=true){
   if(_micStream) _micStream.getTracks().forEach(track=>track.stop());
   _micStream=_micSource=_micProcessor=_micMute=null;
   if(wasRecording&&sendRecording&&_voiceChunks.length){
+    uploadPending=true;
     const wav=_encodeVoiceWav(_voiceChunks,_voiceSampleRate), reader=new FileReader();
     reader.onload=()=>{
-      if(generation!==_voiceGeneration||epoch!==_continuousEpoch) return;
-      if(chatWsReady){
-        _continuousWaiting=_continuousVoice;
-        if(_continuousVoice) _continuousWaitTimer=setTimeout(()=>{disableContinuousVoice();alert('识别或回复等待超时，连续模式已关闭，请重试。');},80000);
-        chatSend({type:'audio',format:'wav',data:String(reader.result).split(',')[1]});
-      }
-      else alert('连接已断开，录音未发送');
+      try{
+        // 新一轮按住录音不应取消上一轮已经松手确认发送的音频。
+        if(epoch!==_continuousEpoch) return;
+        if(chatWsReady){
+          _continuousWaiting=_continuousVoice;
+          if(_continuousVoice) _continuousWaitTimer=setTimeout(()=>{disableContinuousVoice();alert('识别或回复等待超时，连续模式已关闭，请重试。');},80000);
+          chatSend({type:'audio',format:'wav',data:String(reader.result).split(',')[1]});
+        }
+        else alert('连接已断开，录音未发送');
+      }finally{if(!_holdToTalkActive)resetHoldToTalkButton();}
     };
-    reader.onerror=()=>{if(epoch===_continuousEpoch) disableContinuousVoice();alert('录音编码失败，请重试');};
+    reader.onerror=()=>{if(epoch===_continuousEpoch&&_continuousVoice) disableContinuousVoice();resetHoldToTalkButton();alert('录音编码失败，请重试');};
     reader.readAsDataURL(wav);
   }
   const emptyRecording=!_voiceChunks.length;
@@ -2223,14 +2278,19 @@ function stopVoiceInput(sendRecording=true){
   input.placeholder='和小安说点什么...';
   input.value='';
   console.log('[语音识别] 已关闭');
+  return uploadPending;
 }
 
 const holdToTalkButton=document.getElementById('hold-to-talk');
 if(holdToTalkButton?.addEventListener){
   holdToTalkButton.addEventListener('pointerdown',startHoldToTalk);
+  holdToTalkButton.addEventListener('pointermove',moveHoldToTalk);
   holdToTalkButton.addEventListener('pointerup',event=>finishHoldToTalk(event,true));
   holdToTalkButton.addEventListener('pointercancel',event=>finishHoldToTalk(event,false));
   holdToTalkButton.addEventListener('contextmenu',event=>event.preventDefault());
+  window.addEventListener('pointerup',event=>{if(_holdToTalkActive)finishHoldToTalk(event,true);});
+  window.addEventListener('pointercancel',event=>{if(_holdToTalkActive)finishHoldToTalk(event,false);});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&(_holdToTalkActive||_voiceStarting||_isListening))finishHoldToTalk(null,false);});
 }
 
 /* ═══════════ TTS + Web Audio 实时口型同步 ═══════════ */
@@ -2293,10 +2353,36 @@ function _getLipSyncFromText(){
 
 function _ensureAudioCtx(){
   if(!_audioCtx||_audioCtx.state==='closed'){
-    _audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)throw new Error('当前浏览器不支持 Web Audio');
+    _audioCtx=new AudioContextClass();
   }
-  if(_audioCtx.state==='suspended') _audioCtx.resume();
   return _audioCtx;
+}
+let _audioUnlockPromise=null;
+async function _resumeAudioPlayback(){
+  const ctx=_ensureAudioCtx();
+  if(ctx.state!=='running')await ctx.resume();
+  if(ctx.state!=='running')throw new Error('音频播放尚未解锁，请点击语音按钮后重试');
+  return ctx;
+}
+function _unlockAudioPlayback(){
+  let ctx;
+  try{
+    ctx=_ensureAudioCtx();
+    // 在连接、切换语音和按住说话的真实点击栈内播放一个静音帧，满足 iOS/微信 WebView 的自动播放策略。
+    if(typeof ctx.createBuffer==='function'&&typeof ctx.createBufferSource==='function'){
+      const buffer=ctx.createBuffer(1,1,Math.max(8000,ctx.sampleRate||44100));
+      const source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);source.start(0);
+      source.onended=()=>{try{source.disconnect();}catch(error){}};
+    }
+    const remoteAudio=document.getElementById('wav2lip-audio');
+    if(remoteAudio?.srcObject)remoteAudio.play().catch(()=>{});
+  }catch(error){console.warn('[音频] 初始化失败',error);return Promise.resolve(null);}
+  _audioUnlockPromise=(ctx.state!=='running'?ctx.resume():Promise.resolve())
+    .then(()=>ctx)
+    .catch(error=>{console.warn('[音频] 移动端播放尚未解锁',error);return null;});
+  return _audioUnlockPromise;
 }
 
 function _stopAudio(){
@@ -2439,7 +2525,7 @@ async function _speakViaLiveTalkingAudio(arrayBuf,mediaType,generation){
   const response=await fetch('/api/avatar/livetalking/audio',{method:'POST',headers:{'X-Auth-Token':_authToken},body:form});
   if(!response.ok)return false;
   let expectedMs=12000;
-  try{const decoded=await _ensureAudioCtx().decodeAudioData(arrayBuf.slice(0));expectedMs=Math.max(2000,decoded.duration*1000+5000);}catch(error){}
+  try{const decoded=await (await _resumeAudioPlayback()).decodeAudioData(arrayBuf.slice(0));expectedMs=Math.max(2000,decoded.duration*1000+5000);}catch(error){}
   if(generation!==_ttsGeneration)return true;
   ttsSpeaking=true;_useBrowserTTS=false;
   document.getElementById('speaking-indicator').classList.add('show');
@@ -2495,7 +2581,7 @@ async function _speakViaServerTTS(text,generation,replyTiming=null){
     if(_selectedAvatarMode()==='wav2lip'){
       return await _speakViaLiveTalkingAudio(arrayBuf,resp.headers.get('Content-Type'),generation);
     }
-    const ctx=_ensureAudioCtx();
+    const ctx=await _resumeAudioPlayback();
     const audioBuf=await ctx.decodeAudioData(arrayBuf);
     if(generation!==_ttsGeneration) return true;
     if(_analyser) _analyser.disconnect();
@@ -2564,7 +2650,7 @@ async function _playStreamTTS(text,voice,generation,controller,replyTiming=null)
       body:JSON.stringify({text,voice}),signal:controller.signal});
     if(!response.ok) return false;
     if(generation!==_ttsGeneration) return true;
-    const ctx=_ensureAudioCtx();reader=response.body.getReader();
+    const ctx=await _resumeAudioPlayback();reader=response.body.getReader();
     let pending=new Uint8Array(0),at=0;
     const sampleRate=Number(response.headers.get('X-Audio-Sample-Rate'));
     if(sampleRate!==24000){await reader.cancel();return false;}
@@ -2697,6 +2783,7 @@ function toggleTTS(){
   btn.classList.toggle('on',ttsEnabled);
   btn.innerHTML=ttsEnabled?'🔊 语音':'🔇 静音';
   if(!ttsEnabled) _stopAudio();
+  else _unlockAudioPlayback();
 }
 
 /* ═══════════ UI ═══════════ */

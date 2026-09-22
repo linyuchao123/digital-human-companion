@@ -64,6 +64,11 @@ assert(html.includes("fetch('/api/feedback'"),'反馈信箱必须提交到服务
 assert(html.includes('id="hold-to-talk"')&&html.includes('按住说话，松开发送'),'手机输入栏必须提供微信式按住说话入口');
 assert(html.includes("holdToTalkButton.addEventListener('pointerdown',startHoldToTalk)"),'按住动作必须开始录音');
 assert(html.includes("holdToTalkButton.addEventListener('pointerup',event=>finishHoldToTalk(event,true))"),'松手必须结束并发送录音');
+assert(html.includes("holdToTalkButton.addEventListener('pointermove',moveHoldToTalk)"),'按住说话必须支持上滑取消');
+assert(html.includes("window.addEventListener('pointerup'"),'手指移出按钮后仍必须结束录音');
+assert(html.includes("if(ttsSpeaking||_replySpeech.running||_replySpeech.queued.length||_streamReply.trace)beginStreamReply(null)"),
+       '用户开始说话时必须先打断数字人播报，避免回声和音频争用');
+assert(html.includes('_unlockAudioPlayback();\n  refreshAsrStatus();'),'连接按钮必须在用户手势内解锁移动端音频');
 assert(html.includes('if(sessionId!==_currentDbSession||epoch!==_sessionSwitchEpoch)return;')||
        html.includes("if(sessionId!==_currentDbSession)return;\n    if(epoch!==_sessionSwitchEpoch)return;"));
 assert(html.includes('async function loadOlderMessages()'));

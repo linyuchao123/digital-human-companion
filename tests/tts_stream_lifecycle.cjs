@@ -14,7 +14,7 @@ async function fixture(chunks,gaps=[]){
     _ttsGeneration:0,_authToken:'',_analyser:null,_streamSources:new Set(),_speechChoreography:{},
     ttsSpeaking:false,_mouthSmooth:1,_useBrowserTTS:false,
     document:{getElementById:()=>({classList:{add(){},remove(){}}})},
-    _ensureAudioCtx:()=>ctx,notifySpeechStarted(){},_stopAudio(){context._ttsGeneration++;context.ttsSpeaking=false;},
+    _resumeAudioPlayback:async()=>ctx,notifySpeechStarted(){},_stopAudio(){context._ttsGeneration++;context.ttsSpeaking=false;},
     ttsInitialBufferSeconds:()=>.32,
     streamChunkBytes:(rate,started)=>Math.ceil(rate*(started?0.16:0.32))*2,
     streamStartTime:(current,until,started)=>until>current+0.015?until:current+(started?0.20:0.08),
