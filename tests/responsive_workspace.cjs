@@ -37,6 +37,12 @@ assert(html.includes("(max-width:700px), (max-width:900px) and (max-height:500px
        '脚本必须与 CSS 使用一致的手机断点');
 assert(html.includes('@media(max-width:760px),(max-width:900px) and (max-height:500px)'),
        '手机横屏登录页也必须切换为单栏布局');
+assert(html.includes('#auth-modal{display:block;')&&html.includes('-webkit-overflow-scrolling:touch')&&html.includes('touch-action:pan-y'),
+       '移动登录注册页必须由单一外层滚动容器承接触摸滚动');
+assert(html.includes('#auth-box{grid-template-columns:1fr;max-height:none;min-height:0;margin:0 auto;overflow:visible'),
+       '移动登录卡片不得用固定最大高度制造嵌套滚动');
+assert(html.includes('.auth-form{min-height:0;padding:24px 22px;overflow:visible'),
+       '移动注册表单必须随外层页面完整滚动到底部');
 assert(!html.includes('id="auth-guest"'),'登录页不得再提供游客体验入口');
 assert(html.includes('id="mobile-sidebar-close"'),'移动历史抽屉需要独立关闭按钮，不能覆盖新建按钮');
 assert(html.includes("if(isMobileLayout()&&_sidebarOpen)toggleSidebar();"),'选择历史与新建对话后必须收起手机抽屉');
