@@ -5,6 +5,9 @@ assert(html.includes('id="auth-register-email"')&&html.includes('id="auth-email-
 assert(html.includes("fetch('/api/auth/register/email/send'"),'前端必须通过同源接口发送注册验证码');
 assert(html.includes("_authOptions.email_registration"),'注册页必须根据服务端邮件能力切换状态');
 assert(html.includes('auth-code-row')&&html.includes('auth-password-wrap'),'注册表单必须使用新的紧凑验证码与密码布局');
+assert(html.includes('id="auth-password-strength"')&&html.includes('function newPasswordError(password)'),'注册页必须提供与后端一致的密码强度提示');
+assert(html.includes("location.protocol!=='https:'")&&html.includes('登录请求超时'),'公开登录必须阻止明文传输并处理网络超时');
 assert(backend.includes("@app.post('/api/auth/register/email/send')"),'后端必须提供注册验证码接口');
 assert(backend.includes('registration_digest')&&backend.includes('registration_email_codes'),'验证码必须摘要存储并独立于正式账号');
+assert(backend.includes('password_validation_error')&&backend.includes('_COMMON_PASSWORDS'),'后端必须拒绝常见弱密码');
 console.log('邮箱验证码注册与高级认证界面测试通过');

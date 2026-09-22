@@ -214,6 +214,11 @@ def _check_password(pwd: str, hashed: str) -> bool:
             return False
     return False
 
+_DUMMY_PASSWORD_HASH = (
+    _bcrypt.hashpw(b'digital-xinyu-login-timing', _bcrypt.gensalt()).decode()
+    if HAS_BCRYPT else ''
+)
+
 def _verify_auth_token(token: str) -> Optional[int]:
     """验证 token，返回 user_id 或 None"""
     if not token:
@@ -1037,8 +1042,10 @@ async def auth_register(request: Request):
         return JSONResponse({"error": "用户名和密码不能为空"}, status_code=400)
     if len(username) < 2 or len(username) > 20:
         return JSONResponse({"error": "用户名长度须2-20位"}, status_code=400)
-    if not 8 <= len(password) <= 64 or len(password.encode()) > 72:
-        return JSONResponse({"error": "密码须8-64位，UTF-8长度不超过72字节"}, status_code=400)
+    from apps.api.external_auth import password_validation_error
+    password_error = password_validation_error(password)
+    if password_error:
+        return JSONResponse({"error": password_error}, status_code=400)
     if not re.fullmatch(r"[\w-]{2,20}",username):
         return JSONResponse({"error":"用户名仅支持文字、数字、下划线和连字符"},status_code=400)
     from apps.api.external_auth import email_ready, normalize_email, registration_digest
@@ -1108,7 +1115,9 @@ async def auth_login(request: Request):
     conn = _get_db()
     try:
         row = conn.execute("SELECT id,password_hash,username FROM users WHERE username=? OR (email=? AND email_verified_at<>'')", (username,username.lower())).fetchone()
-        if not row or not _check_password(password, row["password_hash"]):
+        # 即使账号不存在也完成一次 bcrypt 校验，减少通过响应耗时枚举账号的差异。
+        password_matches = _check_password(password, row["password_hash"] if row else _DUMMY_PASSWORD_HASH)
+        if not row or not password_matches:
             return JSONResponse({"error": "用户名或密码错误"}, status_code=401)
         token = str(uuid.uuid4())
         expires = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + 7*86400))
@@ -1227,8 +1236,10 @@ async def update_password(payload: PasswordUpdate,request: Request):
     user_id=_get_user_id_from_request(request)
     if user_id is None: return JSONResponse({"error":"请先登录"},status_code=401)
     if not HAS_BCRYPT: return JSONResponse({"error":"密码服务不可用"},status_code=503)
-    if len(payload.new_password.encode())>72:
-        return JSONResponse({"error":"密码UTF-8长度不能超过72字节"},status_code=400)
+    from apps.api.external_auth import password_validation_error
+    password_error=password_validation_error(payload.new_password)
+    if password_error:
+        return JSONResponse({"error":password_error},status_code=400)
     with _get_db() as conn:
         row=conn.execute("SELECT password_hash,password_set FROM users WHERE id=?",(user_id,)).fetchone()
         session=conn.execute("SELECT source,issued_at FROM auth_tokens WHERE token=?",(request.headers.get('X-Auth-Token',''),)).fetchone()

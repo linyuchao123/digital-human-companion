@@ -55,6 +55,31 @@ class AccountSecurityTests(unittest.TestCase):
             self.assertEqual(self.client.post('/api/auth/register',json={'username':'no-bcrypt','password':'test-password'}).status_code,503)
             with self.assertRaises(RuntimeError): server._hash_password('secret')
 
+    def test_new_password_policy_rejects_common_and_single_category_passwords(self):
+        for password in ('12345678','abcdefgh','aaaaaaaa!'):
+            response=self.client.post('/api/auth/register',json={'username':'weak-user','password':password})
+            self.assertEqual(response.status_code,400)
+            self.assertIn('密码',response.json()['error'])
+        self.assertEqual(
+            self.client.post('/api/auth/register',json={'username':'strong-user','password':'gentle-island-2026'}).status_code,
+            200,
+        )
+
+    def test_unknown_login_still_runs_password_hash_check(self):
+        with patch.object(server,'_check_password',return_value=False) as password_check:
+            result=self.client.post('/api/auth/login',json={'username':'missing-user','password':'not-the-password'})
+        self.assertEqual(result.status_code,401)
+        password_check.assert_called_once_with('not-the-password',server._DUMMY_PASSWORD_HASH)
+
+    def test_reading_auth_options_does_not_consume_login_budget(self):
+        with patch.dict('os.environ',{'PUBLIC_DEPLOYMENT':'true'}):
+            for _ in range(25):
+                self.assertEqual(self.client.get('/api/auth/options').status_code,200)
+            self.assertEqual(
+                self.client.post('/api/auth/login',json={'username':'missing-user','password':'not-the-password'}).status_code,
+                401,
+            )
+
     def test_public_costly_endpoints_and_upload_size(self):
         with patch.dict('os.environ',{'PUBLIC_DEPLOYMENT':'true'}):
             self.assertEqual(self.client.post('/api/tts',json={'text':'你好'}).status_code,401)

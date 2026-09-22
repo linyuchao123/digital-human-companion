@@ -1,10 +1,10 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('integrated.html','utf8');
-const code=html.slice(html.indexOf('async function passwordRecoveryRequest('),html.indexOf('async function startSocialLogin('));
+const code=html.slice(html.indexOf('function passwordCategoryCount('),html.indexOf('async function startSocialLogin('));
 const elements=new Map();
 function element(id){if(!elements.has(id))elements.set(id,{value:'',textContent:''});return elements.get(id);}
 let requests=0,mode=null;
-const ctx=vm.createContext({document:{getElementById:element},AbortController,setTimeout:()=>1,clearTimeout(){},
+const ctx=vm.createContext({document:{getElementById:element},AbortController,Blob,setTimeout:()=>1,clearTimeout(){},
   switchAuthTab:tab=>mode=tab,fetch:async(url,options)=>{
     requests++;assert(url.endsWith('/confirm'));
     assert(!options.headers['X-Auth-Token'],'Anonymous recovery uses no login credential');

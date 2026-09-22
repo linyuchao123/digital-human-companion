@@ -30,13 +30,20 @@ def install_http_security(app, verify, public):
         path=request.url.path
         costly=path in {"/api/tts", "/api/tts/stream", "/api/agent/chat", "/api/upload_video",
                         "/api/avatar/livetalking/offer", "/api/avatar/livetalking/audio"}
+        auth_mutation=request.method=='POST' and path.startswith('/api/auth/') and (
+            path in {'/api/auth/login','/api/auth/register','/api/auth/exchange'}
+            or path.startswith('/api/auth/password/reset/')
+            or path.endswith('/email/send')
+            or path.endswith('/start')
+        )
         protected=costly or path.startswith('/api/avatar/livetalking/')
         user=verify(request.headers.get('X-Auth-Token',''))
         if protected and public() and user is None:
             return JSONResponse({'error':'请先登录'},status_code=401)
-        if path.startswith('/api/auth/') or costly or path.startswith('/api/profile'):
-            key=(request.client.host if request.client else 'unknown',user,'auth' if '/auth/' in path else 'costly')
-            if not allow_request(key,(20 if public() else 120) if '/auth/' in path else 30):
+        if auth_mutation or costly or path.startswith('/api/profile'):
+            budget_kind='auth:'+path if auth_mutation else 'costly'
+            key=(request.client.host if request.client else 'unknown',user,budget_kind)
+            if not allow_request(key,(20 if public() else 120) if auth_mutation else 30):
                 return JSONResponse({'error':'请求过于频繁，请稍后重试'},status_code=429,headers={'Retry-After':'60'})
         if request.method in {'POST','PATCH','PUT'}:
             maximum=20*1024*1024 if path in {'/api/upload_video','/api/avatar/livetalking/audio'} else 256*1024

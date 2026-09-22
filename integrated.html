@@ -465,6 +465,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
 .auth-code-row{display:grid;grid-template-columns:minmax(0,1fr) 126px;gap:10px}.auth-code-row .auth-field{margin-bottom:13px}.auth-code-send{height:48px;align-self:end;margin-bottom:13px;border:1px solid #cbdaf2;border-radius:13px;background:#eef4ff;color:#416bb2;font-weight:600;cursor:pointer;transition:.2s}.auth-code-send:hover:not(:disabled){background:#e2ecff;border-color:#9fbae7}.auth-code-send:disabled{opacity:.62;cursor:not-allowed}
 .auth-email-help{font-size:11px;color:#8c98ab;margin:-5px 0 13px;line-height:1.5}
 #auth-register-email[hidden]{display:none}.auth-password-wrap{position:relative}.auth-password-wrap input{padding-right:58px}.auth-password-toggle{position:absolute;right:8px;top:7px;height:34px;padding:0 10px;border:0;border-radius:9px;background:transparent;color:#71809a;cursor:pointer;font-size:12px}.auth-password-toggle:hover{background:#edf3fd;color:#3e67ac}
+.auth-password-strength{display:none;align-items:center;gap:8px;margin:-5px 0 13px;color:#8490a6;font-size:11px}.auth-password-strength.show{display:flex}.auth-password-strength-bar{display:flex;gap:3px;width:82px}.auth-password-strength-bar i{height:4px;flex:1;border-radius:4px;background:#dfe5ef}.auth-password-strength[data-level="1"] i:nth-child(-n+1){background:#ef7979}.auth-password-strength[data-level="2"] i:nth-child(-n+2){background:#e7ae54}.auth-password-strength[data-level="3"] i:nth-child(-n+3){background:#5eb98b}
 #auth-submit{height:49px;border-radius:13px;margin-top:5px;background:linear-gradient(135deg,#4f89ed 0%,#6878df 52%,#805fc9 100%);box-shadow:0 10px 24px rgba(91,109,211,.24);font-size:14px;transition:transform .18s,box-shadow .18s,opacity .2s}#auth-submit:hover:not(:disabled){opacity:1;transform:translateY(-1px);box-shadow:0 13px 28px rgba(91,109,211,.3)}
 .auth-footnote{font-size:11px;color:#8d96aa;line-height:1.7;margin-top:16px}.auth-trust{display:flex;align-items:center;gap:6px;color:#8995a9;font-size:11px;margin-top:12px}.auth-trust::before{content:'✓';display:grid;place-items:center;width:17px;height:17px;border-radius:50%;background:#e8f7ef;color:#3c9667;font-weight:700}
 #password-recovery{border-top:1px solid #edf0f6;padding-top:12px}#password-recovery summary{color:#68758b;font-weight:500}#auth-err{text-align:left;border-radius:10px;min-height:0;margin-top:10px}#auth-err:not(:empty){padding:9px 11px;background:#fff1f3;border:1px solid #ffd9df}
@@ -571,9 +572,10 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
     </div>
     <div class="auth-field">
       <label for="auth-password">密码</label><div class="auth-password-wrap">
-      <input type="password" id="auth-password" aria-label="密码" autocomplete="current-password" placeholder="至少 8 位" maxlength="64" onkeydown="if(event.key==='Enter')doAuth()"/>
+      <input type="password" id="auth-password" aria-label="密码" autocomplete="current-password" placeholder="至少 8 位" maxlength="64" oninput="updatePasswordStrength()" onkeydown="if(event.key==='Enter')doAuth()"/>
       <button type="button" class="auth-password-toggle" onclick="toggleAuthPasswords(this)">显示</button></div>
     </div>
+    <div id="auth-password-strength" class="auth-password-strength" data-level="0"><span class="auth-password-strength-bar"><i></i><i></i><i></i></span><span id="auth-password-strength-text">建议混合字母、数字或符号</span></div>
     <div class="auth-field" id="auth-confirm-field" hidden><label for="auth-confirm">确认密码</label><input type="password" id="auth-confirm" autocomplete="new-password" maxlength="64" placeholder="再次输入密码" onkeydown="if(event.key==='Enter')doAuth()"/></div>
     <button id="auth-submit" onclick="doAuth()">进 入</button>
     <details id="password-recovery" style="margin-top:12px;font-size:13px;color:var(--text2)">
@@ -3010,6 +3012,26 @@ function toggleAuthPasswords(button){
   for(const id of ['auth-password','auth-confirm'])document.getElementById(id).type=visible?'password':'text';
   button.textContent=visible?'显示':'隐藏';
 }
+function passwordCategoryCount(password){
+  const characters=Array.from(password),hasLetter=characters.some(character=>character.toLowerCase()!==character.toUpperCase()||/[\u3400-\u9fff]/.test(character));
+  return [hasLetter,/\d/.test(password),characters.some(character=>!character.trim()||(!/[0-9]/.test(character)&&character.toLowerCase()===character.toUpperCase()&&!/[\u3400-\u9fff]/.test(character)))].filter(Boolean).length;
+}
+function newPasswordError(password){
+  if(password.length<8||password.length>64)return '密码须为 8-64 位';
+  if(new Blob([password]).size>72)return '密码 UTF-8 长度不能超过 72 字节';
+  const lowered=password.toLocaleLowerCase(),common=['12345678','123456789','1234567890','password','password1','qwerty123','qwertyui','11111111','00000000','abcdefgh'];
+  if(common.includes(lowered)||new Set(Array.from(lowered)).size<4)return '密码过于简单，请更换后重试';
+  const categories=passwordCategoryCount(password);
+  return categories<2?'密码需包含字母、数字或符号中的至少两类':'';
+}
+function updatePasswordStrength(){
+  const meter=document.getElementById('auth-password-strength'),text=document.getElementById('auth-password-strength-text'),password=document.getElementById('auth-password').value;
+  meter.classList.toggle('show',document.getElementById('auth-submit').dataset.mode==='register'&&password.length>0);
+  if(!password){meter.dataset.level='0';return;}
+  const error=newPasswordError(password),categories=passwordCategoryCount(password);
+  const level=error?1:(password.length>=12&&categories===3?3:2);meter.dataset.level=String(level);
+  text.textContent=error||(level===3?'密码强度：较强':'密码强度：可用');
+}
 async function sendRegistrationCode(button){
   const email=document.getElementById('auth-email').value.trim(),status=document.getElementById('auth-err');
   if(!email||!email.includes('@')){status.textContent='请先填写有效邮箱地址';return;}
@@ -3046,8 +3068,9 @@ function sendPasswordReset(button){
 function confirmPasswordReset(button){
   const email=document.getElementById('recovery-email').value.trim(),code=document.getElementById('recovery-code').value.trim(),
     new_password=document.getElementById('recovery-password').value;
-  if(!/^[0-9]{6}$/.test(code)||new_password.length<8||new_password!==document.getElementById('recovery-confirm').value){
-    document.getElementById('recovery-status').textContent='请填写六位验证码，密码至少8位且两次输入一致';return;
+  const passwordError=newPasswordError(new_password);
+  if(!/^[0-9]{6}$/.test(code)||passwordError||new_password!==document.getElementById('recovery-confirm').value){
+    document.getElementById('recovery-status').textContent=!/^[0-9]{6}$/.test(code)?'请填写六位验证码':(passwordError||'两次输入的密码不一致');return;
   }
   return passwordRecoveryRequest('confirm',{email,code,new_password},button);
 }
@@ -3130,7 +3153,8 @@ async function saveProfile(button){
 }
 async function changeProfilePassword(button){
   const password=document.getElementById('profile-new-password').value,status=document.getElementById('profile-status');
-  if(password.length<8||password!==document.getElementById('profile-confirm-password').value){status.textContent='新密码至少8位，两次输入须一致';return;}
+  const passwordError=newPasswordError(password);
+  if(passwordError||password!==document.getElementById('profile-confirm-password').value){status.textContent=passwordError||'两次输入的密码不一致';return;}
   button.disabled=true;
   try{
     await profileRequest('/api/profile/password','POST',{current_password:document.getElementById('profile-current-password').value,new_password:password});
@@ -3191,6 +3215,7 @@ function switchAuthTab(tab){
   document.getElementById('auth-submit').textContent=tab==='login'?'进 入':'注 册';
   document.getElementById('auth-err').textContent='';
   document.getElementById('auth-submit').dataset.mode=tab;
+  updatePasswordStrength();
 }
 document.getElementById('auth-submit').dataset.mode='login';
 
@@ -3203,8 +3228,9 @@ async function doAuth(){
   const emailCode=document.getElementById('auth-email-code').value.trim();
   const errEl=document.getElementById('auth-err');
   if(!username||!password){errEl.textContent='请填写用户名和密码';return;}
-  if(mode==='register'&&(password.length<8||password!==document.getElementById('auth-confirm').value)){
-    errEl.textContent='密码至少8位，且两次输入须一致';return;
+  const passwordError=mode==='register'?newPasswordError(password):'';
+  if(mode==='register'&&(passwordError||password!==document.getElementById('auth-confirm').value)){
+    errEl.textContent=passwordError||'两次输入的密码不一致';return;
   }
   if(mode==='register'&&_authOptions.email_registration&&(!email||!/^[0-9]{6}$/.test(emailCode))){
     errEl.textContent='请填写邮箱并输入收到的六位验证码';return;
@@ -3214,14 +3240,18 @@ async function doAuth(){
   try{
     const url=mode==='login'?'/api/auth/login':'/api/auth/register';
     const payload={username,password};if(mode==='register'&&email){payload.email=email;payload.email_code=emailCode;}
-    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(location.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(location.hostname))throw new Error('为保护账号安全，请使用 HTTPS 域名登录');
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+    let res;
+    try{res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});}
+    finally{clearTimeout(timer);}
     const data=await res.json();
     if(!res.ok){errEl.textContent=data.error||'操作失败';return;}
     setCookie('auth_token',data.token,7);
     setCookie('auth_user',data.username,7);
     for(const id of ['auth-password','auth-confirm','auth-email-code'])document.getElementById(id).value='';
     await _onLoginSuccess(data.token,data.username,false);
-  }catch(e){errEl.textContent='网络错误，请重试';}
+  }catch(e){errEl.textContent=e.name==='AbortError'?'登录请求超时，请检查网络后重试':(e.message||'网络错误，请重试');}
   finally{btn.disabled=false;btn.textContent=mode==='login'?'进 入':'注 册';}
 }
 

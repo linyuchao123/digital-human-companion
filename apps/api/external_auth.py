@@ -73,6 +73,31 @@ def normalize_email(value):
     return value
 
 
+_COMMON_PASSWORDS = {
+    '12345678', '123456789', '1234567890', 'password', 'password1',
+    'qwerty123', 'qwertyui', '11111111', '00000000', 'abcdefgh',
+}
+
+
+def password_validation_error(value):
+    """Return a user-facing error for new passwords, without logging the password."""
+    if not isinstance(value, str) or not 8 <= len(value) <= 64:
+        return '密码须为8-64位'
+    if len(value.encode()) > 72:
+        return '密码UTF-8长度不能超过72字节'
+    lowered = value.casefold()
+    if lowered in _COMMON_PASSWORDS or len(set(lowered)) < 4:
+        return '密码过于简单，请更换后重试'
+    categories = sum((
+        any(character.isalpha() for character in value),
+        any(character.isdigit() for character in value),
+        any(not character.isalnum() for character in value),
+    ))
+    if categories < 2:
+        return '密码需包含字母、数字或符号中的至少两类'
+    return None
+
+
 def email_digest(user_id,email,salt,code):
     return hmac.new(os.environ['EMAIL_VERIFICATION_SECRET'].encode(),f'{user_id}:{email}:{salt}:{code}'.encode(),hashlib.sha256).hexdigest()
 
@@ -228,7 +253,8 @@ def install_external_auth(app,get_db,verify,hash_password,check_password):
         if not email_ready():return error('邮件服务尚未配置',503)
         try:address=normalize_email(payload.email)
         except ValueError:return error('邮箱格式不正确')
-        if len(payload.new_password.encode())>72:return error('密码UTF-8长度不超过72字节')
+        password_error=password_validation_error(payload.new_password)
+        if password_error:return error(password_error)
         ip=request.client.host if request.client else 'unknown'
         if not allow_request(('reset-confirm',ip),20,900):return error('验证过于频繁，请稍后再试',429)
         with get_db() as conn:
