@@ -679,9 +679,17 @@ DEEPSEEK_BASE_URL = os.environ.get(
     "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
 ).rstrip("/")
 DEEPSEEK_MODEL = (
-    os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
-    or "deepseek-v4-flash"
+    os.environ.get("DEEPSEEK_MODEL", "deepseek-flash").strip()
+    or "deepseek-flash"
 )
+DEEPSEEK_THINKING = os.environ.get("DEEPSEEK_THINKING", "enabled").strip().lower()
+if DEEPSEEK_THINKING not in {"enabled", "disabled"}:
+    DEEPSEEK_THINKING = "enabled"
+DEEPSEEK_REASONING_EFFORT = os.environ.get(
+    "DEEPSEEK_REASONING_EFFORT", "high"
+).strip().lower()
+if DEEPSEEK_REASONING_EFFORT not in {"low", "high", "max"}:
+    DEEPSEEK_REASONING_EFFORT = "high"
 QWEN_BASE_URL = os.environ.get(
     "QWEN_BASE_URL",
     os.environ.get(
@@ -962,7 +970,14 @@ def _get_agent_workflow():
             fallback_base_url=QWEN_BASE_URL,
             fallback_model=QWEN_MODEL,
             fallback_name="qwen",
-            extra_body={"thinking": {"type": "disabled"}},
+            extra_body={
+                "thinking": {"type": DEEPSEEK_THINKING},
+                **(
+                    {"reasoning_effort": DEEPSEEK_REASONING_EFFORT}
+                    if DEEPSEEK_THINKING == "enabled"
+                    else {}
+                ),
+            },
         )
         knowledge_retriever, _agent_knowledge_provider_name = (
             _get_rag_search_retriever()

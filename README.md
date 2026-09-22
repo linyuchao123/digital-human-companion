@@ -215,6 +215,8 @@ curl --fail http://127.0.0.1:8800/api/health/ready
 | --- | --- |
 | `DEEPSEEK_API_KEY` | 主对话模型 |
 | `DEEPSEEK_MODEL` | DeepSeek 模型名 |
+| `DEEPSEEK_THINKING` | DeepSeek 思考模式：`enabled` 或 `disabled` |
+| `DEEPSEEK_REASONING_EFFORT` | 思考强度：`low`、`high` 或 `max` |
 | `QWEN_API_KEY` | 千问备用对话模型 |
 | `DASHSCOPE_API_KEY` | 千问、ASR、TTS 可复用的 DashScope Key |
 | `TTS_API_KEY` | 可选的独立 TTS Key |

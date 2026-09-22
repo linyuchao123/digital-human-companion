@@ -108,4 +108,4 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
                                         dialogue_mode=mode, emotion_style=style)
             return result["final_response"]
         self.assertEqual(await asyncio.gather(run("daily","confidant"), run("emotional","gentle")),
-                         ["日常250", "情感900"])
+                         ["日常8192", "情感8192"])

@@ -49,9 +49,9 @@ class OpenAICompatibleCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
             await provider.generate([ChatMessage(role="user", content="最近焦虑")])
             reset_generation_profile(emotional)
         self.assertIn("日常对话模式", payloads[0]["messages"][0]["content"])
-        self.assertEqual(payloads[0]["max_tokens"], 250)
+        self.assertEqual(payloads[0]["max_tokens"], 8192)
         self.assertIn("温柔亲昵", payloads[1]["messages"][0]["content"])
-        self.assertEqual(payloads[1]["max_tokens"], 900)
+        self.assertEqual(payloads[1]["max_tokens"], 8192)
         self.assertEqual(provider.config.max_tokens, 250)
 
     async def test_provider_sends_openai_compatible_request(self):
@@ -102,6 +102,35 @@ class OpenAICompatibleCompanionProviderTests(unittest.IsolatedAsyncioTestCase):
             await provider.generate([ChatMessage(role="user", content="你好")])
 
         self.assertEqual(captured["payload"]["thinking"], {"type": "disabled"})
+
+    async def test_thinking_chat_removes_temperature_but_routing_stays_fast(self):
+        payloads = []
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            payloads.append(json.loads(request.content))
+            content = '{"tool":"chat"}' if "工具路由分类器" in payloads[-1]["messages"][0]["content"] else "我认真想过了。"
+            return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handle_request),
+            base_url="https://api.deepseek.com",
+        ) as client:
+            provider = OpenAICompatibleCompanionProvider(
+                OpenAICompatibleConfig(
+                    api_key="test-key",
+                    model="deepseek-flash",
+                    extra_body={"thinking": {"type": "enabled"}, "reasoning_effort": "high"},
+                ),
+                client=client,
+            )
+            await provider.generate([ChatMessage(role="user", content="我最近有点累")])
+            await provider.select_tool("请问今天有什么新闻")
+
+        self.assertNotIn("temperature", payloads[0])
+        self.assertEqual(payloads[0]["reasoning_effort"], "high")
+        self.assertEqual(payloads[1]["thinking"], {"type": "disabled"})
+        self.assertEqual(payloads[1]["temperature"], 0)
+        self.assertNotIn("reasoning_effort", payloads[1])
 
     async def test_provider_wraps_invalid_cloud_response(self):
         async with httpx.AsyncClient(

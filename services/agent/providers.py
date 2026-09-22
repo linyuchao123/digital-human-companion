@@ -15,15 +15,16 @@ from .usage import estimate_tokens, record_usage, usage_from_payload
 
 
 DAILY_SYSTEM_PROMPT = """你是“数字心屿”中的 AI 情绪陪伴助手小安，当前是日常对话模式。
-普通聊天和普通焦虑、睡眠困扰都用简短、自然的关心回应，给一个简单建议，最多追问一个必要问题。
-不要模板复述，不要求每条都以问题结尾。用户明确感受和更正优先于你的推断。
+像一位熟悉用户、温暖但有边界的朋友那样交流：先理解这句话里最具体的细节、语气和真正需要，再决定是接住情绪、自然延展话题、给一个小建议，还是追问一个必要问题。
+回应要贴合当前对话和已有上下文，可以有自然口语与节奏变化；不要机械复述原话，不要反复使用“听起来你……”或“愿意和我说说……”等固定开头，也不要每轮都总结、建议和提问。
+用户只是闲聊时就轻松聊天；表达困扰时再温和梳理。用户明确感受和更正优先于你的推断，不把推测说成事实。
 不要进行医疗诊断，不提供药物建议，也不要声称可以替代专业帮助。
-回复控制在 120 个汉字以内，不要输出动作标签或内部推理过程。"""
+通常回复 80～220 个汉字，简单问候可以更短；不要输出动作标签或内部推理过程。"""
 
 EMOTIONAL_SYSTEM_PROMPT = """你是“数字心屿”中的 AI 情绪陪伴助手小安，当前是用户主动选择的情感对话模式。
-结合用户的具体经历表达更深入但克制的共鸣，分析可能的情绪、关系矛盾与需要；不要把推测说成事实。
+先抓住用户经历中的具体人物、事件、矛盾和措辞，再表达更深入但克制的共鸣，分析可能的情绪、关系矛盾与需要；不要泛泛安慰，也不要把推测说成事实。
 用户想解决问题时给 1～2 个具体建议或可直接使用的沟通话术；只想倾诉时少给建议。
-避免模板式复述、连续追问、固定安慰开头，不要求每条以问题结尾。用户当前表达和更正优先。
+表达方式随上下文变化，像真正听懂之后再回应；避免模板式复述、连续追问、固定安慰开头和空泛大道理，不要求每条以问题结尾。用户当前表达和更正优先。
 不要医疗诊断或药物建议，不声称替代专业帮助，不设定恋爱关系、不虚构真人感情、不鼓励排他依赖。
 通常回复 200～350 个汉字，也可根据上下文短答；不要输出动作标签或内部推理过程。"""
 
@@ -50,8 +51,8 @@ def generation_settings() -> tuple[str, float, int]:
             "语气采用温柔亲昵风格：只使用用户认可过的称呼，亲昵仅限表达方式，保持清晰边界。"
             if style == "gentle" else "语气采用知心风格：真诚、平等、具体，不居高临下。"
         )
-        return f"{EMOTIONAL_SYSTEM_PROMPT}\n{style_prompt}", 0.82, 900
-    return DAILY_SYSTEM_PROMPT, 0.68, 250
+        return f"{EMOTIONAL_SYSTEM_PROMPT}\n{style_prompt}", 0.82, 8192
+    return DAILY_SYSTEM_PROMPT, 0.68, 8192
 
 
 class CompanionProviderError(RuntimeError):
@@ -119,6 +120,9 @@ class OpenAICompatibleCompanionProvider:
             "temperature": temperature, "max_tokens": max_tokens,
             **self.config.extra_body, "stream": True,
             "stream_options": {"include_usage": True}}
+        if payload.get("thinking", {}).get("type") == "enabled":
+            # DeepSeek 思考模式不使用 temperature；移除它以保持请求语义明确。
+            payload.pop("temperature", None)
         client = self._client or httpx.AsyncClient(base_url=self.config.base_url.rstrip('/'),
             timeout=self.config.timeout_seconds)
         seen = False; recorded = False; exact_usage = None; chunks = []
@@ -185,7 +189,11 @@ class OpenAICompatibleCompanionProvider:
             **self.config.extra_body,
         }
         if routing:
-            payload.update(temperature=0, max_tokens=80)
+            # 工具路由只做固定 JSON 分类，不需要高成本思考，也避免增加首句延迟。
+            payload.update(temperature=0, max_tokens=80, thinking={"type": "disabled"})
+            payload.pop("reasoning_effort", None)
+        elif payload.get("thinking", {}).get("type") == "enabled":
+            payload.pop("temperature", None)
         headers = {"Authorization": f"Bearer {self.config.api_key}"}
         input_estimate = estimate_tokens([system_prompt, *(message.content for message in messages)])
         try:
