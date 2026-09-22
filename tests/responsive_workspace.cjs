@@ -41,11 +41,21 @@ assert(!html.includes('id="auth-guest"'),'登录页不得再提供游客体验�
 assert(html.includes('id="mobile-sidebar-close"'),'移动历史抽屉需要独立关闭按钮，不能覆盖新建按钮');
 assert(html.includes("if(isMobileLayout()&&_sidebarOpen)toggleSidebar();"),'选择历史与新建对话后必须收起手机抽屉');
 assert(html.includes('.topbar-secondary{display:block!important'),'手机端必须保留设置与工具入口');
+const settingsMenu=html.match(/<details class="topbar-secondary">[\s\S]*?<\/details>/)?.[0]||'';
+assert(!settingsMenu.includes('使用指南与反馈'),'使用指南不能继续挤在设置菜单中');
+assert(!settingsMenu.includes('运营后台'),'运营后台不能继续挤在设置菜单中');
+assert(html.includes('id="guide-btn"')&&html.includes('class="tb-chip topbar-primary"'),'顶栏必须提供醒目的独立使用指南入口');
+assert(html.includes('id="developer-btn" style="display:none"'),'运营后台必须是默认隐藏的独立顶栏入口');
+assert(html.includes("openFirstConnectionGuide(generation)"),'第一次连接数字人后必须自动打开使用指南');
+assert(html.includes("localStorage.setItem(storageKey,'1')"),'首次连接引导必须只对当前账号展示一次');
 assert(html.includes('#camera-video{width:130px;aspect-ratio:1;object-fit:cover'),'手机摄像头预览必须固定为右上角小方窗');
 assert(html.includes('id="guide-dialog"')&&html.includes('📘 使用指南与反馈'),'桌面与手机必须共享使用指南入口');
 assert(html.includes('https://github.com/linyuchao123/digital-human-companion'),'使用指南必须包含项目仓库');
 assert(html.includes('https://x.com/xiaolinyx123'),'使用指南必须包含作者 X 链接');
 assert(html.includes("fetch('/api/feedback'"),'反馈信箱必须提交到服务端');
+assert(html.includes('id="hold-to-talk"')&&html.includes('按住说话，松开发送'),'手机输入栏必须提供微信式按住说话入口');
+assert(html.includes("holdToTalkButton.addEventListener('pointerdown',startHoldToTalk)"),'按住动作必须开始录音');
+assert(html.includes("holdToTalkButton.addEventListener('pointerup',event=>finishHoldToTalk(event,true))"),'松手必须结束并发送录音');
 assert(html.includes('if(sessionId!==_currentDbSession||epoch!==_sessionSwitchEpoch)return;')||
        html.includes("if(sessionId!==_currentDbSession)return;\n    if(epoch!==_sessionSwitchEpoch)return;"));
 assert(html.includes('async function loadOlderMessages()'));

@@ -59,6 +59,9 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   font-size:11px;font-family:inherit;transition:all .2s;display:inline-flex;align-items:center;gap:4px;box-shadow:var(--shadow-sm)}
 .tb-chip:hover{background:rgba(255,255,255,.7);color:var(--text)}
 .tb-chip.on{background:rgba(52,200,122,.15);border-color:rgba(52,200,122,.5);color:#1a9955;font-weight:600}
+.topbar-primary{font-weight:650;background:rgba(255,255,255,.62);border-color:rgba(79,142,247,.28);color:#365f9d}
+#guide-btn{box-shadow:0 3px 14px rgba(79,142,247,.14)}
+#developer-btn{background:linear-gradient(135deg,rgba(79,142,247,.16),rgba(124,92,191,.17));border-color:rgba(100,105,215,.34);color:#524fa4}
 .topbar-secondary{position:relative}.topbar-secondary>summary{list-style:none}.topbar-secondary>summary::-webkit-details-marker{display:none}.topbar-menu{position:absolute;right:0;top:36px;width:250px;padding:12px;display:flex;flex-direction:column;gap:8px;background:rgba(244,250,255,.97);border:1px solid rgba(255,255,255,.9);border-radius:16px;box-shadow:0 16px 44px rgba(35,65,115,.22);z-index:260;backdrop-filter:blur(18px)}.topbar-menu>*{width:100%;justify-content:flex-start}
 .topbar-voice-field{display:flex;flex-direction:column;gap:6px;padding:2px 2px 9px;border-bottom:1px solid rgba(79,142,247,.14);font-size:10px;color:var(--text2)}
 .topbar-voice-field .tts-voice-select{width:100%;max-width:none;background:rgba(255,255,255,.78);border-color:rgba(79,142,247,.22)}
@@ -161,6 +164,8 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   font-size:16px;display:flex;align-items:center;justify-content:center;
   transition:all .2s;box-shadow:0 4px 16px rgba(79,142,247,.4);flex-shrink:0}
 #send-btn:hover{transform:scale(1.08)}
+#hold-to-talk{display:none;flex:1;height:42px;border-radius:19px;border:1px solid rgba(160,190,235,.72);background:rgba(255,255,255,.78);color:var(--text);font-family:inherit;font-size:14px;font-weight:600;letter-spacing:.04em;align-items:center;justify-content:center;box-shadow:inset 0 1px 4px rgba(100,150,220,.08);touch-action:none;-webkit-user-select:none;user-select:none}
+#hold-to-talk.recording{color:#315f9f;background:rgba(204,226,255,.94);border-color:rgba(79,142,247,.55);box-shadow:inset 0 2px 7px rgba(79,142,247,.14)}
 
 /* ══ 右侧聊天面板 ══ */
 #chat-panel{position:fixed;top:56px;right:var(--panel-gap);bottom:72px;z-index:150;width:var(--panel-width);
@@ -501,11 +506,12 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   html,body{width:100%;height:100%;height:100dvh;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:manipulation}
   #particles{display:none}
   #topbar{height:var(--mobile-top);padding:env(safe-area-inset-top) 10px 0;gap:7px;background:rgba(238,248,255,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-  .logo{max-width:24vw;font-size:12px;text-overflow:ellipsis;overflow:hidden}
-  #topbar>.spacer{display:none}#status-capsule{margin-left:0;max-width:72px;padding:4px 7px}#status-txt{max-width:48px}
-  #tts-btn,#camera-btn,#disconnect-btn{width:36px;height:36px;padding:0;justify-content:center;font-size:0;border-radius:18px;flex:none}
+  .logo{max-width:none;font-size:12px;text-overflow:ellipsis;overflow:hidden;flex:1 1 auto;min-width:36px}
+  #topbar>.spacer{display:none}#status-capsule{margin-left:0;max-width:64px;padding:4px 6px;flex:none}#status-txt{max-width:41px}
+  #tts-btn,#camera-btn,#disconnect-btn,#guide-btn,#developer-btn{width:34px;height:34px;padding:0;justify-content:center;font-size:0;border-radius:17px;flex:none}
   #tts-btn::before{content:'🔊';font-size:16px}#camera-btn::before{content:'👁';font-size:16px}#disconnect-btn::before{content:'⏻';font-size:16px}
-  #drive-info{display:none!important}.topbar-secondary{display:block!important;position:static;flex:none}.topbar-secondary>summary{width:36px;height:36px;padding:0;justify-content:center;font-size:0;border-radius:18px}.topbar-secondary>summary::before{content:'⚙';font-size:16px}.topbar-menu{position:fixed;top:calc(var(--mobile-top) + 7px);right:8px;width:min(290px,calc(100vw - 16px));max-height:calc(100vh - var(--mobile-top) - 18px);max-height:calc(100dvh - var(--mobile-top) - 18px);overflow:auto;z-index:265}.topbar-menu #developer-btn{width:100%;justify-content:flex-start}
+  #guide-btn::before{content:'📘';font-size:16px}#developer-btn::before{content:'📊';font-size:16px}
+  #drive-info{display:none!important}.topbar-secondary{display:block!important;position:static;flex:none}.topbar-secondary>summary{width:34px;height:34px;padding:0;justify-content:center;font-size:0;border-radius:17px}.topbar-secondary>summary::before{content:'⚙';font-size:16px}.topbar-menu{position:fixed;top:calc(var(--mobile-top) + 7px);right:8px;width:min(290px,calc(100vw - 16px));max-height:calc(100vh - var(--mobile-top) - 18px);max-height:calc(100dvh - var(--mobile-top) - 18px);overflow:auto;z-index:265}
   #scene{inset:var(--mobile-top) 0 0}
   body.app-connected #live2d-wrap{top:0;bottom:calc(var(--mobile-chat) + var(--mobile-input) - 8px)}
   #wav2lip-wrap{inset:0 0 calc(var(--mobile-chat) + var(--mobile-input) - 8px)}
@@ -517,7 +523,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   .cp-controls{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}.cp-controls::-webkit-scrollbar{display:none}.cp-controls select,.cp-controls button{height:30px;min-width:max-content;flex:none;padding:0 10px}.cp-controls select{width:auto;max-width:120px}
   #welcome-card{display:none}#chat-area{padding:8px 10px 12px;gap:7px}.bubble{max-width:92%;font-size:13px;padding:8px 11px}.bubble-meta{font-size:9px}
   #bottom-bar{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));transform:none;width:auto;min-width:0;max-width:none;height:56px;padding:6px 8px;gap:7px;border-radius:22px;background:rgba(247,251,255,.96);box-shadow:0 8px 28px rgba(47,75,122,.18)}
-  #text-input{min-width:0;height:42px;font-size:16px;padding:0 13px}.ctrl-btn,#send-btn{width:42px;height:42px}
+  #text-input{min-width:0;height:42px;font-size:16px;padding:0 13px}.ctrl-btn,#send-btn{width:42px;height:42px}#bottom-bar.voice-mode #text-input,#bottom-bar.voice-mode #send-btn{display:none}#bottom-bar.voice-mode #hold-to-talk{display:flex}
   #speaking-indicator,#thinking-bar{bottom:calc(var(--mobile-chat) + var(--mobile-input) + 6px);max-width:calc(100vw - 32px)}
   #sidebar{left:8px;right:8px;top:calc(var(--mobile-top) + 8px);bottom:calc(8px + env(safe-area-inset-bottom));width:auto;max-width:none;min-width:0;height:auto;z-index:242;border-radius:22px;background:rgba(242,249,255,.98);transform:translateX(calc(-100% - 18px));box-shadow:0 20px 55px rgba(28,54,96,.25)}
   #sidebar.open{transform:translateX(0)}#sidebar.open~#sidebar-toggle{display:none}#mobile-sidebar-close{display:inline-block}
@@ -528,6 +534,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   #memory-panel,#activity-history-panel{top:calc(var(--mobile-top) + 8px);left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;max-height:none;transform:none;overflow:auto}
   #profile-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);padding:20px 16px}.profile-avatar-row{align-items:flex-start;flex-wrap:wrap}#guide-dialog{width:calc(100vw - 16px);max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);border-radius:22px}.guide-shell{max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);padding:20px 14px}.guide-heading h2{font-size:21px}.guide-grid{grid-template-columns:1fr}.feedback-row{grid-template-columns:1fr}.creator-avatar{width:54px;height:54px}
 }
+@media(max-width:380px){#topbar{padding-left:7px;padding-right:7px;gap:5px}#status-capsule{max-width:56px}#status-txt{max-width:34px}#tts-btn,#camera-btn,#disconnect-btn,#guide-btn,#developer-btn,.topbar-secondary>summary{width:32px;height:32px;border-radius:16px}}
 @media(max-width:900px) and (max-height:500px) and (orientation:landscape){
   :root{--mobile-chat:calc(100vh - var(--mobile-top) - var(--mobile-input) - 12px);--mobile-chat:calc(100dvh - var(--mobile-top) - var(--mobile-input) - 12px)}
   body.app-connected #live2d-wrap{right:48vw;bottom:0}#wav2lip-wrap{right:48vw;bottom:0}
@@ -635,7 +642,7 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
     <header class="guide-heading"><div><h2 id="guide-title">数字心屿使用指南</h2><p>从第一次连接，到一段真正连续的陪伴。</p></div><button class="guide-close" onclick="document.getElementById('guide-dialog').close()" aria-label="关闭使用指南">×</button></header>
     <section class="guide-intro"><strong>欢迎来到数字心屿。</strong><br>这是一个由 AI、语音与数字人表情驱动的日常情绪陪伴空间。你可以打字，也可以用麦克风说话；小安会结合当前对话模式回应，并用语音与动作陪你继续聊下去。它适合日常交流和情绪梳理，但不能替代医疗诊断或专业心理治疗。</section>
     <div class="guide-grid">
-      <section class="guide-card"><h3>💬 如何开始对话</h3><ol><li>点击“连接数字人”，等待模型与对话通道就绪。</li><li>在底部输入框发送文字，或点击麦克风进行语音输入。</li><li>通过左侧历史按钮切换旧对话；点击“＋”建立一段新的对话。</li><li>需要重新听一遍时，可使用“朗读”或设置菜单中的朗读工具。</li></ol></section>
+      <section class="guide-card"><h3>💬 如何开始对话</h3><ol><li>点击“连接数字人”，第一次连接会先打开本指南；关闭后即可开始聊天。</li><li>电脑端可输入文字或点击麦克风；手机端点击麦克风切换语音模式，按住说话、松开即发送。</li><li>通过左侧历史按钮切换旧对话；点击“＋”建立一段新的对话。</li><li>需要重新听一遍时，可使用“朗读”或设置菜单中的朗读工具。</li></ol></section>
       <section class="guide-card"><h3>🌿 两种对话模式</h3><ul><li><strong>日常对话：</strong>适合问候、陪聊、学习生活分享与轻松交流。</li><li><strong>情感对话：</strong>适合倾诉、情绪梳理和被认真倾听；还可选择“知心”或“温柔亲昵”的回应风格。</li></ul><p>请放心表达真实感受。若你正处于紧急危险或严重心理危机，请优先联系身边可信任的人和当地专业援助服务。</p></section>
       <section class="guide-card"><h3>✨ 你可以使用的功能</h3><ul><li>切换数字人形象与播报音色</li><li>管理长期记忆，并随时关闭授权</li><li>查看活动记录与历史会话</li><li>使用心理学知识库辅助回答</li><li>开启本机摄像头感知与语音朗读</li></ul></section>
       <section class="guide-card"><h3>🔐 隐私与使用提示</h3><ul><li>摄像头画面仅在当前设备本地处理。</li><li>表情识别只是辅助观察，不等于真实情绪判断。</li><li>运营统计不会向管理员展示密码、验证码或 API Key。</li><li>长期记忆默认关闭，是否开启由你决定。</li></ul></section>
@@ -668,9 +675,9 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
   <button class="tb-chip" onclick="toggleActivityHistory()">📋 活动记录</button>
   <button class="tb-chip" onclick="window.open('/rag','_blank')">📚 心理学知识库</button>
   <button class="tb-chip" onclick="switchTab('read')">📖 朗读工具</button>
-  <button class="tb-chip" onclick="openGuide()">📘 使用指南与反馈</button>
-  <button class="tb-chip" id="developer-btn" style="display:none" onclick="window.location.href='/admin'">📊 运营后台</button>
 </div></details>
+<button class="tb-chip topbar-primary" id="guide-btn" onclick="openGuide()" title="使用指南与反馈">📘 使用指南与反馈</button>
+<button class="tb-chip topbar-primary" id="developer-btn" style="display:none" onclick="window.location.href='/admin'" title="运营后台">📊 运营后台</button>
 </div>
 
 <!-- ══ Live2D 场景 ══ -->
@@ -802,9 +809,10 @@ body.app-connected #sidebar-toggle:hover{opacity:1}
 
 <!-- ══ 底部控制栏 ══ -->
 <div id="bottom-bar">
-  <button class="ctrl-btn" id="mic-btn" onclick="toggleMic()" title="语音输入">🎤</button>
+  <button class="ctrl-btn" id="mic-btn" onclick="handleMicButton()" title="切换到语音输入" aria-label="切换到语音输入">🎤</button>
   <input type="text" id="text-input" placeholder="和小安说点什么..." aria-describedby="text-send-feedback"
     onkeydown="if(event.key==='Enter'){event.preventDefault();sendText()}"/>
+  <button type="button" id="hold-to-talk" aria-label="按住说话，松开发送">按住说话</button>
   <button id="send-btn" onclick="sendText()" title="发送">➤</button>
   <div id="text-send-feedback" role="status" hidden></div>
 </div>
@@ -930,6 +938,31 @@ function openGuide(){
   document.querySelectorAll('.topbar-secondary[open]').forEach(item=>item.removeAttribute('open'));
   const dialog=document.getElementById('guide-dialog');
   if(!dialog.open)dialog.showModal();
+}
+
+let _firstConnectionGuideShown='';
+function firstConnectionGuideKey(){
+  const identity=_profile?.username||_currentUser||'current-user';
+  return `digital-xinyu:first-connection-guide:v1:${identity}`;
+}
+function openFirstConnectionGuide(generation){
+  const storageKey=firstConnectionGuideKey();
+  if(_firstConnectionGuideShown===storageKey)return false;
+  let seen=false;
+  try{seen=localStorage.getItem(storageKey)==='1';}catch(error){}
+  if(seen)return false;
+  _firstConnectionGuideShown=storageKey;
+  try{localStorage.setItem(storageKey,'1');}catch(error){}
+  openGuide();
+  const dialog=document.getElementById('guide-dialog');
+  dialog.addEventListener('close',()=>{
+    if(generation===_connectionGeneration&&connected&&ttsEnabled){
+      setTimeout(()=>{
+        if(generation===_connectionGeneration&&connected&&ttsEnabled)speakText('唔，你来啦！我是小安，很高兴见到你。');
+      },260);
+    }
+  },{once:true});
+  return true;
 }
 
 async function submitUserFeedback(button){
@@ -1325,6 +1358,7 @@ function stopLiveTalking(interrupt=true){
 let _connectionGeneration=0;
 async function connectAll(){
   const generation=++_connectionGeneration;
+  let welcomeAfterGuide=false;
   const btn=document.getElementById('connect-btn');
   const st=document.getElementById('cs-status');
   btn.classList.add('loading');
@@ -1363,11 +1397,12 @@ async function connectAll(){
       resizeLive2D();
       // 桌面端保留历史栏快捷展开；手机端由用户按需打开独立抽屉。
       if(_authToken&&!isMobileLayout()&&!_sidebarOpen) toggleSidebar();
+      welcomeAfterGuide=openFirstConnectionGuide(generation);
     },900);
 
     // 睁眼后才招呼，避免睡着的表情直接开始说话。
     setTimeout(()=>{
-      if(generation===_connectionGeneration&&connected&&ttsEnabled) speakText('唔，你来啦！我是小安，很高兴见到你。');
+      if(!welcomeAfterGuide&&generation===_connectionGeneration&&connected&&ttsEnabled) speakText('唔，你来啦！我是小安，很高兴见到你。');
     },3400);
 
   }catch(e){
@@ -1915,6 +1950,7 @@ let _voiceStarting=false, _voiceMode='browser', _preferBrowserVoice=false;
 let _micStream=null, _micSource=null, _micProcessor=null, _micMute=null;
 let _voiceChunks=[], _voiceTimer=null, _voiceSampleRate=48000;
 let _voiceGeneration=0,_continuousVoice=false,_continuousWaiting=false,_continuousEpoch=0,_continuousTimer=null,_continuousWaitTimer=null;
+let _mobileInputMode='text',_holdToTalkActive=false,_holdReleasePending=false,_holdTranscript='',_holdFlushTimer=null;
 function createVoiceEndpoint(){
   let elapsed=0,voiced=0,silence=0,onset=0,noise=0.006,started=false;
   return {feed(rms,seconds){
@@ -1966,6 +2002,61 @@ function toggleMic(){
   if(_continuousVoice){disableContinuousVoice();return;}
   if(_isListening) stopVoiceInput();
   else if(!_voiceStarting) startVoiceInput();
+}
+function setMobileInputMode(mode){
+  const next=mode==='voice'?'voice':'text';
+  if(next===_mobileInputMode)return;
+  if(_holdToTalkActive||_voiceStarting||_isListening){
+    _holdToTalkActive=false;_holdReleasePending=false;_holdTranscript='';
+    stopVoiceInput(false);
+  }
+  _mobileInputMode=next;
+  const bar=document.getElementById('bottom-bar'),button=document.getElementById('mic-btn');
+  bar.classList.toggle('voice-mode',next==='voice');
+  button.textContent=next==='voice'?'⌨':'🎤';
+  button.title=next==='voice'?'切换到文字输入':'切换到语音输入';
+  button.setAttribute('aria-label',button.title);
+  if(next==='text')setTimeout(()=>document.getElementById('text-input').focus(),0);
+}
+function handleMicButton(){
+  if(isMobileLayout()){setMobileInputMode(_mobileInputMode==='voice'?'text':'voice');return;}
+  toggleMic();
+}
+function resetHoldToTalkButton(){
+  const button=document.getElementById('hold-to-talk');
+  button.classList.remove('recording');button.textContent='按住说话';
+}
+function flushHoldTranscript(){
+  if(_holdFlushTimer!==null){clearTimeout(_holdFlushTimer);_holdFlushTimer=null;}
+  const text=_holdTranscript.trim();_holdTranscript='';_holdReleasePending=false;
+  if(text&&chatWsReady){addBubble('user',text);chatSend({type:'text_input',text});}
+  resetHoldToTalkButton();
+}
+function startHoldToTalk(event){
+  if(!isMobileLayout()||_mobileInputMode!=='voice'||_holdToTalkActive||_voiceStarting||_isListening)return;
+  event.preventDefault();
+  if(!chatWsReady){alert('请先连接数字人再录音');return;}
+  _holdToTalkActive=true;_holdReleasePending=false;_holdTranscript='';
+  const button=document.getElementById('hold-to-talk');
+  if(event.pointerId!==undefined)try{button.setPointerCapture(event.pointerId);}catch(error){}
+  button.classList.add('recording');button.textContent='松开发送';
+  startVoiceInput();
+}
+function finishHoldToTalk(event,send=true){
+  if(!_holdToTalkActive&&!_voiceStarting&&!_isListening)return;
+  event?.preventDefault?.();
+  const button=document.getElementById('hold-to-talk');
+  if(event?.pointerId!==undefined)try{button.releasePointerCapture(event.pointerId);}catch(error){}
+  _holdToTalkActive=false;
+  if(_voiceMode==='browser'&&send){
+    _holdReleasePending=true;
+    stopVoiceInput(false);
+    _holdFlushTimer=setTimeout(flushHoldTranscript,650);
+  }else{
+    _holdReleasePending=false;
+    stopVoiceInput(send);
+    resetHoldToTalkButton();
+  }
 }
 async function startVoiceInput(){
   if(!chatWsReady){alert('请先连接数字人再录音');return;}
@@ -2026,7 +2117,7 @@ async function _startServerVoiceInput(generation=_voiceGeneration){
   document.getElementById('mic-btn').classList.add('mic-on');
   document.getElementById('text-input').placeholder='🎤 正在录音，再点麦克风发送（最长30秒）';
   if(_continuousVoice) document.getElementById('text-input').placeholder='🎤 连续聆听中，停顿约1.2秒自动发送；回复期间暂停';
-  _voiceTimer=setTimeout(()=>stopVoiceInput(),30000);
+  _voiceTimer=setTimeout(()=>{if(_holdToTalkActive)finishHoldToTalk(null,true);else stopVoiceInput();},30000);
 }
 function _encodeVoiceWav(chunks,sampleRate){
   const length=chunks.reduce((n,c)=>n+c.length,0);
@@ -2085,7 +2176,10 @@ function _startBrowserVoiceInput(){
     if(finalText){
       input.value='';
       const txt=finalText.trim();
-      if(txt){addBubble('user',txt);chatSend({type:'text_input',text:txt});}
+      if(txt&&(_holdToTalkActive||_holdReleasePending)){
+        _holdTranscript+=(_holdTranscript?' ':'')+txt;
+        document.getElementById('hold-to-talk').textContent=_holdToTalkActive?'松开发送':'正在识别…';
+      }else if(txt){addBubble('user',txt);chatSend({type:'text_input',text:txt});}
     }else if(interimText){
       input.value=interimText;
     }
@@ -2096,6 +2190,7 @@ function _startBrowserVoiceInput(){
     if(e.error!=='no-speech'&&e.error!=='aborted') stopVoiceInput();
   };
   _speechRec.onend=()=>{
+    if(_holdReleasePending){flushHoldTranscript();return;}
     // 持续聆听模式：自动重启（除非用户主动关闭）
     if(_isListening){try{_speechRec.start();}catch(e){}}
   };
@@ -2139,6 +2234,14 @@ function stopVoiceInput(sendRecording=true){
   input.placeholder='和小安说点什么...';
   input.value='';
   console.log('[语音识别] 已关闭');
+}
+
+const holdToTalkButton=document.getElementById('hold-to-talk');
+if(holdToTalkButton?.addEventListener){
+  holdToTalkButton.addEventListener('pointerdown',startHoldToTalk);
+  holdToTalkButton.addEventListener('pointerup',event=>finishHoldToTalk(event,true));
+  holdToTalkButton.addEventListener('pointercancel',event=>finishHoldToTalk(event,false));
+  holdToTalkButton.addEventListener('contextmenu',event=>event.preventDefault());
 }
 
 /* ═══════════ TTS + Web Audio 实时口型同步 ═══════════ */
@@ -3244,6 +3347,7 @@ const mobileLayoutQuery=window.matchMedia('(max-width:700px), (max-width:900px) 
 const handleMobileLayoutChange=event=>{
   document.getElementById('mobile-panel-backdrop').classList.toggle('show',_sidebarOpen&&event.matches);
   if(event.matches&&_sidebarOpen)toggleSidebar();
+  if(!event.matches)setMobileInputMode('text');
   resizeLive2D();
 };
 if(mobileLayoutQuery.addEventListener)mobileLayoutQuery.addEventListener('change',handleMobileLayoutChange);

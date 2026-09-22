@@ -17,4 +17,6 @@ for(let i=0;i<13;i++) state=vad.feed(0.001,0.1);
 assert(state.done,'Sustained silence ends a voiced utterance');
 assert(html.includes('generation!==_voiceGeneration||epoch!==_continuousEpoch'),'Late FileReader cannot upload old recordings');
 assert(html.includes('generation!==_voiceGeneration'),'Pending microphone permission can be cancelled');
+assert(html.includes("if(_voiceMode==='browser'&&send)"),'浏览器识别回退也必须等待移动端松手后发送');
+assert(html.includes("if(_holdToTalkActive)finishHoldToTalk(null,true)"),'按住说话达到最长录音时间后必须自动发送');
 console.log('自动停顿、短停顿保持、无声超时与迟到录音保护测试通过');

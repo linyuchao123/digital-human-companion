@@ -14,7 +14,7 @@ class VoiceFrontendTests(unittest.TestCase):
         self.html = HTML_PATH.read_text(encoding="utf-8")
 
     def test_recording_is_bounded_and_releases_microphone(self):
-        self.assertIn("setTimeout(()=>stopVoiceInput(),30000)", self.html)
+        self.assertIn("_voiceTimer=setTimeout(()=>{if(_holdToTalkActive)finishHoldToTalk(null,true);else stopVoiceInput();},30000)", self.html)
         self.assertIn("getTracks().forEach(track=>track.stop())", self.html)
         self.assertIn("stopVoiceInput(false)", self.html)
         self.assertNotIn("stopMicOnly()", self.html)
