@@ -34,5 +34,10 @@ vm.runInContext(helperCode,context);
   assert(html.includes("if(ttsSpeaking||_replySpeech.running||_replySpeech.queued.length||_streamReply.trace)beginStreamReply(null)"),
     'Holding to talk interrupts queued digital-human speech');
   assert(html.includes("window.addEventListener('pointerup'"),'Global release fallback prevents stuck mobile recording');
+  assert(html.includes('const ctx=new AudioContextClass();_voiceAudioCtx=ctx'),
+    'Microphone capture uses a context separate from TTS playback');
+  assert(html.includes("captureCtx.close().catch(()=>{})"),'Capture context is closed after release so mobile exits call-volume routing');
+  assert(html.includes("setTimeout(()=>{\n    _resumeAudioPlayback().catch(()=>{})"),
+    'Playback is resumed after the mobile audio route has had time to recover');
   console.log('移动端音频解锁、远端音频重试、播报打断与全局松手保护测试通过');
 })().catch(error=>{console.error(error);process.exitCode=1;});

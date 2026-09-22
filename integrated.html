@@ -1945,7 +1945,7 @@ function setStatus(cls,text){
 /* ═══════ 语音输入（服务端句级录音 / 浏览器识别回退） ═══════ */
 let _speechRec=null, _isListening=false;
 let _voiceStarting=false, _voiceMode='browser', _preferBrowserVoice=false;
-let _micStream=null, _micSource=null, _micProcessor=null, _micMute=null;
+let _micStream=null, _micSource=null, _micProcessor=null, _micMute=null, _voiceAudioCtx=null;
 let _voiceChunks=[], _voiceTimer=null, _voiceSampleRate=48000;
 let _voiceGeneration=0,_continuousVoice=false,_continuousWaiting=false,_continuousEpoch=0,_continuousTimer=null,_continuousWaitTimer=null;
 let _asrStatusCache=null,_asrStatusPromise=null;
@@ -2130,7 +2130,11 @@ async function _startServerVoiceInput(generation=_voiceGeneration){
     return;
   }
   _micStream=stream;
-  const ctx=await _resumeAudioPlayback();
+  // 采集与播报必须使用不同 AudioContext。iOS 会把带麦克风的上下文留在低音量“通话”路由中。
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)throw new Error('当前浏览器不支持 Web Audio');
+  const ctx=new AudioContextClass();_voiceAudioCtx=ctx;
+  if(ctx.state!=='running')await ctx.resume();
   _voiceSampleRate=ctx.sampleRate; _voiceChunks=[]; _voiceMode='server';
   _micSource=ctx.createMediaStreamSource(_micStream);
   _micProcessor=ctx.createScriptProcessor(4096,1,1);
@@ -2251,6 +2255,15 @@ function stopVoiceInput(sendRecording=true){
   if(_micProcessor) _micProcessor.onaudioprocess=null;
   if(_micStream) _micStream.getTracks().forEach(track=>track.stop());
   _micStream=_micSource=_micProcessor=_micMute=null;
+  const captureCtx=_voiceAudioCtx;_voiceAudioCtx=null;
+  if(captureCtx&&captureCtx.state!=='closed')captureCtx.close().catch(()=>{});
+  // 在松手手势中重新唤醒独立播放上下文；稍后再试一次，让系统从录音/通话路由切回媒体扬声器。
+  _unlockAudioPlayback();
+  setTimeout(()=>{
+    _resumeAudioPlayback().catch(()=>{});
+    const remoteAudio=document.getElementById('wav2lip-audio');
+    if(remoteAudio?.srcObject)remoteAudio.play().catch(()=>{});
+  },180);
   if(wasRecording&&sendRecording&&_voiceChunks.length){
     uploadPending=true;
     const wav=_encodeVoiceWav(_voiceChunks,_voiceSampleRate), reader=new FileReader();

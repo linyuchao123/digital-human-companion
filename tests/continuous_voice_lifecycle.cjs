@@ -6,13 +6,22 @@ const stop=html.indexOf('function stopVoiceInput('),stopEnd=html.indexOf('/* ═
 let resolveMic,stopped=0,sent=0;
 const elements=new Map(),listeners={};
 function element(id){if(!elements.has(id))elements.set(id,{classList:{add(){},remove(){}},setAttribute(){},placeholder:'',value:''});return elements.get(id);}
+const captureContexts=[];
+class AudioContextMock{
+  constructor(){this.state='running';this.sampleRate=48000;captureContexts.push(this);}
+  createMediaStreamSource(){return {connect(){},disconnect(){}};}
+  createScriptProcessor(){return {connect(){},disconnect(){}};}
+  createGain(){return {gain:{},connect(){},disconnect(){}};}
+  close(){this.state='closed';return Promise.resolve();}
+  resume(){this.state='running';return Promise.resolve();}
+}
 const ctx=vm.createContext({chatWsReady:true,ttsSpeaking:false,console:{log(){},warn(){}},
+  window:{AudioContext:AudioContextMock},
   document:{hidden:false,getElementById:element,addEventListener:(name,fn)=>listeners[name]=fn},
   fetch:async()=>({ok:true,json:async()=>({asr:{available:true,provider:'qwen_cloud'}})}),
   navigator:{mediaDevices:{getUserMedia:()=>new Promise(resolve=>resolveMic=resolve)}},
-  setTimeout:()=>1,clearTimeout(){},alert(){},confirm:()=>true,_stopAudio(){},
-  _resumeAudioPlayback:async()=>({sampleRate:48000,createMediaStreamSource:()=>({connect(){},disconnect(){}}),
-    createScriptProcessor:()=>({connect(){},disconnect(){}}),createGain:()=>({gain:{},connect(){},disconnect(){}})}),
+  setTimeout:()=>1,clearTimeout(){},alert(){},confirm:()=>true,_stopAudio(){},_unlockAudioPlayback(){},
+  _resumeAudioPlayback:async()=>({}),
   chatSend:()=>sent++,Float32Array,Math});
 vm.runInContext(html.slice(begin,end)+html.slice(stop,stopEnd),ctx);
 (async()=>{
@@ -31,6 +40,7 @@ vm.runInContext(html.slice(begin,end)+html.slice(stop,stopEnd),ctx);
   assert.equal(vm.runInContext('_isListening',ctx),true);
   ctx.document.hidden=true;listeners.visibilitychange();
   assert.equal(stopped,2,'Backgrounding releases the microphone');
+  assert.equal(captureContexts[0].state,'closed','Stopping capture closes its dedicated audio context');
   assert.equal(vm.runInContext('_continuousVoice',ctx),false);
   assert.equal(vm.runInContext('_voiceChunks.length',ctx),0);
   ctx.document.hidden=false;
