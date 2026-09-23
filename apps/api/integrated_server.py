@@ -770,6 +770,14 @@ else:
 INTEGRATED_HTML = ROOT / "integrated.html"
 VISION_DEMO_HTML = ROOT / "vision_demo.html"
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(ROOT / "static" / "creator" / "favicon.ico", media_type="image/x-icon")
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+async def apple_touch_icon():
+    return FileResponse(ROOT / "static" / "creator" / "apple-touch-icon.png", media_type="image/png")
+
 @app.get("/")
 async def root():
     if INTEGRATED_HTML.exists():
